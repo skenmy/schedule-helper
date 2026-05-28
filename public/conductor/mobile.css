@@ -1,0 +1,425 @@
+/* ============================================================
+   MOBILE — Conductor
+   ----------------------------------------------------------------
+   Strategy:
+   - Single CSS file, kicks in below 820px.
+   - Hide desktop chrome bits, swap in a sticky mobile header,
+     bottom tab bar, and a slide-up drawer for "More".
+   - Each workspace tab becomes a full-screen view (already exists
+     in markup); we just rearrange how you get between them.
+   - Hide the 3-col body and the horizontal timeline section
+     entirely on phone (user-requested).
+   - Sticky control bar for the "Now" view when timer-aware.
+   ============================================================ */
+
+@media (max-width: 820px) {
+
+  body { font-size: 14px; }
+  html, body { overscroll-behavior-y: contain; }
+
+  /* ---------- Desktop chrome → mobile chrome ---------- */
+  .chrome {
+    height: 56px;
+    padding: 0 14px;
+    gap: 10px;
+  }
+  .chrome .brand .ev { font-size: 11px; letter-spacing: 0.08em; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chrome .clock { font-size: 13px; }
+  .chrome .search-trigger { display: none; }
+  .chrome .scenario-picker { display: none; }
+  .chrome .conn { font-size: 10px; padding: 4px 6px; }
+  .chrome .conn #conn-text { display: none; } /* dot only on mobile */
+  .chrome .btn { padding: 8px 10px; min-width: 40px; min-height: 40px; }
+  .chrome .btn#btn-popout { display: none; } /* not useful on phone */
+  .chrome .spacer { flex: 1; }
+  .chrome #btn-kiosk { display: none; } /* moves to drawer */
+  .chrome #btn-change { padding: 8px 10px; }
+
+  /* ---------- Headstrip ---------- */
+  .headstrip {
+    grid-template-columns: 1fr;
+  }
+  .h-left, .h-right {
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 12px 14px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+    gap: 18px;
+  }
+  .h-left::-webkit-scrollbar, .h-right::-webkit-scrollbar { display: none; }
+  .h-left .stat-mini, .h-right .stat-mini {
+    flex-shrink: 0;
+    min-width: 0;
+  }
+  .h-left .stat-mini .v, .h-right .stat-mini .v { font-size: 15px; }
+  .stat-mini .k { font-size: 9px; }
+
+  .h-center {
+    padding: 20px 16px 22px;
+    border-bottom: 1px solid var(--line);
+  }
+  .h-center .delta { font-size: 56px; }
+  body.pre-marathon .h-center .delta { font-size: 44px; }
+  body.pre-marathon .h-center .delta.small { font-size: 36px; }
+  .h-center .state { font-size: 9.5px; }
+  .h-center .sub { font-size: 10.5px; flex-wrap: wrap; gap: 6px 12px; justify-content: center; display: flex; }
+
+  /* ---------- Hide horizontal timeline on phone ---------- */
+  .conductor { display: none; }
+
+  /* ---------- 3-col body → stacked, controlled by mobile nav ---------- */
+  .body {
+    grid-template-columns: 1fr;
+    gap: 0;
+    background: transparent;
+  }
+  .body > section { padding: 16px 14px; }
+
+  /* Hidden by default; mobile-nav reveals the active one */
+  body.mobile .body { display: block; }
+  body.mobile .body > section { display: none; }
+  body.mobile.mv-now .body .detail,
+  body.mobile.mv-now .body .rail { display: flex; flex-direction: column; }
+  body.mobile.mv-upnext .body .upnext { display: block; }
+
+  /* Reorder + restyle the now-view */
+  body.mobile .body .detail { padding-bottom: 8px; }
+  body.mobile .body .detail h1 { font-size: 24px; }
+  body.mobile .body .detail .cat { font-size: 12.5px; }
+  body.mobile .body .detail .stats-row { grid-template-columns: 1fr 1fr; gap: 10px; }
+  body.mobile .body .detail .stats-row .s .v { font-size: 20px; }
+
+  /* OCR row: stack */
+  body.mobile .body .ocr-row { flex-wrap: wrap; }
+  body.mobile .body .ocr-row .thumb { width: 80px; height: 46px; }
+  body.mobile .body .ocr-row .info { flex: 1 1 calc(100% - 100px); }
+  body.mobile .body .ocr-row .ctrl-btn { width: 100%; margin-top: 8px; }
+
+  /* Rail → simpler, used only as part of "Now" */
+  body.mobile .body .rail { padding-top: 0; }
+  body.mobile .body .rail .timer-card .big { font-size: 32px; }
+  body.mobile .body .rail .ctrl-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  body.mobile .body .rail .ctrl-btn { height: 48px; font-size: 14px; }
+  body.mobile .body .rail .ctrl-btn .kbd { display: none; }
+
+  /* Up next list rows */
+  body.mobile .deck-row { padding: 14px 14px; min-height: 56px; grid-template-columns: 64px 1fr auto; gap: 10px; }
+  body.mobile .deck-row .when { font-size: 20px; }
+  body.mobile .deck-row .nm { font-size: 14px; }
+  body.mobile .deck-row .nm small { font-size: 11.5px; }
+
+  /* Mini event log: keep on Now */
+  body.mobile .body .minilog { display: block; }
+  body.mobile .body .upnext h2 + .deck + .minilog { display: block; }
+
+  /* ---------- Workspace tabs ---------- */
+  .workspace { border-top: 1px solid var(--line); }
+  body.mobile .workspace { display: none; }
+  body.mobile.mv-schedule .workspace,
+  body.mobile.mv-log .workspace { display: block; }
+  body.mobile .tab-bar { display: none; } /* mobile nav owns tab switching */
+
+  /* When schedule active, force schedule tab content */
+  body.mobile .tab-panel { padding: 12px 12px 96px; }
+  body.mobile .sec-head { flex-wrap: wrap; gap: 8px; }
+  body.mobile .sec-head h2 { font-size: 14px; }
+  body.mobile .sec-head h2 small { display: block; margin-left: 0; margin-top: 2px; font-size: 11px; }
+  body.mobile .sec-head .right { width: 100%; flex-wrap: wrap; }
+  body.mobile .filter-input.wide { width: 100%; max-width: none; height: 40px; }
+  body.mobile .chip-filter { padding: 8px 12px; font-size: 11.5px; min-height: 36px; }
+
+  /* Schedule table → cards on mobile */
+  body.mobile #schedule-table { display: block; }
+  body.mobile #schedule-table thead { display: none; }
+  body.mobile #schedule-table tbody, body.mobile #schedule-table tr { display: block; }
+  body.mobile #schedule-table tr {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 4px 12px;
+    padding: 14px;
+    margin-bottom: 8px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    align-items: center;
+    min-height: 60px;
+    position: relative;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  body.mobile #schedule-table tr.now-row { border-color: var(--hot); background: rgba(248,113,113,.04); box-shadow: inset 3px 0 0 var(--hot); }
+  body.mobile #schedule-table tr.selected { border-color: var(--signal); box-shadow: inset 3px 0 0 var(--signal); }
+  body.mobile #schedule-table td { border: 0; padding: 0; font-size: 13px; vertical-align: middle; }
+  body.mobile #schedule-table td:first-child { color: var(--dim); font-family: "JetBrains Mono", monospace; font-size: 11px; }
+  body.mobile #schedule-table td.game { grid-column: 2; font-weight: 600; }
+  body.mobile #schedule-table td.game small { font-size: 11.5px; }
+  body.mobile #schedule-table td:nth-child(3),
+  body.mobile #schedule-table td:nth-child(4),
+  body.mobile #schedule-table td:nth-child(5),
+  body.mobile #schedule-table td:nth-child(6) {
+    grid-column: 2; font-size: 11px; color: var(--dim); font-family: "JetBrains Mono", monospace;
+  }
+  body.mobile #schedule-table td:nth-child(3)::before { content: "by "; }
+  body.mobile #schedule-table td:nth-child(4)::before { content: ""; }
+  body.mobile #schedule-table td:nth-child(4)::after { content: " ·"; }
+  body.mobile #schedule-table td:nth-child(5)::after { content: ""; }
+  body.mobile #schedule-table td:nth-child(3),
+  body.mobile #schedule-table td:nth-child(4),
+  body.mobile #schedule-table td:nth-child(5) { display: inline; }
+  body.mobile #schedule-table td:nth-child(7) { grid-column: 3; grid-row: 1; }
+  body.mobile #schedule-table td.edit-cell { grid-column: 3; grid-row: 2; }
+  body.mobile #schedule-table .row-edit-btn { border-color: var(--line); color: var(--ink-soft); min-width: 36px; min-height: 36px; }
+
+  /* Log table */
+  body.mobile .log-table td { padding: 8px 10px; font-size: 12.5px; }
+  body.mobile .log-table .t { width: 56px; }
+  body.mobile .log-composer { flex-wrap: wrap; padding: 12px; }
+  body.mobile .log-composer input { flex: 1 1 100%; height: 44px; font-size: 14px; }
+  body.mobile .log-composer .tag-pick { flex: 1 1 100%; overflow-x: auto; }
+  body.mobile .log-composer .tag-pick button { min-height: 36px; }
+  body.mobile .log-composer .ctrl-btn { flex: 1 1 100%; height: 40px; }
+
+  /* Message panel */
+  body.mobile .msg-grid { grid-template-columns: 1fr; }
+  body.mobile .msg-editor textarea { font-size: 16px; height: 120px; } /* 16px prevents iOS zoom */
+
+  /* Kiosk config (in More) */
+  body.mobile .kiosk-grid { grid-template-columns: 1fr; }
+  body.mobile .kiosk-layouts { grid-template-columns: repeat(3, 1fr); row-gap: 30px; }
+
+  /* Stream capture */
+  body.mobile .capture-grid { grid-template-columns: 1fr; }
+  body.mobile .capture-frames { grid-template-columns: 1fr 1fr; }
+
+  /* Progress */
+  body.mobile .progress-grid { grid-template-columns: 1fr 1fr; }
+  body.mobile .attendance .grid { grid-template-columns: 1fr; }
+
+  /* ---------- BOTTOM NAV ---------- */
+  body.mobile .mobile-nav { display: flex; }
+  .mobile-nav {
+    display: none;
+    position: fixed; left: 0; right: 0; bottom: 0;
+    height: calc(64px + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    background: rgba(14,16,20,.92);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid var(--line);
+    z-index: 80;
+    justify-content: space-around;
+    align-items: stretch;
+  }
+  .mobile-nav button {
+    flex: 1; background: transparent; border: 0; color: var(--dim);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4px; padding: 8px 4px;
+    cursor: pointer;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600;
+    position: relative;
+    min-height: 56px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mobile-nav button .ico { font-size: 18px; line-height: 1; }
+  .mobile-nav button .badge {
+    position: absolute; top: 6px; right: calc(50% - 18px);
+    background: var(--hot); color: #1a0606;
+    font-family: "JetBrains Mono", monospace; font-size: 9px;
+    padding: 1px 5px; border-radius: 999px; font-weight: 700; letter-spacing: 0;
+    min-width: 14px; text-align: center;
+  }
+  .mobile-nav button.active { color: var(--ink); }
+  .mobile-nav button.active::before {
+    content: ""; position: absolute; top: 0; left: 30%; right: 30%; height: 2px; background: var(--accent); border-radius: 2px;
+  }
+  .mobile-nav button:active { background: rgba(255,255,255,.04); }
+
+  /* Make space for the nav */
+  body.mobile { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+
+  /* ---------- MOBILE STICKY ACTION BAR (NOW view) ---------- */
+  body.mobile.mv-now .mobile-action-bar { display: flex; }
+  .mobile-action-bar {
+    display: none;
+    position: fixed; left: 12px; right: 12px;
+    bottom: calc(70px + env(safe-area-inset-bottom));
+    gap: 8px;
+    z-index: 75;
+  }
+  .mobile-action-bar button {
+    flex: 1;
+    height: 52px;
+    background: var(--accent); border: 0; color: #062014;
+    font-weight: 700; font-size: 15px;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(52,211,153,.2), 0 2px 6px rgba(0,0,0,.4);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .mobile-action-bar button.stop { background: var(--hot); color: #1a0606; box-shadow: 0 8px 32px rgba(248,113,113,.25), 0 2px 6px rgba(0,0,0,.4); }
+  .mobile-action-bar button.next { background: var(--panel); color: var(--ink); box-shadow: 0 4px 16px rgba(0,0,0,.4); }
+  .mobile-action-bar button:active { transform: translateY(1px); }
+  .mobile-action-bar .ico { font-size: 18px; }
+
+  body.mobile.mv-now .body .rail .ctrl-grid { display: none; }    /* sticky bar replaces */
+
+  /* ---------- DRAWER (More) ---------- */
+  .mobile-drawer-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,.6);
+    z-index: 95; opacity: 0; pointer-events: none;
+    transition: opacity .18s;
+    backdrop-filter: blur(2px);
+  }
+  .mobile-drawer-backdrop.on { opacity: 1; pointer-events: auto; }
+  .mobile-drawer {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+    border-top-left-radius: 16px; border-top-right-radius: 16px;
+    z-index: 96;
+    transform: translateY(110%);
+    transition: transform .24s cubic-bezier(0.32, 0.72, 0, 1);
+    padding-bottom: env(safe-area-inset-bottom);
+    max-height: 85vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .mobile-drawer.on { transform: translateY(0); }
+  .mobile-drawer .grabber { width: 40px; height: 4px; background: var(--line); border-radius: 2px; margin: 10px auto 6px; }
+  .mobile-drawer h3 { margin: 0 0 4px; padding: 0 18px; font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim); font-weight: 600; }
+  .mobile-drawer .drawer-list { list-style: none; margin: 0; padding: 8px 0 20px; }
+  .mobile-drawer .drawer-list li {
+    padding: 14px 18px;
+    display: flex; align-items: center; gap: 14px;
+    cursor: pointer;
+    border-top: 1px solid var(--line-soft);
+    min-height: 56px;
+  }
+  .mobile-drawer .drawer-list li:first-child { border-top: 0; }
+  .mobile-drawer .drawer-list li:active { background: var(--panel2); }
+  .mobile-drawer .drawer-list li .ico {
+    width: 36px; height: 36px; border-radius: 8px;
+    background: var(--panel2); display: grid; place-items: center;
+    font-size: 18px;
+  }
+  .mobile-drawer .drawer-list li .lbl { flex: 1; }
+  .mobile-drawer .drawer-list li .lbl .t { font-size: 15px; font-weight: 500; }
+  .mobile-drawer .drawer-list li .lbl .s { font-size: 12px; color: var(--dim); margin-top: 1px; }
+  .mobile-drawer .drawer-list li .chev { color: var(--dim); }
+
+  /* ---------- BOTTOM SHEET (run actions on long-press) ---------- */
+  .bottom-sheet-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,.55);
+    z-index: 97; opacity: 0; pointer-events: none;
+    transition: opacity .18s;
+    backdrop-filter: blur(2px);
+  }
+  .bottom-sheet-backdrop.on { opacity: 1; pointer-events: auto; }
+  .bottom-sheet {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+    border-top-left-radius: 16px; border-top-right-radius: 16px;
+    z-index: 98;
+    transform: translateY(110%);
+    transition: transform .24s cubic-bezier(0.32, 0.72, 0, 1);
+    padding-bottom: env(safe-area-inset-bottom);
+    max-height: 80vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .bottom-sheet.on { transform: translateY(0); }
+  .bottom-sheet .grabber { width: 40px; height: 4px; background: var(--line); border-radius: 2px; margin: 10px auto 6px; }
+  .bottom-sheet header { padding: 4px 18px 12px; border-bottom: 1px solid var(--line); }
+  .bottom-sheet header .title { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+  .bottom-sheet header .sub { color: var(--dim); font-size: 12px; margin-top: 2px; }
+  .bottom-sheet .actions { padding: 8px 0 18px; }
+  .bottom-sheet .actions li {
+    padding: 14px 18px;
+    display: flex; align-items: center; gap: 14px;
+    cursor: pointer;
+    border-top: 1px solid var(--line-soft);
+    min-height: 56px;
+    list-style: none;
+  }
+  .bottom-sheet .actions li:first-child { border-top: 0; }
+  .bottom-sheet .actions li:active { background: var(--panel2); }
+  .bottom-sheet .actions li .ico { width: 28px; text-align: center; font-size: 18px; }
+  .bottom-sheet .actions li.danger { color: var(--hot); }
+
+  /* ---------- PULL TO REFRESH ---------- */
+  .ptr-indicator {
+    position: fixed; left: 50%; top: 0;
+    transform: translate(-50%, -100%);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-top: 0;
+    border-radius: 0 0 12px 12px;
+    padding: 12px 18px;
+    font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--dim);
+    z-index: 60;
+    transition: transform .18s;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .ptr-indicator .spin { width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: ptr-spin .8s linear infinite; }
+  @keyframes ptr-spin { to { transform: rotate(360deg); } }
+  .ptr-indicator.visible { transform: translate(-50%, 0); }
+  .ptr-indicator.armed { color: var(--accent); border-color: var(--accent); }
+
+  /* ---------- LONG-PRESS PRESSURE INDICATOR ---------- */
+  .lp-pressing { background: rgba(34,211,238,.06) !important; transition: background .15s; }
+
+  /* ---------- MOBILE PALETTE (full-screen) ---------- */
+  .palette-backdrop.on { padding-top: 0; place-items: stretch; }
+  .palette { width: 100%; max-width: none; border-radius: 0; height: 100vh; display: flex; flex-direction: column; }
+  .palette input { padding: 18px 16px; font-size: 16px; }
+  .palette ul { flex: 1; max-height: none; }
+  .palette li { min-height: 56px; }
+
+  /* ---------- KIOSK MODE on mobile ---------- */
+  body.kiosk-mode .mobile-nav, body.kiosk-mode .mobile-action-bar { display: none !important; }
+  /* Single-column kiosk on small portrait */
+  .kiosk-overlay { padding: 4px; gap: 4px; }
+}
+
+/* ============================================================
+   Smaller phone tuning
+   ============================================================ */
+@media (max-width: 380px) {
+  .h-center .delta { font-size: 48px; }
+  body.pre-marathon .h-center .delta { font-size: 38px; }
+  body.mobile .body .detail h1 { font-size: 20px; }
+}
+
+/* ============================================================
+   Landscape phones: keep bottom nav reachable, headstrip compact
+   ============================================================ */
+@media (max-width: 920px) and (orientation: landscape) {
+  body.mobile .h-center { padding: 14px 16px 16px; }
+  body.mobile .h-center .delta { font-size: 44px; }
+}
+
+/* ============================================================
+   Kiosk: portrait orientation override for wall-mount phones
+   ============================================================ */
+@media (max-width: 540px) and (orientation: portrait) {
+  body.kiosk-mode .kiosk-overlay {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: auto auto !important;
+    grid-template-areas: none !important;
+  }
+  body.kiosk-mode .kiosk-cell { grid-area: auto !important; grid-column: auto !important; grid-row: auto !important; }
+  body.kiosk-mode .kpanel-delta .value { font-size: 80px; }
+  body.kiosk-mode .kpanel-current h2 { font-size: 22px; }
+  body.kiosk-mode .kpanel-current .timer { font-size: 44px; }
+}
+
+/* ============================================================
+   Touch base (always-on, even on desktop with a touch screen)
+   ============================================================ */
+.touch-device .ctrl-btn, .touch-device .chip-filter, .touch-device .mobile-nav button { min-height: 44px; }
+.touch-device button, .touch-device a, .touch-device .deck-row { -webkit-tap-highlight-color: transparent; }

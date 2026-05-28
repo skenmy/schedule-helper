@@ -1,0 +1,8 @@
+node_modules
+data
+*.bak
+.git
+.github
+.DS_Store
+example-layout.png
+public/index.html.bak

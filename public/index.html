@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Schedule Tracker — Conductor</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="conductor/styles.css">
+<link rel="stylesheet" href="conductor/mobile.css">
+</head>
+<body>
+
+<!-- ================================================================
+     LANDING VIEW
+     ================================================================ -->
+<div id="landingView" class="landing">
+  <div class="landing-card">
+    <div class="landing-brand">
+      <div class="brand-mark"></div>
+      <div class="nm">Schedule Tracker<small>Conductor edition</small></div>
+    </div>
+
+    <h1>Track a marathon</h1>
+    <p class="intro">Paste an Oengus or Horaro schedule URL. State syncs across operators in real time — paste once, your team's in sync.</p>
+
+    <label for="urlInput">Schedule URL</label>
+    <input id="urlInput" placeholder="https://oengus.io/marathon/uksgreen26/schedule/main" autofocus>
+    <div class="btn-row">
+      <button class="ctrl-btn go" id="loadBtn">Load schedule</button>
+      <button class="ctrl-btn" id="clearBtn">Clear</button>
+      <div style="flex:1"></div>
+      <span class="kbd">⏎ Enter</span>
+    </div>
+    <div class="error" id="landingError"></div>
+
+    <div class="feat">
+      <div class="it"><b>Real-time sync</b><br>Every operator on the same URL sees the same state, instantly.</div>
+      <div class="it"><b>Stream OCR</b><br>Verify the on-screen timer against ours, every minute.</div>
+      <div class="it"><b>⌘K everywhere</b><br>Jump to any run or run any command without a click.</div>
+    </div>
+
+    <div class="examples">
+      <h3>Sources accepted</h3>
+      <a href="#" data-eg="oengus.io/marathon/uksgreen26/schedule/main">oengus.io/marathon/{id}/schedule/{slug}</a>
+      <a href="#" data-eg="horaro.net/esa-winter-2026/stream-one">horaro.net/{event}/{schedule}</a>
+      <a href="#" data-eg="uksgreen26/main">shorthand: {id}/{slug}</a>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================
+     TRACKER VIEW (Conductor)
+     ================================================================ -->
+<div id="trackerView" class="hidden">
+
+  <div class="chrome">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div class="ev"><b id="marathon-name">—</b> · CONDUCTOR</div>
+    </div>
+    <div class="search-trigger" id="search-trigger">
+      <span style="color:var(--dim)">⌕</span>
+      <span>Jump, command, edit…</span>
+      <span class="kbd">⌘K</span>
+    </div>
+    <span class="conn connecting" id="conn-status"><span id="conn-text">connecting…</span></span>
+
+    <div class="spacer"></div>
+
+    <span class="clock" id="clock">--:--:--</span>
+    <select class="btn theme-picker" id="theme-picker" title="UI theme">
+      <option value="green">🟢 Green</option>
+      <option value="lightblue">🔵 Light blue</option>
+      <option value="darkblue">🌀 Dark blue</option>
+      <option value="amber">🟡 Amber</option>
+      <option value="purple">🟣 Purple</option>
+    </select>
+    <button class="btn" id="btn-kiosk">⊞ Kiosk</button>
+    <button class="btn" id="btn-popout">↗</button>
+    <button class="btn" id="btn-change" title="Change schedule">⏏</button>
+  </div>
+
+  <div class="headstrip">
+    <div class="h-left">
+      <div class="stat-mini"><div class="k">Marathon hour</div><div class="v" id="m-hour">— <small>/ —</small></div></div>
+      <div class="stat-mini"><div class="k">Runs</div><div class="v" id="m-runs">— <small>/ —</small></div></div>
+      <div class="stat-mini accent"><div class="k">Runners here</div><div class="v" id="m-runners">— <small>/ —</small></div></div>
+      <div class="stat-mini"><div class="k">Total estimate</div><div class="v" id="m-est">—</div></div>
+    </div>
+
+    <div class="h-center" id="h-center">
+      <div class="state"><span id="state-label">—</span></div>
+      <div class="delta" id="delta">+00:00</div>
+      <div class="sub">
+        scheduled <b id="sched-start">—</b> · actual <b id="actual-start">—</b> · <span class="hot" id="drift-label">—</span>
+      </div>
+    </div>
+
+    <div class="h-right">
+      <div class="stat-mini hot"><div class="k" id="over-label">Over est. by</div><div class="v" id="over-est">—</div></div>
+      <div class="stat-mini warn"><div class="k">Projected end</div><div class="v" id="proj-end">—</div></div>
+      <div class="stat-mini dim"><div class="k">Marathon ends</div><div class="v" id="m-end">—</div></div>
+    </div>
+  </div>
+
+  <div class="conductor">
+    <div class="conductor-legend">
+      <span style="font-weight:700;color:var(--ink-soft);letter-spacing:0.2em;text-transform:uppercase">Schedule axis</span>
+      <span class="lg"><span class="sw done"></span>done</span>
+      <span class="lg"><span class="sw now"></span>running</span>
+      <span class="lg"><span class="sw up"></span>upcoming</span>
+      <span class="lg"><span class="sw late"></span>runner late</span>
+      <span class="lg"><span class="sw setup"></span>setup</span>
+      <span class="lg"><span class="sw gap"></span><b style="color:var(--hot);font-weight:700">delta drift</b></span>
+      <div class="zoom" id="zoom">
+        <button class="active" data-zoom="6">6h window</button>
+        <button data-zoom="12">12h</button>
+        <button data-zoom="24">all</button>
+      </div>
+    </div>
+
+    <div class="track-wrap">
+      <div class="track">
+        <div class="hourlines" id="hourlines"></div>
+        <div class="blocks" id="blocks"></div>
+        <div class="delta-gap" id="deltagap"><span class="label">—</span></div>
+        <div class="ph scheduled" id="phSched"><span class="cap">scheduled · —</span><div class="line"></div></div>
+        <div class="ph actual" id="phActual"><span class="cap">▼ now · —</span><div class="line"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="body">
+    <section class="detail">
+      <div class="eyebrow" id="det-eyebrow"><span id="det-eyebrow-text">—</span></div>
+      <h1 id="det-title">—</h1>
+      <div class="cat" id="det-cat">—</div>
+      <div class="who" id="det-runners"></div>
+      <div class="stats-row" id="det-stats"></div>
+      <div class="ocr-row hidden" id="det-ocr">
+        <div class="thumb" id="ocr-thumb"></div>
+        <div class="info">
+          <div class="lbl">Stream OCR</div>
+          <div class="read" id="ocr-read">— <span class="ok">not yet captured</span></div>
+        </div>
+        <button class="ctrl-btn sm" id="btn-recapture">↻ Re-capture</button>
+      </div>
+    </section>
+
+    <aside class="rail">
+      <div class="group">
+        <h2>Timer · current run</h2>
+        <div class="timer-card">
+          <div class="lbl">Live elapsed</div>
+          <div class="big num" id="elapsed-rail">00:00:00</div>
+          <div class="sm" id="rail-sub">—</div>
+          <div class="ctrl-grid">
+            <button class="ctrl-btn go" id="primaryBtn">▶ Start <span class="kbd">␣</span></button>
+            <button class="ctrl-btn" id="nextBtn">↦ Next <span class="kbd">N</span></button>
+            <button class="ctrl-btn" id="resetBtn">↺ Reset</button>
+            <button class="ctrl-btn" id="skipBtn">⏭ Skip</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <h2>Quick actions</h2>
+        <div class="ctrl-grid">
+          <button class="ctrl-btn" id="btn-edit-timing">✎ Edit timing</button>
+          <button class="ctrl-btn" data-go-tab="capture">📷 Capture</button>
+          <button class="ctrl-btn" data-go-tab="message">📋 Message</button>
+          <button class="ctrl-btn" data-go-tab="kiosk">⊞ Kiosk</button>
+        </div>
+      </div>
+
+      <div class="group hidden" id="catchup-group">
+        <h2>Catch-up plan</h2>
+        <div class="catchup" id="catchup">
+          <div class="h">▲ <span id="catchup-amount">—</span> available to recover</div>
+          <div class="desc" id="catchup-desc">—</div>
+        </div>
+      </div>
+    </aside>
+
+    <section class="upnext">
+      <h2>Up next <span id="upnext-count">—</span></h2>
+      <div class="deck" id="upnext-list"></div>
+
+      <div class="minilog">
+        <h2>Event log · live <span><a href="#" id="log-open-full" style="color:var(--dim);text-decoration:none">full log →</a></span></h2>
+        <div id="minilog-list"></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="workspace">
+    <div class="tab-bar" id="tab-bar">
+      <button data-tab="schedule" class="active">Schedule <span class="ct" id="ct-schedule">—</span></button>
+      <button data-tab="capture">Stream capture</button>
+      <button data-tab="message">Message panel</button>
+      <button data-tab="kiosk">Kiosk config</button>
+      <button data-tab="progress">Progress</button>
+      <button data-tab="log">Event log <span class="ct" id="ct-log">—</span></button>
+      <div class="spacer"></div>
+      <span class="secondary">⌘K · jump anywhere</span>
+    </div>
+    <div class="tab-panel" id="tab-content"></div>
+  </div>
+
+</div>
+
+<!-- ================================================================
+     COMMAND PALETTE
+     ================================================================ -->
+<div class="palette-backdrop" id="palette">
+  <div class="palette">
+    <input id="palette-input" placeholder="Jump to game, runner, or run a command…" />
+    <ul id="palette-list"></ul>
+  </div>
+</div>
+
+<script src="conductor/tabs.js"></script>
+<script src="conductor/edit.js"></script>
+<script src="conductor/app.js"></script>
+<script src="conductor/kiosk.js"></script>
+<script src="conductor/mobile.js"></script>
+</body>
+</html>

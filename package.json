@@ -1,0 +1,13 @@
+{
+  "name": "schedule-helper",
+  "version": "1.0.0",
+  "description": "UKSG RED 26 marathon schedule tracker",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "ws": "^8.19.0"
+  }
+}
