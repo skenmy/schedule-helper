@@ -35,6 +35,8 @@ const STATE = {
   ws: null,
   wsConnected: false,
   activeUsers: 0,
+  // server-pushed auth state — { authenticated, canWrite, root, user, loginUrl }
+  auth: { authenticated: false, canWrite: true, root: false, user: null, loginUrl: null },
 
   // local UI
   tab: 'schedule',
@@ -259,6 +261,20 @@ function wsConnect() {
       STATE.activeUsers = msg.count;
       renderConnText();
     }
+    else if (msg.type === 'auth') {
+      STATE.auth = {
+        authenticated: !!msg.authenticated,
+        canWrite: !!msg.canWrite,
+        root: !!msg.root,
+        user: msg.user || null,
+        loginUrl: msg.loginUrl || null,
+      };
+      renderAuthPill();
+      document.body.classList.toggle('read-only', !STATE.auth.canWrite);
+    }
+    else if (msg.type === 'denied') {
+      flashDeniedToast(msg);
+    }
   });
 
   ws.addEventListener('close', () => {
@@ -290,6 +306,65 @@ function renderConnText() {
     return;
   }
   el.textContent = `${STATE.activeUsers} op${STATE.activeUsers === 1 ? '' : 's'} · synced`;
+}
+
+function ensureAuthPillSlot() {
+  let slot = document.getElementById('auth-pill');
+  if (slot) return slot;
+  // Drop the slot just before the kiosk button in the chrome.
+  slot = document.createElement('span');
+  slot.id = 'auth-pill';
+  slot.className = 'auth-pill';
+  const chrome = document.querySelector('.chrome');
+  const themePicker = document.getElementById('theme-picker');
+  if (chrome && themePicker) chrome.insertBefore(slot, themePicker);
+  else if (chrome) chrome.appendChild(slot);
+  return slot;
+}
+
+function renderAuthPill() {
+  const slot = ensureAuthPillSlot();
+  const a = STATE.auth;
+  if (!a) { slot.innerHTML = ''; return; }
+  if (a.authenticated && a.user) {
+    const role = a.root ? 'root' : a.canWrite ? 'admin' : 'viewer';
+    const cls = a.canWrite ? 'write' : 'readonly';
+    slot.className = 'auth-pill ' + cls;
+    slot.innerHTML = `
+      ${a.user.avatar ? `<img src="${escapeHtml(a.user.avatar)}" alt="" class="auth-avatar">` : ''}
+      <span class="auth-name">${escapeHtml(a.user.display || a.user.login)}</span>
+      <span class="auth-role">${role}</span>
+      <a class="auth-logout" href="https://tools.skenmy.com/" title="Manage" target="_blank" rel="noopener">↗</a>
+    `;
+  } else if (a.loginUrl) {
+    slot.className = 'auth-pill anon';
+    slot.innerHTML = `<a class="auth-signin" href="${escapeHtml(a.loginUrl)}">Sign in with Twitch</a>`;
+  } else {
+    slot.className = 'auth-pill anon';
+    slot.innerHTML = `<span class="auth-name dim">read-only</span>`;
+  }
+}
+
+function flashDeniedToast(msg) {
+  let el = document.getElementById('deniedToast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'deniedToast';
+    el.className = 'denied-toast';
+    document.body.appendChild(el);
+  }
+  const action = msg.action || 'action';
+  const reason = msg.reason === 'not_signed_in'
+    ? 'Sign in to control the schedule.'
+    : 'You\'re signed in but don\'t have admin access for schedule-helper. Ask an operator to grant you on tools.skenmy.com.';
+  el.innerHTML = `
+    <strong>Read-only · ${escapeHtml(action)} blocked</strong>
+    <div>${reason}</div>
+    ${msg.loginUrl && msg.reason === 'not_signed_in' ? `<a class="btn-sm" href="${escapeHtml(msg.loginUrl)}">Sign in →</a>` : ''}
+  `;
+  el.classList.add('on');
+  clearTimeout(flashDeniedToast._t);
+  flashDeniedToast._t = setTimeout(() => el.classList.remove('on'), 4500);
 }
 
 function applyServerState(s) {

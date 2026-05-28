@@ -633,14 +633,87 @@ function findNextRun(schedule, fromIndex, skippedRuns) {
 
 const wss = new WebSocketServer({ server, path: '/ws' });
 
-wss.on('connection', (ws) => {
+// ─── Auth (tools-skenmy forward-auth) ───
+//
+// Schedule-helper accepts read-only WS connections from anyone, but every
+// state-mutating action is gated behind a Twitch-authenticated session
+// brokered by tools-skenmy. The cookie is shared on .skenmy.com, so any
+// HTTP request that reaches us already carries it; we just bounce it off
+// the tools-skenmy /auth/me endpoint to get (login, display, avatar,
+// canWrite). Behavior degrades to "everyone can write" when TOOLS_AUTH_URL
+// is empty — that keeps local dev one less env var.
+const TOOLS_AUTH_URL = process.env.TOOLS_AUTH_URL || ''; // e.g. http://tools-skenmy:3000
+const AUTH_APP_ID = process.env.AUTH_APP_ID || 'schedule';
+const AUTH_REFRESH_MS = 5 * 60 * 1000;
+const MUTATING_ACTIONS = new Set([
+  'timer:start', 'timer:stop', 'timer:reset',
+  'run:select', 'run:advance', 'run:skip',
+  'runner:cycle',
+  'log:add', 'log:remove', 'log:clear',
+  'twitch:set',
+  'run:edit', 'run:editClear',
+  'message:set', 'message:clear',
+]);
+
+async function resolveIdentity(cookieHeader) {
+  if (!TOOLS_AUTH_URL) return { authenticated: false, canWrite: true, user: null, root: false, mocked: true };
+  try {
+    const u = new URL('/auth/me', TOOLS_AUTH_URL);
+    u.searchParams.set('app', AUTH_APP_ID);
+    u.searchParams.set('role', 'admin');
+    const res = await fetch(u, { headers: { cookie: cookieHeader || '' } });
+    if (!res.ok) return { authenticated: false, canWrite: false, user: null, root: false };
+    return await res.json();
+  } catch (e) {
+    console.error('[auth] /auth/me failed:', e.message);
+    return { authenticated: false, canWrite: false, user: null, root: false };
+  }
+}
+
+function sendAuthState(ws) {
+  if (ws.readyState !== 1) return;
+  const a = ws.auth || { authenticated: false, canWrite: !TOOLS_AUTH_URL, user: null };
+  ws.send(JSON.stringify({
+    type: 'auth',
+    authenticated: !!a.authenticated,
+    canWrite: !!a.canWrite,
+    root: !!a.root,
+    user: a.user || null,
+    loginUrl: TOOLS_AUTH_URL ? 'https://tools.skenmy.com/auth/twitch/login?redirect=https://schedule.skenmy.com/' : null,
+  }));
+}
+
+wss.on('connection', async (ws, req) => {
   let roomKey = null;
   let room = null;
+
+  // Identify the operator behind this socket from the shared .skenmy.com cookie.
+  ws.cookieHeader = req.headers.cookie || '';
+  ws.auth = await resolveIdentity(ws.cookieHeader);
+  sendAuthState(ws);
+  const refresh = setInterval(async () => {
+    ws.auth = await resolveIdentity(ws.cookieHeader);
+    sendAuthState(ws);
+  }, AUTH_REFRESH_MS);
+  ws.on('close', () => clearInterval(refresh));
 
   ws.on('message', async (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
     const { action, ...data } = msg;
+
+    // Read-only viewers may join + receive state, but every mutation is blocked.
+    if (MUTATING_ACTIONS.has(action) && !(ws.auth && ws.auth.canWrite)) {
+      try {
+        ws.send(JSON.stringify({
+          type: 'denied',
+          action,
+          reason: ws.auth?.authenticated ? 'not_admin' : 'not_signed_in',
+          loginUrl: TOOLS_AUTH_URL ? 'https://tools.skenmy.com/auth/twitch/login?redirect=https://schedule.skenmy.com/' : null,
+        }));
+      } catch {}
+      return;
+    }
 
     if (action === 'join') {
       const { marathonId, slug, scheduleSource } = data;
