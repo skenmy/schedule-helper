@@ -1,0 +1,153 @@
+/* ============================================================
+ * UKSG brand theme — activated when the loaded Oengus marathon
+ * id starts with "uksg" (e.g. uksgred26, uksggrn25, uksgblu,
+ * uksg). Variant selected by data-brand-event="red|green|blue".
+ * Source: UKSG Brand Guidelines [Internal].docx, Sep 2025.
+ * ============================================================ */
+
+/* Metropolis is the UKSG print/banner face per the brand
+ * guidelines. Loaded from the cdnfonts.com mirror of Chris
+ * Simpson's Metropolis 2 family (free for personal & commercial
+ * use). Pulled lazily via @import so the font traffic only fires
+ * once the user lands on a UKSG schedule. */
+@import url("https://fonts.cdnfonts.com/css/metropolis-2");
+
+/* ---- Brand palette tokens ----
+ * --uksg-primary : 'UKSG' brand colour for the active variant
+ * --uksg-accent  : highlight tint paired with the primary
+ * --uksg-ink     : near-black brand ink (#020507)
+ * --uksg-logo    : url() for the oneline logo used in the header */
+body[data-brand="uksg"] {
+  --uksg-primary: #44A0E3;          /* Standard primary blue */
+  --uksg-accent:  #8cc4ed;
+  --uksg-ink:     #020507;
+  --uksg-logo:    url("/brand/uksg/logos/uksg-standard-oneline.png");
+}
+body[data-brand="uksg"][data-brand-event="red"] {
+  --uksg-primary: #D00C27;
+  --uksg-accent:  #f4485e;
+  --uksg-logo:    url("/brand/uksg/logos/uksg-red-oneline.svg");
+}
+body[data-brand="uksg"][data-brand-event="green"] {
+  --uksg-primary: #4BD133;
+  --uksg-accent:  #93eb84;
+  --uksg-logo:    url("/brand/uksg/logos/uksg-green-oneline.svg");
+}
+body[data-brand="uksg"][data-brand-event="blue"] {
+  --uksg-primary: #0091FF;
+  --uksg-accent:  #66bdff;
+  --uksg-logo:    url("/brand/uksg/logos/uksg-blue-oneline.svg");
+}
+
+/* ---- Theme overrides ----
+ * Re-point the conductor's --accent / --signal tokens so existing
+ * components (timer card, brand mark, deck rows, etc.) pick up the
+ * brand colour without per-component changes. Background stays in
+ * the dark family — the brand guidelines keep dark surfaces for
+ * digital, so we deepen toward the brand ink rather than swap to
+ * the brand's full colour. */
+body[data-brand="uksg"] {
+  --accent:    var(--uksg-primary);
+  --signal:    var(--uksg-accent);
+  --bg:        #07090c;
+  --bg2:       #0b0e13;
+  --panel:     #12161d;
+  --panel2:    #161b24;
+  --line:      #1f2530;
+  --line-soft: #161b24;
+  --ink-soft:  #d8dde6;
+  font-family: "Metropolis", "Inter Tight", system-ui, sans-serif;
+}
+
+/* Brand fonts cascade across every element. The conductor styles
+ * use ~100 explicit font-family declarations (mostly JetBrains
+ * Mono for HUD labels), so a single descendant rule wouldn't win
+ * the specificity battle — we force Metropolis everywhere with
+ * !important and keep JetBrains Mono in the fallback stack for
+ * the tabular digit displays in case Metropolis fails to load.
+ * font-variant-numeric: tabular-nums (already declared on the
+ * timer/clock selectors) keeps digit widths aligned in Metropolis. */
+body[data-brand="uksg"] *,
+body[data-brand="uksg"] *::before,
+body[data-brand="uksg"] *::after {
+  font-family: "Metropolis", "Inter Tight", "JetBrains Mono", system-ui, sans-serif !important;
+}
+
+/* ---- Header brand mark → real UKSG oneline logo ---- */
+body[data-brand="uksg"] .chrome .brand .brand-mark {
+  width: auto;
+  height: 28px;
+  aspect-ratio: 1022 / 293;
+  border-radius: 0;
+  background: var(--uksg-logo) center / contain no-repeat;
+  flex: 0 0 auto;
+}
+body[data-brand="uksg"] .chrome .brand .brand-mark::after { display: none; }
+body[data-brand="uksg"] .chrome .brand .ev {
+  border-left: 1px solid var(--line);
+  padding-left: 12px;
+  margin-left: 4px;
+}
+
+/* ---- Accent surfaces ----
+ * Treat the headstrip running-state and primary buttons with the
+ * brand colour as a wash. Keep typography contrast safe. */
+body[data-brand="uksg"] .ctrl-btn.go {
+  background: var(--uksg-primary);
+  border-color: var(--uksg-primary);
+  color: #fff;
+}
+body[data-brand="uksg"] .ctrl-btn.go:hover {
+  background: var(--uksg-accent);
+  border-color: var(--uksg-accent);
+}
+
+body[data-brand="uksg"] .blk.now {
+  outline: 1px solid var(--uksg-primary);
+  box-shadow: 0 0 18px -6px var(--uksg-primary);
+}
+
+body[data-brand="uksg"] .tab-bar button.active {
+  color: var(--uksg-primary);
+  border-bottom-color: var(--uksg-primary);
+}
+
+body[data-brand="uksg"] .ph.actual .line {
+  background: var(--uksg-primary);
+  box-shadow: 0 0 12px -2px var(--uksg-primary);
+}
+body[data-brand="uksg"] .ph.actual .cap {
+  background: var(--uksg-primary);
+  color: #fff;
+}
+
+/* Headstrip live state pill uses brand colour */
+body[data-brand="uksg"] .h-center.state-accent .delta,
+body[data-brand="uksg"] .stat-mini.accent .v,
+body[data-brand="uksg"] .deck-row.queued .when {
+  color: var(--uksg-primary);
+}
+
+/* Connection LED (chrome) inherits --accent automatically */
+
+/* Theme picker is redundant when brand colours are locked */
+body[data-brand="uksg"] .chrome .theme-picker { display: none; }
+
+/* Quiet badge so people know they're on the UKSG-themed UI */
+body[data-brand="uksg"] .chrome .brand::after {
+  content: "UKSG";
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  margin-left: 4px;
+  border-radius: 3px;
+  background: var(--uksg-primary);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+body[data-brand="uksg"][data-brand-event="red"] .chrome .brand::after { content: "UKSG · RED"; }
+body[data-brand="uksg"][data-brand-event="green"] .chrome .brand::after { content: "UKSG · GREEN"; }
+body[data-brand="uksg"][data-brand-event="blue"] .chrome .brand::after { content: "UKSG · BLUE"; }
