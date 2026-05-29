@@ -79,9 +79,8 @@
       <option value="amber">🟡 Amber</option>
       <option value="purple">🟣 Purple</option>
     </select>
-    <button class="btn" id="btn-kiosk">⊞ Kiosk</button>
-    <button class="btn" id="btn-popout">↗</button>
-    <button class="btn" id="btn-change" title="Change schedule">⏏</button>
+    <button class="btn" id="btn-popout" title="Open kiosk window">↗ Pop-out</button>
+    <button class="btn" id="btn-change" title="Load a different schedule">⏏ Change</button>
   </div>
 
   <!-- Announcement banner — surfaces operator broadcasts; hidden when state.announcement is null. -->
@@ -106,7 +105,7 @@
       <div class="state"><span id="state-label">—</span></div>
       <div class="delta" id="delta">+00:00</div>
       <div class="sub">
-        scheduled <b id="sched-start">—</b> · actual <b id="actual-start">—</b> · <span class="hot" id="drift-label">—</span>
+        scheduled <b id="sched-start">—</b> · actual <b id="actual-start">—</b>
       </div>
     </div>
 
@@ -185,7 +184,7 @@
           <button class="ctrl-btn" id="btn-refresh-schedule">↻ Re-import schedule</button>
           <button class="ctrl-btn" data-go-tab="capture">📷 Capture</button>
           <button class="ctrl-btn" data-go-tab="message">📋 Message</button>
-          <button class="ctrl-btn" data-go-tab="kiosk">⊞ Kiosk</button>
+          <button class="ctrl-btn" data-go-tab="kiosk">⊞ Kiosk config</button>
         </div>
       </div>
 

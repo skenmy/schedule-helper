@@ -32,7 +32,6 @@
   .chrome .btn { padding: 8px 10px; min-width: 40px; min-height: 40px; }
   .chrome .btn#btn-popout { display: none; } /* not useful on phone */
   .chrome .spacer { flex: 1; }
-  .chrome #btn-kiosk { display: none; } /* moves to drawer */
   .chrome #btn-change { padding: 8px 10px; }
 
   /* ---------- Headstrip ---------- */

@@ -200,7 +200,7 @@
           <div class="grid">
             <div class="item"><div class="k">Elapsed</div><div class="v">${window.fmtHMS(elapsed)}</div></div>
             <div class="item"><div class="k">Estimate</div><div class="v">${window.fmtHMS(est)}</div></div>
-            <div class="item"><div class="k">${over > 0 ? 'Over by' : 'Under by'}</div><div class="v" style="color:${over > 0 ? 'var(--hot)' : 'var(--accent)'}">${window.fmtDelta(over)}</div></div>
+            <div class="item"><div class="k">${over > 0 ? 'Over by' : 'Est. remaining'}</div><div class="v" style="color:${over > 0 ? 'var(--hot)' : 'var(--accent)'}">${over > 0 ? window.fmtDelta(over) : window.fmtHMS(-over)}</div></div>
             <div class="item"><div class="k">Delta</div><div class="v">${window.fmtDelta(s.derived.delta)}</div></div>
           </div>
         </div>`

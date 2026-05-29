@@ -509,28 +509,6 @@ function tickFrame() {
   const elapsed = elapsedNow();
   const elapsedEls = [$('#elapsed-rail'), $('#elapsed-det')];
   for (const el of elapsedEls) if (el) el.textContent = fmtHMS(elapsed);
-  // Rail "of estimate" subtitle (live counter)
-  const railSub = $('#rail-sub');
-  const cur = getCurrentRun();
-  if (railSub && cur) {
-    const est = parseDuration(cur.estimate);
-    const over = elapsed - est;
-    railSub.innerHTML = over > 0
-      ? `of ${fmtHMS(est)} — <span style="color:var(--hot)">overrun ${fmtDelta(over)}</span>`
-      : `of ${fmtHMS(est)} — <span style="color:var(--accent)">${fmtDelta(over)} of estimate</span>`;
-  }
-  // Detail panel "over by" / "should be" stats (live counters when current run is selected)
-  const isNowSelected = (STATE.selectedRunIndex === STATE.actualRunIndex);
-  if (isNowSelected && cur) {
-    const est = parseDuration(cur.estimate);
-    const over = elapsed - est;
-    const overEl = $('#det-stats .s:nth-child(2) .v');
-    if (overEl) overEl.textContent = fmtDelta(over);
-    const shouldBeEl = $('#det-stats .s:nth-child(3) .v');
-    if (shouldBeEl) shouldBeEl.textContent = over > 0 ? 'Done' : fmtHMS(est - elapsed);
-    const projEl = $('#det-stats .s:nth-child(4) .v');
-    if (projEl) projEl.textContent = fmtTime(new Date(Date.now() + Math.max(0, est - elapsed) * 1000));
-  }
   // Delta (recompute, drives delta + headstrip)
   renderHeadstripLive();
   // Playhead position
@@ -668,7 +646,6 @@ function renderHeadstripLive() {
     $('#delta').classList.toggle('small', remain >= 36000); // 10h+
     $('#sched-start').textContent = fmtTime(start);
     $('#actual-start').textContent = '—';
-    $('#drift-label').textContent = 'pre-marathon';
     $('#over-est').textContent = '—';
     $('#proj-end').textContent = '—';
     return;
@@ -709,11 +686,9 @@ function renderHeadstripLive() {
     const actualStart = new Date(Date.now() - elapsedNow() * 1000);
     $('#sched-start').textContent = fmtTime(schedStart);
     $('#actual-start').textContent = fmtTime(actualStart);
-    $('#drift-label').textContent = `drift ${fmtDelta(delta).replace(/^[+−]/, '')}`;
   } else {
     $('#sched-start').textContent = start ? fmtTime(start) : '—';
     $('#actual-start').textContent = '—';
-    $('#drift-label').textContent = '—';
   }
 
   // h-right
@@ -721,8 +696,8 @@ function renderHeadstripLive() {
     const est = parseDuration(cur.estimate);
     const elapsed = elapsedNow();
     const over = elapsed - est;
-    $('#over-est').textContent = fmtDelta(over);
-    $('#over-label').textContent = over > 0 ? 'Over est. by' : 'Under est. by';
+    $('#over-est').textContent = over > 0 ? fmtDelta(over) : fmtHMS(-over);
+    $('#over-label').textContent = over > 0 ? 'Over est. by' : 'Est. remaining';
     const projEnd = new Date(Date.now() + Math.max(0, est - elapsed) * 1000);
     $('#proj-end').textContent = fmtTime(projEnd);
   } else {
@@ -940,9 +915,7 @@ function renderDetail() {
     const over = elapsed - est;
     $('#det-stats').innerHTML = `
       <div class="s"><div class="k">Elapsed</div><div class="v num" id="elapsed-det">${fmtHMS(elapsed)}</div></div>
-      <div class="s ${over > 0 ? 'hot' : 'accent'}"><div class="k">${over > 0 ? 'Over est. by' : 'Under by'}</div><div class="v num">${fmtDelta(over)}</div></div>
-      <div class="s dim"><div class="k">Should be</div><div class="v">${over > 0 ? 'Done' : fmtHMS(est - elapsed)}</div></div>
-      <div class="s warn"><div class="k">Proj. end</div><div class="v">${fmtTime(new Date(Date.now() + Math.max(0, est - elapsed) * 1000))}</div></div>
+      <div class="s"><div class="k">Estimate</div><div class="v num">${fmtHMS(est)}</div></div>
     `;
     show($('#det-ocr'));
   } else {
@@ -951,7 +924,6 @@ function renderDetail() {
       <div class="s"><div class="k">Estimate</div><div class="v">${fmtHM(est)}</div></div>
       <div class="s dim"><div class="k">Scheduled</div><div class="v">${schedTime}</div></div>
       <div class="s"><div class="k">Setup</div><div class="v">+${Math.round(parseDuration(run.setupTime)/60)}m</div></div>
-      <div class="s dim"><div class="k">Status</div><div class="v" style="font-size:14px;font-weight:600;font-family:'Inter Tight',sans-serif">${run.setupBlock ? 'Setup block' : 'Upcoming'}</div></div>
     `;
     hide($('#det-ocr'));
   }
@@ -963,11 +935,7 @@ function renderRail() {
   $('#elapsed-rail').textContent = fmtHMS(elapsed);
   if (cur) {
     const est = parseDuration(cur.estimate);
-    const over = elapsed - est;
-    const overTxt = over > 0
-      ? `<span style="color:var(--hot)">overrun ${fmtDelta(over)}</span>`
-      : `<span style="color:var(--accent)">${fmtDelta(over)} of estimate</span>`;
-    $('#rail-sub').innerHTML = `of ${fmtHMS(est)} — ${overTxt}`;
+    $('#rail-sub').textContent = `of ${fmtHMS(est)}`;
   } else {
     $('#rail-sub').textContent = STATE.actualRunIndex < 0 ? 'no run selected' : '—';
   }
