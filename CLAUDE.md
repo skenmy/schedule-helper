@@ -4,10 +4,8 @@ Marathon schedule tracker for speedrun events (built for UKSG RED 2026). Single-
 
 ## Architecture
 
-Two files make up the entire app:
-
-- `server.js` (~840 lines) — Express backend: Oengus API proxy, Twitch stream capture + OCR pipeline, WebSocket sync server
-- `public/index.html` (~3575 lines) — Entire frontend SPA: CSS, state management, rendering, kiosk mode, all inline
+- `server.js` (~970 lines) — Express backend: Oengus API proxy, Twitch stream capture + Claude Vision pipeline, WebSocket sync server
+- `public/index.html` + `public/conductor/{styles.css,tabs.js,edit.js,app.js,kiosk.js,mobile.css,mobile.js}` — Conductor UI split across a thin shell HTML and per-concern JS/CSS modules
 
 No build step. No framework. Vanilla JS with server-rendered-style `render()` function that rebuilds the DOM.
 
@@ -97,10 +95,9 @@ Synced state persisted as JSON files in `./data/` (dev) or `/opt/schedule-helper
 ## Temp Files
 
 Frame captures go to `$TMPDIR/schedule-helper/` (`/tmp/schedule-helper/` on the server):
-- `frame_1.png`, `frame_2.png` — raw captured frames
-- `frame_ocr_1.png`, `frame_ocr_2.png` — preprocessed for OCR
+- `frame_1.png` — single captured frame sent to Claude Vision
 
-These are overwritten on each capture.
+Overwritten on each capture.
 
 ## API Endpoints
 
@@ -116,4 +113,4 @@ These are overwritten on each capture.
 
 - Stream OCR depends on Claude Vision being able to see the overlay. Heavily obscured timers, very low-resolution streams, or non-English UI may still confuse it.
 - The channel input accepts both bare slugs (`uksgmarathon`) and full URLs (`https://twitch.tv/uksgmarathon`), including with query strings and trailing slashes.
-- Capture takes several seconds (streamlink connection + waiting for 2 frames 1s apart + 2x preprocessing + 2x OCR).
+- Capture takes several seconds (streamlink connection + single-frame ffmpeg grab + Claude Vision round-trip).
