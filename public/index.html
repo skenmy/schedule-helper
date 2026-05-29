@@ -82,6 +82,16 @@
     <button class="btn" id="btn-change" title="Change schedule">⏏</button>
   </div>
 
+  <!-- Announcement banner — surfaces operator broadcasts; hidden when state.announcement is null. -->
+  <div id="announcement" class="announcement hidden" role="status" aria-live="polite">
+    <span class="announcement-icon">📣</span>
+    <span class="announcement-text" id="announcement-text"></span>
+    <span class="announcement-meta" id="announcement-meta"></span>
+    <span class="spacer"></span>
+    <button class="announcement-btn" id="announcement-edit" title="Edit announcement">✎</button>
+    <button class="announcement-btn" id="announcement-clear" title="Clear announcement">✕</button>
+  </div>
+
   <div class="headstrip">
     <div class="h-left">
       <div class="stat-mini"><div class="k">Marathon hour</div><div class="v" id="m-hour">— <small>/ —</small></div></div>

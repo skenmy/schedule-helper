@@ -489,6 +489,9 @@ function defaultState() {
     twitchChannel: '',
     messageText: '',
     messageColor: '',
+    // Persistent announcement banner across the top of the conductor — set by any
+    // operator with write access for "important things everyone should see".
+    announcement: null, // { text, color, setBy, setAt } or null when cleared
     lastUpdated: null,
   };
 }
@@ -653,6 +656,7 @@ const MUTATING_ACTIONS = new Set([
   'twitch:set',
   'run:edit', 'run:editClear',
   'message:set', 'message:clear',
+  'announcement:set', 'announcement:clear',
   'schedule:refresh',
 ]);
 
@@ -684,9 +688,16 @@ function sendAuthState(ws) {
   }));
 }
 
+const BUILD_SHA = (process.env.BUILD_SHA || 'dev').slice(0, 12);
+
 wss.on('connection', async (ws, req) => {
   let roomKey = null;
   let room = null;
+
+  // First message on the wire: which build the server is. Used by the client to
+  // detect when a deploy lands while a long-lived session is open and prompt
+  // the operator to reload.
+  try { ws.send(JSON.stringify({ type: 'version', sha: BUILD_SHA })); } catch {}
 
   // Identify the operator behind this socket from the shared .skenmy.com cookie.
   ws.cookieHeader = req.headers.cookie || '';
@@ -889,6 +900,23 @@ wss.on('connection', async (ws, req) => {
       case 'message:clear': {
         state.messageText = '';
         state.messageColor = '';
+        state.lastUpdated = new Date().toISOString();
+        break;
+      }
+      case 'announcement:set': {
+        const text = String(data.text || '').trim();
+        if (!text) return;
+        state.announcement = {
+          text: text.slice(0, 500),
+          color: typeof data.color === 'string' ? data.color : '#fbbf24',
+          setBy: ws.auth?.user?.display || ws.auth?.user?.login || 'operator',
+          setAt: new Date().toISOString(),
+        };
+        state.lastUpdated = new Date().toISOString();
+        break;
+      }
+      case 'announcement:clear': {
+        state.announcement = null;
         state.lastUpdated = new Date().toISOString();
         break;
       }

@@ -30,6 +30,7 @@ const STATE = {
   twitchChannel: '',
   messageText: '',
   messageColor: '',
+  announcement: null,
 
   // ws / connection
   ws: null,
@@ -270,6 +271,7 @@ function wsConnect() {
         loginUrl: msg.loginUrl || null,
       };
       renderAuthPill();
+      renderAnnouncement();
       document.body.classList.toggle('read-only', !STATE.auth.canWrite);
     }
     else if (msg.type === 'denied') {
@@ -280,6 +282,9 @@ function wsConnect() {
       STATE.scheduleRefreshing = false;
       flashRefreshToast({ status: 'ok', by: msg.refreshedBy, runs: STATE.schedule.filter(r => !r.setupBlock).length });
       renderAll();
+    }
+    else if (msg.type === 'version') {
+      handleServerVersion(msg.sha);
     }
   });
 
@@ -406,6 +411,7 @@ function applyServerState(s) {
   if (s.twitchChannel != null) STATE.twitchChannel = s.twitchChannel;
   STATE.messageText = s.messageText || '';
   STATE.messageColor = s.messageColor || '';
+  STATE.announcement = s.announcement || null;
 
   // Selected run defaults to follow actual run (compare against the PREVIOUS actual, since
   // a user looking at the live run should follow when the live run advances).
@@ -562,6 +568,7 @@ function renderAll() {
   renderMinilog();
   renderTab();
   renderPaletteList();
+  renderAnnouncement();
 }
 
 function renderTopChrome() {
@@ -1139,6 +1146,88 @@ function goBack() {
   if (n >= 0) wsSend('run:select', { index: n });
 }
 
+function handleServerVersion(sha) {
+  if (!sha || sha === 'dev') return;
+  if (!STATE.serverVersion) {
+    STATE.serverVersion = sha; // first message after page load — baseline
+    return;
+  }
+  if (sha === STATE.serverVersion) return;
+  // New build landed on the server while this page was open. Surface a pill.
+  STATE.newVersion = sha;
+  renderNewVersionPill();
+}
+
+function renderNewVersionPill() {
+  let pill = document.getElementById('newVersionPill');
+  if (!STATE.newVersion) {
+    pill?.remove();
+    return;
+  }
+  if (!pill) {
+    pill = document.createElement('div');
+    pill.id = 'newVersionPill';
+    pill.className = 'newver-pill';
+    pill.innerHTML = `
+      <span class="newver-dot"></span>
+      <span class="newver-text">New version available</span>
+      <button class="newver-reload">Reload</button>
+      <button class="newver-dismiss" title="Dismiss">×</button>
+    `;
+    document.body.appendChild(pill);
+    pill.querySelector('.newver-reload').addEventListener('click', () => location.reload());
+    pill.querySelector('.newver-dismiss').addEventListener('click', () => { STATE.newVersion = null; pill.remove(); });
+  }
+}
+
+function renderAnnouncement() {
+  const banner = document.getElementById('announcement');
+  if (!banner) return;
+  const a = STATE.announcement;
+  if (!a || !a.text) {
+    banner.classList.add('hidden');
+    banner.removeAttribute('style');
+    return;
+  }
+  banner.classList.remove('hidden');
+  const color = a.color || '#fbbf24';
+  banner.style.setProperty('--ann-color', color);
+  document.getElementById('announcement-text').textContent = a.text;
+  const meta = document.getElementById('announcement-meta');
+  if (a.setBy) {
+    meta.textContent = `· ${a.setBy}`;
+  } else meta.textContent = '';
+  const canEdit = !!STATE.auth?.canWrite;
+  document.getElementById('announcement-edit').style.display = canEdit ? '' : 'none';
+  document.getElementById('announcement-clear').style.display = canEdit ? '' : 'none';
+}
+
+function openAnnouncementEditor() {
+  if (!STATE.auth?.canWrite) return;
+  const current = STATE.announcement?.text || '';
+  const next = prompt('Announcement text (visible at the top of every browser on this schedule). Leave blank to remove.', current);
+  if (next == null) return; // cancelled
+  const trimmed = next.trim();
+  if (!trimmed) {
+    wsSend('announcement:clear');
+  } else {
+    const colorChoices = ['#fbbf24 (amber)', '#f87171 (red)', '#34d399 (green)', '#22d3ee (cyan)', '#a78bfa (purple)'];
+    const colorRaw = prompt(
+      'Colour (paste a hex like #fbbf24 or pick one):\n  ' + colorChoices.join('\n  '),
+      STATE.announcement?.color || '#fbbf24'
+    );
+    if (colorRaw == null) return;
+    const m = colorRaw.match(/#?[0-9a-f]{3,8}/i);
+    const color = m ? (m[0].startsWith('#') ? m[0] : '#' + m[0]) : '#fbbf24';
+    wsSend('announcement:set', { text: trimmed, color });
+  }
+}
+function clearAnnouncement() {
+  if (!STATE.auth?.canWrite) return;
+  if (!confirm('Clear the announcement for everyone?')) return;
+  wsSend('announcement:clear');
+}
+
 function refreshSchedule() {
   // Bust the server cache + re-fetch from Oengus/Horaro. Server broadcasts a
   // {type:'schedule',...} to every client in the room when the fetch finishes.
@@ -1181,6 +1270,7 @@ function renderPaletteList(filter = '') {
     { ico: '↦', t: 'Advance to next run', s: 'Mark current done, start next', act: advance, kbd: 'N' },
     { ico: '↤', t: 'Back to previous run', s: 'Re-select the previous run as current', act: goBack, kbd: 'B' },
     { ico: '↻', t: 'Re-import schedule', s: 'Pull the latest runs / runners / estimates from Oengus or Horaro', act: refreshSchedule },
+    { ico: '📣', t: STATE.announcement ? 'Edit announcement' : 'Add announcement', s: 'Pinned banner at the top of every browser in this room', act: openAnnouncementEditor },
     { ico: '↺', t: 'Reset elapsed', s: 'Set elapsed back to 00:00:00', act: reset },
     { ico: '⌖', t: 'Set elapsed time…', s: 'Manually set the current elapsed (HH:MM:SS) — for catching up after a late start', act: setElapsed },
     { ico: '⏭', t: 'Skip current run', s: 'Mark skipped and advance', act: skip },
@@ -1347,6 +1437,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#nextBtn').addEventListener('click', advance);
   $('#backBtn')?.addEventListener('click', goBack);
   $('#btn-refresh-schedule')?.addEventListener('click', refreshSchedule);
+  $('#announcement-edit')?.addEventListener('click', openAnnouncementEditor);
+  $('#announcement-clear')?.addEventListener('click', clearAnnouncement);
   $('#resetBtn').addEventListener('click', reset);
   $('#skipBtn').addEventListener('click', skip);
   // Rail elapsed digits: click to manually set elapsed time
