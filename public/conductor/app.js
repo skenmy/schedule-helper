@@ -77,8 +77,13 @@ async function runCapture() {
   STATE.captureStatus = 'loading';
   STATE.captureError = '';
   renderCaptureUI();
-  const cur = STATE.schedule[STATE.actualRunIndex];
-  const gameNames = cur ? [cur.game].filter(Boolean) : STATE.schedule.map(r => r.game).filter(Boolean).slice(0, 80);
+  // Send every non-setup game on the schedule so the matcher can resolve any game
+  // currently on screen — not just the one we *think* should be live. The OCR
+  // matchedGames is sorted by confidence and the client picks the best one to apply.
+  const gameNames = STATE.schedule
+    .filter(r => !r.setupBlock && r.game)
+    .map(r => r.game)
+    .slice(0, 120);
   try {
     const res = await fetch('/api/capture', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },

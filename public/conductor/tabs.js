@@ -154,51 +154,88 @@ window.TABS = {
       ? `background: #050608 url(${result.frameBase64}) center/cover no-repeat;`
       : '';
     const allTimers = (result?.allTimers || []).map(t => t.display || t);
-    const matched = (result?.matchedGames || []).map(g => g.name || g);
+    // matchedGames is an array of { name, confidence } sorted desc by confidence on the server.
+    const matched = result?.matchedGames || [];
+    const topMatch = matched[0] || null;
     const elapsedStr = result?.elapsed?.display || result?.elapsed || '';
     const estimateStr = result?.estimate?.display || result?.estimate || '';
+    const isLoading = ctx.captureStatus === 'loading';
+    const hasError  = ctx.captureStatus === 'error';
     return `
       <div class="sec-head">
         <h2>Stream capture<small>OCR-based timer verification</small></h2>
         <div class="right">
-          <button class="ctrl-btn sm" id="cap-go">↻ Re-capture now</button>
+          <button class="ctrl-btn ${isLoading ? '' : 'go'}" id="cap-go" ${isLoading ? 'disabled' : ''}>${isLoading ? '⏳ Capturing…' : '↻ Re-capture now'}</button>
         </div>
       </div>
+
       <div class="capture-grid">
         <div>
-          <div class="capture-frames">
-            <div class="capture-frame" style="${frameBg}">
-              <span class="label">Captured frame</span>
-              ${elapsedStr ? `<div class="timer-ocr"><span class="lbl">elapsed</span>${escapeHtml(elapsedStr)}</div>` : ''}
-            </div>
-            <div class="capture-frame est">
-              <span class="label">${estimateStr ? 'EST: ' + escapeHtml(estimateStr) : 'EST: —'}</span>
-            </div>
-          </div>
-          <div class="capture-result" style="margin-top:14px">
-            <h3>Latest result: <span class="mono" id="cap-result" style="color:var(--accent)">${
-              elapsedStr
-                ? escapeHtml(elapsedStr) + (result.detectionMethod ? ` via ${escapeHtml(result.detectionMethod)}` : '')
-                : (ctx.captureError ? `<span style="color:var(--hot)">${escapeHtml(ctx.captureError)}</span>` : 'No capture yet · click "Re-capture now"')
-            }</span></h3>
-            <div class="method" id="cap-method">
-              ${matched.length ? 'Matched: ' + matched.map(g => escapeHtml(g)).join(', ') : (result ? '<span style="color:var(--dim)">No match against the loaded schedule.</span>' : '')}
-            </div>
-            ${result && elapsedStr ? `
-              <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                <button class="ctrl-btn go" id="cap-apply">↥ Apply to live timer</button>
-                <span style="color:var(--dim);font-size:12.5px;line-height:1.4">Sets the current run to the matched game and starts the timer at the on-screen value plus the OCR delay.</span>
+          <!-- Single big preview frame. Two OCR badges overlay it instead of a phantom second panel. -->
+          <div class="capture-frame capture-frame-big ${isLoading ? 'is-loading' : ''}" style="${frameBg}">
+            ${isLoading ? `
+              <div class="cap-loading-overlay">
+                <div class="cap-spinner"></div>
+                <div class="cap-loading-text">Capturing & OCR-ing…</div>
+                <div class="cap-loading-sub">streamlink → ffmpeg (×2 frames) → tesseract. Usually 5–10s.</div>
               </div>
             ` : ''}
-            <div class="raw" id="cap-raw" style="margin-top:10px">${
-              result?.rawText ? escapeHtml(result.rawText) : 'awaiting capture…'
-            }</div>
+            ${!isLoading && !result ? `
+              <div class="cap-empty">
+                <div class="cap-empty-title">No capture yet</div>
+                <div class="cap-empty-sub">Set a Twitch channel on the right, then click <b>Capture &amp; OCR</b>.</div>
+              </div>
+            ` : ''}
+            ${!isLoading && result ? `
+              <span class="label">Captured frame · ${new Date(result.capturedAt || Date.now()).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span>
+              ${elapsedStr ? `<div class="timer-ocr timer-elapsed"><span class="lbl">elapsed</span>${escapeHtml(elapsedStr)}</div>` : ''}
+              ${estimateStr ? `<div class="timer-ocr timer-estimate"><span class="lbl">est</span>${escapeHtml(estimateStr)}</div>` : ''}
+            ` : ''}
           </div>
+
+          ${hasError ? `<div class="cap-error">${escapeHtml(ctx.captureError || 'Capture failed.')}</div>` : ''}
+
+          ${result && elapsedStr ? `
+            <!-- Big, obviously-actionable Apply call-to-action with the proposed change shown inline. -->
+            <div class="cap-apply-card ${topMatch ? 'with-match' : 'no-match'}">
+              <div class="cap-apply-summary">
+                <div class="cap-apply-eyebrow">${topMatch ? 'Detected on stream' : 'No game match'}</div>
+                <div class="cap-apply-line"><b>${topMatch ? escapeHtml(topMatch.name) : '—'}</b>
+                  ${topMatch ? `<span class="cap-apply-conf">${Math.round((topMatch.confidence||0)*100)}% confident</span>` : ''}
+                </div>
+                <div class="cap-apply-line cap-apply-sub">
+                  Timer ${escapeHtml(elapsedStr)} · detected via <span class="mono">${escapeHtml(result.detectionMethod || 'heuristic')}</span>
+                </div>
+              </div>
+              <button class="cap-apply-btn" id="cap-apply">
+                <span class="cap-apply-icon">↥</span>
+                <span>
+                  <span class="cap-apply-btn-line">Apply to live timer</span>
+                  <span class="cap-apply-btn-sub">Sets run + starts timer with OCR delay compensated</span>
+                </span>
+              </button>
+            </div>
+          ` : ''}
+
+          ${matched.length > 1 ? `
+            <div class="capture-history">
+              <h4>Other matches</h4>
+              ${matched.slice(1, 6).map(m => `<div class="row"><span class="mono">${Math.round((m.confidence||0)*100)}%</span><span>${escapeHtml(m.name)}</span><span></span><span></span></div>`).join('')}
+            </div>
+          ` : ''}
+
           ${allTimers.length ? `
             <div class="capture-history">
               <h4>All timers detected</h4>
               ${allTimers.map(t => `<div class="row"><span>—</span><span class="mono">${escapeHtml(t)}</span><span></span><span></span></div>`).join('')}
             </div>
+          ` : ''}
+
+          ${result?.rawText ? `
+            <details class="cap-raw-details">
+              <summary>Raw OCR text</summary>
+              <div class="raw">${escapeHtml(result.rawText)}</div>
+            </details>
           ` : ''}
         </div>
         <aside class="capture-side">

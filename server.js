@@ -397,16 +397,22 @@ function parseOCRResults(ocrText1, ocrText2, gameNames) {
     }
   }
 
-  // Match game names from the schedule
+  // Match game names from the schedule.
+  // Tesseract often drops short / connective words ("Oddworld" mis-read as a single
+  // glyph, "Abe's" becomes "abe s" then "abe" after the regex). Lower threshold
+  // + allow a single distinctive word match (≥6 chars) so 2/3-word matches still
+  // surface — the client picks the highest-confidence one to apply.
+  const STOPWORDS = new Set(['the', 'and', 'for', 'with', 'from', 'into', 'any', 'all']);
   const textLower = text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
   const matchedGames = [];
   for (const name of gameNames) {
     const nameLower = name.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
-    const nameWords = nameLower.split(/\s+/).filter(w => w.length > 2);
+    const nameWords = nameLower.split(/\s+/).filter(w => w.length > 2 && !STOPWORDS.has(w));
     if (nameWords.length === 0) continue;
     const wordsFound = nameWords.filter(w => textLower.includes(w));
     const ratio = wordsFound.length / nameWords.length;
-    if (ratio >= 0.7 || (nameWords.length === 1 && wordsFound.length === 1)) {
+    const distinctiveHit = wordsFound.some(w => w.length >= 6);
+    if (ratio >= 0.5 || (distinctiveHit && wordsFound.length >= 1) || (nameWords.length === 1 && wordsFound.length === 1)) {
       matchedGames.push({ name, confidence: ratio });
     }
   }
