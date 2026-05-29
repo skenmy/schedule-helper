@@ -149,8 +149,9 @@ window.TABS = {
     const channel = ctx.twitchChannel || '';
     const cur = ctx.schedule[ctx.actualRunIndex];
     const result = ctx.captureResult;
+    // Server returns a full `data:image/png;base64,...` URI — embed it verbatim.
     const frameBg = result?.frameBase64
-      ? `background: #050608 url(data:image/png;base64,${result.frameBase64}) center/cover no-repeat;`
+      ? `background: #050608 url(${result.frameBase64}) center/cover no-repeat;`
       : '';
     const allTimers = (result?.allTimers || []).map(t => t.display || t);
     const matched = (result?.matchedGames || []).map(g => g.name || g);

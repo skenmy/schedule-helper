@@ -118,7 +118,8 @@ function renderCaptureUI() {
     }
   }
   if (ocrThumb && STATE.captureResult?.frameBase64) {
-    ocrThumb.style.background = `#050608 url(data:image/png;base64,${STATE.captureResult.frameBase64}) center/cover no-repeat`;
+    // Server returns a full `data:image/png;base64,...` URI — pass it through verbatim.
+    ocrThumb.style.background = `#050608 url(${STATE.captureResult.frameBase64}) center/cover no-repeat`;
   }
   // Capture tab: if currently open, re-render with the fresh result
   if (STATE.tab === 'capture' && typeof renderTab === 'function') renderTab();
