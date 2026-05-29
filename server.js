@@ -653,6 +653,7 @@ const MUTATING_ACTIONS = new Set([
   'twitch:set',
   'run:edit', 'run:editClear',
   'message:set', 'message:clear',
+  'schedule:refresh',
 ]);
 
 async function resolveIdentity(cookieHeader) {
@@ -890,6 +891,23 @@ wss.on('connection', async (ws, req) => {
         state.messageColor = '';
         state.lastUpdated = new Date().toISOString();
         break;
+      }
+      case 'schedule:refresh': {
+        // Bust the shared HTTP cache for this room's schedule URL, re-fetch from
+        // upstream, then broadcast the fresh lines to every client in the room.
+        // Fire-and-forget — the actor doesn't get an extra ack beyond the
+        // broadcast that lands on every socket once the fetch finishes.
+        const cacheKey = room.scheduleSource === 'horaro' ? `horaro/${roomKey}` : roomKey;
+        delete scheduleCache[cacheKey];
+        const requester = ws.auth?.user?.login || 'operator';
+        getScheduleForRoom(roomKey, room).then(lines => {
+          const payload = JSON.stringify({
+            type: 'schedule', marathonId: roomKey.split('/')[0], slug: roomKey.split('/')[1],
+            lines, refreshedBy: requester, refreshedAt: new Date().toISOString(),
+          });
+          for (const c of room.clients) if (c.readyState === 1) c.send(payload);
+        }).catch(e => console.error('[schedule:refresh] failed', e.message));
+        return; // skip the standard broadcastState — the schedule payload above is enough
       }
       default:
         return; // unknown action, don't broadcast

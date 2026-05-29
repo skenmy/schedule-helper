@@ -275,6 +275,12 @@ function wsConnect() {
     else if (msg.type === 'denied') {
       flashDeniedToast(msg);
     }
+    else if (msg.type === 'schedule') {
+      STATE.schedule = msg.lines || [];
+      STATE.scheduleRefreshing = false;
+      flashRefreshToast({ status: 'ok', by: msg.refreshedBy, runs: STATE.schedule.filter(r => !r.setupBlock).length });
+      renderAll();
+    }
   });
 
   ws.addEventListener('close', () => {
@@ -343,6 +349,25 @@ function renderAuthPill() {
     slot.className = 'auth-pill anon';
     slot.innerHTML = `<span class="auth-name dim">read-only</span>`;
   }
+}
+
+function flashRefreshToast({ status, by, runs }) {
+  let el = document.getElementById('refreshToast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'refreshToast';
+    el.className = 'refresh-toast';
+    document.body.appendChild(el);
+  }
+  if (status === 'pending') {
+    el.innerHTML = `<strong>Re-importing schedule…</strong><div>Fetching the latest from upstream.</div>`;
+  } else if (status === 'ok') {
+    const who = by && by !== 'operator' ? ` by ${escapeHtml(by)}` : '';
+    el.innerHTML = `<strong>Schedule refreshed${who}</strong><div>${runs} run${runs === 1 ? '' : 's'} loaded from Oengus / Horaro.</div>`;
+  }
+  el.classList.add('on');
+  clearTimeout(flashRefreshToast._t);
+  flashRefreshToast._t = setTimeout(() => el.classList.remove('on'), 3200);
 }
 
 function flashDeniedToast(msg) {
@@ -1114,6 +1139,15 @@ function goBack() {
   if (n >= 0) wsSend('run:select', { index: n });
 }
 
+function refreshSchedule() {
+  // Bust the server cache + re-fetch from Oengus/Horaro. Server broadcasts a
+  // {type:'schedule',...} to every client in the room when the fetch finishes.
+  if (!STATE.marathonId || !STATE.scheduleSlug) return;
+  STATE.scheduleRefreshing = true;
+  flashRefreshToast({ status: 'pending' });
+  wsSend('schedule:refresh');
+}
+
 function setElapsed() {
   if (STATE.actualRunIndex < 0) {
     const firstRun = STATE.schedule.findIndex(r => !r.setupBlock);
@@ -1146,6 +1180,7 @@ function renderPaletteList(filter = '') {
     { ico: '▶', t: STATE.timerRunning ? 'Stop timer' : 'Start timer', s: 'Toggle the current run timer', act: toggleTimer, kbd: '␣' },
     { ico: '↦', t: 'Advance to next run', s: 'Mark current done, start next', act: advance, kbd: 'N' },
     { ico: '↤', t: 'Back to previous run', s: 'Re-select the previous run as current', act: goBack, kbd: 'B' },
+    { ico: '↻', t: 'Re-import schedule', s: 'Pull the latest runs / runners / estimates from Oengus or Horaro', act: refreshSchedule },
     { ico: '↺', t: 'Reset elapsed', s: 'Set elapsed back to 00:00:00', act: reset },
     { ico: '⌖', t: 'Set elapsed time…', s: 'Manually set the current elapsed (HH:MM:SS) — for catching up after a late start', act: setElapsed },
     { ico: '⏭', t: 'Skip current run', s: 'Mark skipped and advance', act: skip },
@@ -1311,6 +1346,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#primaryBtn').addEventListener('click', toggleTimer);
   $('#nextBtn').addEventListener('click', advance);
   $('#backBtn')?.addEventListener('click', goBack);
+  $('#btn-refresh-schedule')?.addEventListener('click', refreshSchedule);
   $('#resetBtn').addEventListener('click', reset);
   $('#skipBtn').addEventListener('click', skip);
   // Rail elapsed digits: click to manually set elapsed time
@@ -1398,5 +1434,6 @@ window.showLanding = showLanding;
 window.toggleTimer = toggleTimer;
 window.advance = advance;
 window.goBack = goBack;
+window.refreshSchedule = refreshSchedule;
 window.reset = reset;
 window.skip = skip;

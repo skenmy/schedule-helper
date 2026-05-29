@@ -92,6 +92,7 @@
       <h3>More</h3>
       <ul class="drawer-list">
         <li data-act="back"><div class="ico">↤</div><div class="lbl"><div class="t">Back to previous run</div><div class="s">Re-select the previous run as current</div></div><span class="chev">›</span></li>
+        <li data-act="refresh"><div class="ico">↻</div><div class="lbl"><div class="t">Re-import schedule</div><div class="s">Pull latest runs / runners / estimates from Oengus</div></div><span class="chev">›</span></li>
         <li data-act="capture"><div class="ico">📷</div><div class="lbl"><div class="t">Stream capture</div><div class="s">OCR-verify timer</div></div><span class="chev">›</span></li>
         <li data-act="message"><div class="ico">📋</div><div class="lbl"><div class="t">Message panel</div><div class="s">Overlay text on kiosk</div></div><span class="chev">›</span></li>
         <li data-act="kiosk"><div class="ico">⊞</div><div class="lbl"><div class="t">Kiosk config</div><div class="s">Pop out & assign panels</div></div><span class="chev">›</span></li>
@@ -153,6 +154,9 @@
         Haptic.medium();
         window.goBack && window.goBack();
         setMobileView('now');
+      } else if (act === 'refresh') {
+        Haptic.medium();
+        window.refreshSchedule && window.refreshSchedule();
       }
     });
     dbk.addEventListener('click', closeDrawer);
