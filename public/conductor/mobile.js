@@ -91,6 +91,7 @@
       <div class="grabber"></div>
       <h3>More</h3>
       <ul class="drawer-list">
+        <li data-act="back"><div class="ico">↤</div><div class="lbl"><div class="t">Back to previous run</div><div class="s">Re-select the previous run as current</div></div><span class="chev">›</span></li>
         <li data-act="capture"><div class="ico">📷</div><div class="lbl"><div class="t">Stream capture</div><div class="s">OCR-verify timer</div></div><span class="chev">›</span></li>
         <li data-act="message"><div class="ico">📋</div><div class="lbl"><div class="t">Message panel</div><div class="s">Overlay text on kiosk</div></div><span class="chev">›</span></li>
         <li data-act="kiosk"><div class="ico">⊞</div><div class="lbl"><div class="t">Kiosk config</div><div class="s">Pop out & assign panels</div></div><span class="chev">›</span></li>
@@ -148,6 +149,10 @@
         window.openPalette && window.openPalette();
       } else if (act === 'change') {
         window.showLanding && window.showLanding();
+      } else if (act === 'back') {
+        Haptic.medium();
+        window.goBack && window.goBack();
+        setMobileView('now');
       }
     });
     dbk.addEventListener('click', closeDrawer);

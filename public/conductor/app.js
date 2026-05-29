@@ -1106,6 +1106,13 @@ function toggleTimer() {
 function advance() { wsSend('run:advance'); }
 function reset() { wsSend('timer:reset'); }
 function skip() { wsSend('run:skip'); }
+function goBack() {
+  // Walk backwards from the current run to the previous non-setup, non-skipped row
+  // and re-select it. Sends the existing run:select action — no server change needed.
+  let n = (STATE.actualRunIndex >= 0 ? STATE.actualRunIndex : STATE.schedule.length) - 1;
+  while (n >= 0 && (STATE.schedule[n]?.setupBlock || STATE.skippedRuns?.has?.(n))) n--;
+  if (n >= 0) wsSend('run:select', { index: n });
+}
 
 function setElapsed() {
   if (STATE.actualRunIndex < 0) {
@@ -1138,6 +1145,7 @@ function renderPaletteList(filter = '') {
   const items = [
     { ico: '▶', t: STATE.timerRunning ? 'Stop timer' : 'Start timer', s: 'Toggle the current run timer', act: toggleTimer, kbd: '␣' },
     { ico: '↦', t: 'Advance to next run', s: 'Mark current done, start next', act: advance, kbd: 'N' },
+    { ico: '↤', t: 'Back to previous run', s: 'Re-select the previous run as current', act: goBack, kbd: 'B' },
     { ico: '↺', t: 'Reset elapsed', s: 'Set elapsed back to 00:00:00', act: reset },
     { ico: '⌖', t: 'Set elapsed time…', s: 'Manually set the current elapsed (HH:MM:SS) — for catching up after a late start', act: setElapsed },
     { ico: '⏭', t: 'Skip current run', s: 'Mark skipped and advance', act: skip },
@@ -1302,6 +1310,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Rail buttons
   $('#primaryBtn').addEventListener('click', toggleTimer);
   $('#nextBtn').addEventListener('click', advance);
+  $('#backBtn')?.addEventListener('click', goBack);
   $('#resetBtn').addEventListener('click', reset);
   $('#skipBtn').addEventListener('click', skip);
   // Rail elapsed digits: click to manually set elapsed time
@@ -1358,6 +1367,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     if (e.code === 'Space') { e.preventDefault(); toggleTimer(); }
     if (e.key.toLowerCase() === 'n') advance();
+    if (e.key.toLowerCase() === 'b') goBack();
     // huds key-sequence
     const c = e.key.length === 1 ? e.key.toLowerCase() : '';
     if (c) {
@@ -1387,5 +1397,6 @@ window.openPalette = openPalette;
 window.showLanding = showLanding;
 window.toggleTimer = toggleTimer;
 window.advance = advance;
+window.goBack = goBack;
 window.reset = reset;
 window.skip = skip;
