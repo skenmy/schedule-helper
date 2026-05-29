@@ -685,7 +685,7 @@ function renderHeadstripLive() {
   if (!cur) {
     stateLabel = STATE.schedule.length && new Date() < new Date(STATE.schedule[0].scheduledStart) ? 'Pre-marathon' : 'No run selected';
     stateColor = 'state-warn';
-  } else if (Math.abs(delta) <= 60) {
+  } else if (Math.abs(delta) <= 900) {
     stateLabel = 'On schedule'; stateColor = 'state-accent';
   } else if (delta > 0) {
     stateLabel = 'Running ahead'; stateColor = 'state-accent';
@@ -995,7 +995,7 @@ function renderUpNext() {
     // Predicted = scheduled - delta. If running behind (delta < 0), predicted is later.
     const predDate = schedDate ? new Date(schedDate.getTime() - deltaSec * 1000) : null;
     const driftMs = schedDate && predDate ? predDate.getTime() - schedDate.getTime() : 0;
-    const showPred = predDate && Math.abs(driftMs) > 60000;
+    const showPred = predDate && Math.abs(driftMs) > 900000;
     const predCls = driftMs > 0 ? 'behind' : 'ahead';
     const runners = (r.runners || []).join(', ');
     const missing = STATE.runnerStatus[i] === 'missing';

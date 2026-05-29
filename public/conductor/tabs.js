@@ -123,7 +123,7 @@ window.TABS = {
       const actualCell = isDone
         ? (actualStartDate ? fmtClock(actualStartDate) : '—')
         : isNow ? (actualStartDate ? fmtClock(actualStartDate) : '—') : '—';
-      const predClass = predictedDate && schedDate && Math.abs(predictedDate - schedDate) > 60000
+      const predClass = predictedDate && schedDate && Math.abs(predictedDate - schedDate) > 900000
         ? (predictedDate > schedDate ? 'behind' : 'ahead') : '';
       return `
         <tr class="${cls.trim()}" data-idx="${i}">

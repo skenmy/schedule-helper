@@ -29,11 +29,11 @@
     delta(s) {
       const delta = s.derived.delta;
       const cls = s.derived.preMarathon ? 'warn'
-                : Math.abs(delta) <= 60 ? 'ontime'
+                : Math.abs(delta) <= 900 ? 'ontime'
                 : delta > 0 ? 'ahead' : 'behind';
       const stateLabel = s.derived.preMarathon
         ? 'Pre-marathon'
-        : Math.abs(delta) <= 60 ? 'On schedule'
+        : Math.abs(delta) <= 900 ? 'On schedule'
         : delta > 0 ? 'Running ahead' : 'Running behind';
       const value = s.derived.preMarathon
         ? s.derived.preMarathonCountdown
