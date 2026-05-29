@@ -1424,6 +1424,58 @@ function hudsConfetti(n) {
 // ============================================================ NAVIGATION
 function setTab(name) { STATE.tab = name; renderTab(); }
 
+function saveRecentSchedule() {
+  try {
+    const key = `${STATE.scheduleSource}:${STATE.marathonId}/${STATE.scheduleSlug}`;
+    const entry = {
+      key,
+      source: STATE.scheduleSource,
+      marathonId: STATE.marathonId,
+      slug: STATE.scheduleSlug,
+      name: STATE.marathonInfo?.name || `${STATE.marathonId} / ${STATE.scheduleSlug}`,
+      savedAt: Date.now(),
+    };
+    const list = JSON.parse(localStorage.getItem('sched-recent') || '[]');
+    const filtered = list.filter(e => e.key !== key);
+    filtered.unshift(entry);
+    localStorage.setItem('sched-recent', JSON.stringify(filtered.slice(0, 5)));
+  } catch {}
+}
+
+function renderRecentSchedules() {
+  const el = $('#recentList');
+  if (!el) return;
+  try {
+    const list = JSON.parse(localStorage.getItem('sched-recent') || '[]');
+    if (!list.length) { el.classList.add('hidden'); return; }
+    const age = t => {
+      const s = Math.floor((Date.now() - t) / 1000);
+      if (s < 60) return 'just now';
+      if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+      if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+      return `${Math.floor(s / 86400)}d ago`;
+    };
+    el.innerHTML = '<h3>Recent</h3>' + list.map(e => `
+      <div class="recent-item" data-key="${e.key}" data-source="${e.source}" data-id="${e.marathonId}" data-slug="${e.slug}">
+        <span class="ri-name">${e.name}</span>
+        <span class="ri-slug">${e.marathonId}/${e.slug}</span>
+        <span class="ri-age">${age(e.savedAt)}</span>
+      </div>`).join('');
+    el.querySelectorAll('.recent-item').forEach(item => {
+      item.addEventListener('click', async () => {
+        const err = $('#landingError'); if (err) err.textContent = '';
+        try {
+          STATE.scheduleSource = item.dataset.source;
+          STATE.marathonId = item.dataset.id;
+          STATE.scheduleSlug = item.dataset.slug;
+          await showTracker();
+        } catch (e) { if (err) err.textContent = e.message; }
+      });
+    });
+    el.classList.remove('hidden');
+  } catch { el.classList.add('hidden'); }
+}
+
 function showLanding() {
   if (STATE.ws) try { STATE.ws.close(); } catch {}
   STATE.ws = null;
@@ -1433,6 +1485,7 @@ function showLanding() {
   location.hash = '';
   $('#trackerView').classList.add('hidden');
   $('#landingView').classList.remove('hidden');
+  renderRecentSchedules();
   $('#urlInput').focus();
 }
 
@@ -1442,6 +1495,7 @@ async function showTracker() {
   await loadMarathonInfo();
   await loadSchedule();
   writeHash();
+  saveRecentSchedule();
   $('#marathon-name').textContent = STATE.marathonInfo?.name || `${STATE.marathonId} / ${STATE.scheduleSlug}`;
   wsConnect();
   startTicker();
@@ -1460,6 +1514,8 @@ async function loadFromInput(rawUrl) {
 
 // ============================================================ BOOT
 document.addEventListener('DOMContentLoaded', async () => {
+  renderRecentSchedules();
+
   // Landing wiring
   $('#loadBtn').addEventListener('click', async () => {
     const err = $('#landingError'); err.textContent = '';
