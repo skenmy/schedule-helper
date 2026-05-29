@@ -99,6 +99,60 @@ async function runCapture() {
   renderCaptureUI();
 }
 
+// Find the schedule index whose game name best matches the OCR-matched titles.
+// `matchedGames` from the server is already sorted by confidence; we only need to
+// translate the chosen name back into a position on the schedule.
+function findScheduleIndexForCapture(result) {
+  if (!result || !STATE.schedule.length) return -1;
+  const list = result.matchedGames || [];
+  for (const m of list) {
+    const name = (m && m.name) ? m.name : (typeof m === 'string' ? m : '');
+    if (!name) continue;
+    const idx = STATE.schedule.findIndex(r => !r.setupBlock && r.game === name);
+    if (idx >= 0) return idx;
+  }
+  return -1;
+}
+
+function applyCaptureToLive() {
+  const r = STATE.captureResult;
+  if (!r || !r.elapsed) { alert('Capture first.'); return; }
+  if (!STATE.auth?.canWrite) { alert('Read-only — sign in first.'); return; }
+  // Pick a matching run if the OCR'd game is on the schedule. Falls back to the
+  // currently selected run so the operator can still apply the elapsed.
+  const matchIdx = findScheduleIndexForCapture(r);
+  const targetIdx = matchIdx >= 0 ? matchIdx : (STATE.actualRunIndex >= 0 ? STATE.actualRunIndex : -1);
+  if (targetIdx < 0) { alert('No matching run on the schedule.'); return; }
+  // Compensate for everything that happened between the frame hitting disk on the
+  // server and us applying it here: OCR + JSON serialise + network + click.
+  const ocrSeconds = r.elapsed.seconds ?? null;
+  if (ocrSeconds == null) { alert('OCR did not detect an elapsed time.'); return; }
+  const delayMs = r.capturedAt ? Math.max(0, Date.now() - r.capturedAt) : 0;
+  const adjusted = ocrSeconds + Math.round(delayMs / 1000);
+  // run:select first so the new index lands before the timer's seconds payload.
+  if (targetIdx !== STATE.actualRunIndex) wsSend('run:select', { index: targetIdx });
+  wsSend('timer:start', { seconds: adjusted });
+  flashGenericToast({
+    title: matchIdx >= 0 ? 'Applied OCR to live' : 'Applied OCR (no game match)',
+    body: `${STATE.schedule[targetIdx].game} · elapsed ${fmtHMS(adjusted)} (OCR ${r.elapsed.display} + ${Math.round(delayMs/1000)}s delay)`,
+  });
+}
+
+function flashGenericToast({ title, body }) {
+  let el = document.getElementById('refreshToast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'refreshToast';
+    el.className = 'refresh-toast';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `<strong>${escapeHtml(title)}</strong><div>${escapeHtml(body)}</div>`;
+  el.classList.add('on');
+  clearTimeout(flashGenericToast._t);
+  flashGenericToast._t = setTimeout(() => el.classList.remove('on'), 3600);
+}
+window.applyCaptureToLive = applyCaptureToLive;
+
 function renderCaptureUI() {
   // Detail panel OCR row
   const ocrRead = $('#ocr-read');
@@ -1059,6 +1113,7 @@ function wireTabEvents() {
 
   // capture: wire all triggers (multiple #cap-go buttons + detail-panel re-capture)
   $$('#cap-go, #btn-recapture').forEach(btn => btn.addEventListener('click', runCapture));
+  $('#cap-apply')?.addEventListener('click', applyCaptureToLive);
   $('#cap-channel')?.addEventListener('change', e => {
     const v = e.target.value.trim();
     if (v && v !== STATE.twitchChannel) wsSend('twitch:set', { channel: v });

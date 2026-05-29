@@ -259,7 +259,11 @@ function captureStreamFrames(channel) {
       if (code !== 0 || !fs.existsSync(frame1)) {
         return reject(new Error(`Capture failed. streamlink: ${slErr.slice(-200)}`));
       }
-      resolve({ frame1, frame2: fs.existsSync(frame2) ? frame2 : null });
+      // Mark the moment frame 2 (the preview / OCR target) was written to disk so
+      // the client can compensate for the OCR / network delay when applying the
+      // detected elapsed back onto the live timer.
+      const capturedAt = Date.now();
+      resolve({ frame1, frame2: fs.existsSync(frame2) ? frame2 : null, capturedAt });
     });
 
     ff.on('error', (err) => {
@@ -435,7 +439,7 @@ app.post('/api/capture', async (req, res) => {
 
   try {
     console.log(`Capturing 2 frames from twitch.tv/${cleanChannel}...`);
-    const { frame1, frame2 } = await captureStreamFrames(cleanChannel);
+    const { frame1, frame2, capturedAt } = await captureStreamFrames(cleanChannel);
 
     console.log('Preprocessing...');
     const ocr1Path = path.join(tmpDir, 'frame_ocr_1.png');
@@ -459,6 +463,7 @@ app.post('/api/capture', async (req, res) => {
     const previewFrame = frame2 || frame1;
     const frameData = fs.readFileSync(previewFrame);
     result.frameBase64 = `data:image/png;base64,${frameData.toString('base64')}`;
+    result.capturedAt = capturedAt;
 
     res.json(result);
   } catch (err) {

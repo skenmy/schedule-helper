@@ -182,8 +182,14 @@ window.TABS = {
                 : (ctx.captureError ? `<span style="color:var(--hot)">${escapeHtml(ctx.captureError)}</span>` : 'No capture yet · click "Re-capture now"')
             }</span></h3>
             <div class="method" id="cap-method">
-              ${matched.length ? 'Matched: ' + matched.map(g => escapeHtml(g)).join(', ') : ''}
+              ${matched.length ? 'Matched: ' + matched.map(g => escapeHtml(g)).join(', ') : (result ? '<span style="color:var(--dim)">No match against the loaded schedule.</span>' : '')}
             </div>
+            ${result && elapsedStr ? `
+              <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                <button class="ctrl-btn go" id="cap-apply">↥ Apply to live timer</button>
+                <span style="color:var(--dim);font-size:12.5px;line-height:1.4">Sets the current run to the matched game and starts the timer at the on-screen value plus the OCR delay.</span>
+              </div>
+            ` : ''}
             <div class="raw" id="cap-raw" style="margin-top:10px">${
               result?.rawText ? escapeHtml(result.rawText) : 'awaiting capture…'
             }</div>
