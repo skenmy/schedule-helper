@@ -2,7 +2,7 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const https = require('https');
-const { execFile, spawn } = require('child_process');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const { WebSocketServer } = require('ws');
@@ -220,9 +220,8 @@ const tmpDir = path.join(os.tmpdir(), 'schedule-helper');
 fs.mkdirSync(tmpDir, { recursive: true });
 
 function captureStreamFrames(channel) {
-  // Grab a single frame from the live stream. Claude Vision doesn't need the
-  // two-frame diff that Tesseract did — it identifies the running timer from
-  // visual context alone, so we save ~1.5s by only capturing once.
+  // Grab a single frame from the live stream. Claude Vision identifies the
+  // running timer from one frame; no diff needed.
   return new Promise((resolve, reject) => {
     const sl = spawn('streamlink', [
       '--stdout',
@@ -282,12 +281,11 @@ function captureStreamFrames(channel) {
 
 // ─── Claude Vision OCR ───
 //
-// Replaces the streamlink→ffmpeg→tesseract chain. Sends the captured frame to
-// Claude with a structured prompt that asks for: (1) the elapsed timer,
-// (2) the estimate, (3) the game name (best-matched against the loaded
-// schedule). Claude returns JSON; we parse + adapt it into the existing
-// {elapsed,estimate,matchedGames,...} shape so the client wire format is
-// unchanged.
+// Send the captured frame to Claude with a structured prompt that asks for:
+// (1) the elapsed timer, (2) the estimate, (3) the game name (best-matched
+// against the loaded schedule). Claude returns JSON; adaptVisionResult
+// rewraps it into {elapsed,estimate,matchedGames,allTimers,rawText,
+// detectionMethod} for the client.
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const VISION_MODEL = process.env.VISION_MODEL || 'claude-sonnet-4-6';
@@ -376,127 +374,6 @@ function adaptVisionResult({ parsed, rawText }, gameNames) {
     matchedGames,
     rawText,
     detectionMethod: 'claude-vision',
-  };
-}
-
-function cleanOCRSpaces(line) {
-  // OCR often inserts spaces within timer text (e.g., "00:1 1:42" or "00:12: 55")
-  return line
-    .replace(/(\d) +(\d)/g, '$1$2')       // "1 1" → "11"
-    .replace(/(:) +(\d)/g, '$1$2')        // ": 5" → ":5"
-    .replace(/(\d) +(:)/g, '$1$2');       // "00 :" → "00:"
-}
-
-function extractTimers(text) {
-  const timerPattern = /\b(\d{1,2}:\d{2}:\d{2})\b/g;
-  const timers = [];
-  // Process each line individually to avoid collapsing spaces across separate numbers
-  for (const line of text.split('\n')) {
-    const cleaned = cleanOCRSpaces(line);
-    let match;
-    while ((match = timerPattern.exec(cleaned)) !== null) {
-      const parts = match[1].split(':').map(Number);
-      if (parts[1] >= 60 || parts[2] >= 60) continue;
-      const totalSeconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
-      timers.push({ display: match[1], seconds: totalSeconds });
-    }
-  }
-  return timers;
-}
-
-function parseOCRResults(ocrText1, ocrText2, gameNames) {
-  const timers1 = extractTimers(ocrText1);
-  const timers2 = ocrText2 ? extractTimers(ocrText2) : [];
-
-  let elapsedTimer = null;
-  let estimateTimer = null;
-  let detectionMethod = 'none';
-
-  // Strategy 1: Compare two frames — find the timer that incremented by ~1s
-  if (timers1.length > 0 && timers2.length > 0) {
-    let bestMatch = null;
-    for (const t1 of timers1) {
-      for (const t2 of timers2) {
-        const diff = t2.seconds - t1.seconds;
-        // Running timer should have advanced 1-3 seconds between frames
-        if (diff >= 1 && diff <= 3) {
-          // Prefer the smallest diff (closest to exactly 1s apart)
-          if (!bestMatch || diff < bestMatch.diff) {
-            bestMatch = { timer: t2, diff };
-          }
-        }
-      }
-    }
-    if (bestMatch) {
-      elapsedTimer = bestMatch.timer;
-      detectionMethod = 'frame_comparison';
-    }
-  }
-
-  // Use the most recent OCR text for other detections
-  const text = ocrText2 || ocrText1;
-  const allTimers = timers2.length > 0 ? timers2 : timers1;
-
-  // Strategy 2: Look for "EST:" prefix to identify the estimate
-  // OCR may split EST and the time across lines and insert spaces within digits.
-  // Join lines with space, then clean only the region around "EST".
-  const flatText = text.replace(/\n/g, ' ');
-  const estRegion = flatText.match(/EST[:\s]*([\d:\s]{3,15})/i);
-  const estMatch = estRegion && cleanOCRSpaces(estRegion[1]).match(/^(\d{1,2}:\d{2}(?::\d{2})?)/);
-  if (estMatch) {
-    const parts = estMatch[1].split(':').map(Number);
-    let secs;
-    if (parts.length === 3) {
-      secs = parts[0] * 3600 + parts[1] * 60 + parts[2];
-    } else {
-      secs = parts[0] * 60 + parts[1]; // MM:SS
-    }
-    estimateTimer = { display: estMatch[1], seconds: secs };
-  }
-
-  // Strategy 3: If frame comparison didn't find a timer, fall back to heuristics —
-  // but ONLY when we couldn't do a proper comparison. If both frames had timers and
-  // none were incrementing, that's a break/schedule screen — don't guess.
-  const comparisonWasPossible = timers1.length > 0 && timers2.length > 0;
-  if (!elapsedTimer && allTimers.length > 0 && !comparisonWasPossible) {
-    const nonEstTimers = allTimers.filter(t =>
-      !estimateTimer || t.display !== estimateTimer.display
-    );
-    if (nonEstTimers.length > 0) {
-      nonEstTimers.sort((a, b) => b.seconds - a.seconds);
-      elapsedTimer = nonEstTimers[0];
-      detectionMethod = estimateTimer ? 'est_prefix' : 'heuristic';
-    }
-  }
-
-  // Match game names from the schedule.
-  // Tesseract often drops short / connective words ("Oddworld" mis-read as a single
-  // glyph, "Abe's" becomes "abe s" then "abe" after the regex). Lower threshold
-  // + allow a single distinctive word match (≥6 chars) so 2/3-word matches still
-  // surface — the client picks the highest-confidence one to apply.
-  const STOPWORDS = new Set(['the', 'and', 'for', 'with', 'from', 'into', 'any', 'all']);
-  const textLower = text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
-  const matchedGames = [];
-  for (const name of gameNames) {
-    const nameLower = name.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
-    const nameWords = nameLower.split(/\s+/).filter(w => w.length > 2 && !STOPWORDS.has(w));
-    if (nameWords.length === 0) continue;
-    const wordsFound = nameWords.filter(w => textLower.includes(w));
-    const ratio = wordsFound.length / nameWords.length;
-    const distinctiveHit = wordsFound.some(w => w.length >= 6);
-    if (ratio >= 0.5 || (distinctiveHit && wordsFound.length >= 1) || (nameWords.length === 1 && wordsFound.length === 1)) {
-      matchedGames.push({ name, confidence: ratio });
-    }
-  }
-  matchedGames.sort((a, b) => b.confidence - a.confidence);
-
-  return {
-    elapsed: elapsedTimer,
-    estimate: estimateTimer,
-    allTimers,
-    matchedGames,
-    rawText: text,
-    detectionMethod,
   };
 }
 

@@ -177,7 +177,7 @@ window.TABS = {
               <div class="cap-loading-overlay">
                 <div class="cap-spinner"></div>
                 <div class="cap-loading-text">Capturing & OCR-ing…</div>
-                <div class="cap-loading-sub">streamlink → ffmpeg (×2 frames) → tesseract. Usually 5–10s.</div>
+                <div class="cap-loading-sub">streamlink → ffmpeg → Claude Vision. Usually 4–8s.</div>
               </div>
             ` : ''}
             ${!isLoading && !result ? `
@@ -251,7 +251,7 @@ window.TABS = {
           <button class="ctrl-btn go" id="cap-go" style="width:100%">↻ Capture &amp; OCR</button>
           <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--line);font-size:12px;color:var(--dim);line-height:1.6">
             <b style="color:var(--ink-soft);font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.16em;text-transform:uppercase">How it works</b><br>
-            Grabs two stream frames 1s apart, runs Tesseract OCR on both, then identifies which detected timer incremented by exactly 1 second.
+            Grabs a single frame from the live Twitch stream, sends it to Claude Vision with the schedule for context, and returns the elapsed timer, estimate, and matched game.
           </div>
         </aside>
       </div>

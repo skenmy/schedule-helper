@@ -3,7 +3,7 @@ FROM node:22-slim
 # System tools required by the stream-OCR pipeline:
 #   - streamlink: extracts the live Twitch HLS stream
 #   - ffmpeg:     single-frame capture from the streamlink stdout
-# Tesseract was dropped — OCR is now Claude Vision via the Anthropic API.
+# OCR itself runs in the Anthropic API via Claude Vision (see ANTHROPIC_API_KEY).
 # ca-certificates so streamlink can reach Twitch over TLS.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         streamlink \

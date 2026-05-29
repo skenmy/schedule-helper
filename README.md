@@ -3,7 +3,7 @@
 Operator console for running a speedrunning marathon. Pulls the schedule
 from [Oengus](https://oengus.io) or [Horaro](https://horaro.net), syncs
 state across every operator's browser in real time, and verifies the
-on-stream timer against the live Twitch broadcast via Tesseract OCR.
+on-stream timer against the live Twitch broadcast via Claude Vision.
 
 Live at **<https://schedule.skenmy.com>** — built for UKSG marathons
 but works against any Oengus/Horaro schedule.
@@ -25,12 +25,13 @@ but works against any Oengus/Horaro schedule.
   `N` advance, `⌘K` palette.
 - **Run-edit modal.** Override actualStart / actualEnd / actualDuration
   per row; missing fields are inferred from the other two and broadcast.
-- **Stream OCR.** `streamlink → ffmpeg → tesseract` grabs two frames a
-  second apart from the live Twitch channel, identifies which detected
-  timer incremented exactly 1s, and reports the elapsed value plus the
-  matched game name. The matcher tolerates Tesseract's frequent inline
-  spaces (`00:1 1:42` → `00:11:42`) and joined lines (`EST:` on one
-  line, value on the next).
+- **Stream OCR.** `streamlink → ffmpeg → Claude Vision` grabs a single
+  frame from the live Twitch channel, asks Claude (`claude-sonnet-4-6`
+  by default) for the elapsed timer + estimate + the best-matched game
+  from the loaded schedule, and returns them as structured JSON. The
+  endpoint is **admin-gated** server-side — anonymous viewers get a
+  403 so nobody can racket up API costs by hitting Capture. Cost is
+  ~$0.005–0.015 per capture; ~$1 covers a full marathon day.
 - **Kiosk mode.** `?kiosk=1` overlays a configurable multi-panel grid
   (delta, current, on-deck, schedule, controls, log, message, marathon,
   progress, timing, twitch). 10 preset layouts + four canned presets
@@ -103,9 +104,14 @@ Server → client:
 | `DATA_DIR` | `./data` | Room JSON lives here; mount as a volume in prod. |
 | `TOOLS_AUTH_URL` | *(empty)* | URL of tools-skenmy. Empty = wide-open (local dev). |
 | `AUTH_APP_ID` | `schedule` | Passed to `/auth/me?app=…` when checking write permission. |
+| `ANTHROPIC_API_KEY` | *(empty)* | Required for `/api/capture`. Without it the endpoint returns 500 to admins. |
+| `VISION_MODEL` | `claude-sonnet-4-6` | Override to swap to a cheaper / faster vision model. |
+| `BUILD_SHA` | `dev` | Build-time arg; CI passes the short git SHA so clients can prompt a reload after a new deploy. |
 
-System tools needed in the container: `streamlink`, `ffmpeg`,
-`tesseract-ocr`. All baked into the published image.
+System tools needed in the container: `streamlink`, `ffmpeg`. Baked
+into the published image. Stream OCR itself runs via the Anthropic
+API — set `ANTHROPIC_API_KEY` (and optionally `VISION_MODEL`) on the
+deploy box.
 
 ## Local dev
 

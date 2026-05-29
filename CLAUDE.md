@@ -18,27 +18,14 @@ No build step. No framework. Vanilla JS with server-rendered-style `render()` fu
 - Cached server-side for 1 minute per marathon/slug combo
 - Durations are ISO 8601 (`PT1H30M`) parsed client-side
 
-### Twitch Stream Capture (the complex part)
-Pipeline: `streamlink` → `ffmpeg` → `tesseract` → timer parsing
+### Twitch Stream Capture
+Pipeline: `streamlink` → `ffmpeg` (one frame) → Claude Vision → structured JSON
 
-1. **Two-frame capture**: `captureStreamFrames()` grabs 2 frames ~1 second apart using `ffmpeg -vf fps=1 -frames:v 2`. This is the key innovation — comparing frames lets us identify the *running* timer.
-2. **Preprocessing**: Grayscale + high contrast (`format=gray,eq=contrast=2:brightness=0.1`) for better OCR
-3. **OCR**: Tesseract with `--psm 11` (sparse text mode)
-4. **Timer detection** (3-strategy cascade in `parseOCRResults()`):
-   - **Frame comparison** (best): Find a timer that incremented 1-3 seconds between frames → that's the elapsed timer
-   - **EST prefix**: If comparison fails and only one frame worked, exclude timers near "EST:" label
-   - **Heuristic**: Last resort — pick the largest non-estimate timer
-5. **Break screen handling**: If both frames have timers but none are incrementing, report no running timer (don't guess)
-
-### OCR Quirks
-Tesseract frequently inserts spaces within timer digits. `cleanOCRSpaces()` handles patterns like:
-- `00:1 1:42` → `00:11:42` (space between digits)
-- `00:12: 55` → `00:12:55` (space after colon)
-- `00 :12:55` → `00:12:55` (space before colon)
-
-Space collapsing is done **per-line** to avoid merging adjacent numbers across lines (e.g., `00:20:00\n00:14:05` must stay separate).
-
-EST detection joins lines first (OCR often splits `EST:` and the time value onto separate lines) and supports both `HH:MM:SS` and `MM:SS` (Tesseract sometimes drops leading `00:`).
+1. **Single-frame capture**: `captureStreamFrames()` grabs ONE frame via `streamlink … | ffmpeg -vf fps=1 -frames:v 1`. The vision model identifies the running timer from context alone — no diff needed.
+2. **Vision call**: `callClaudeVision()` POSTs the frame to `https://api.anthropic.com/v1/messages` with `VISION_MODEL` (default `claude-sonnet-4-6`) and a prompt built from the loaded schedule's game names. Claude returns JSON: `{ elapsed, estimate, game, confidence }`.
+3. **Adapter**: `adaptVisionResult()` rewraps that into the existing `{ elapsed, estimate, matchedGames, allTimers, rawText, detectionMethod, frameBase64, capturedAt }` shape so the client wire format is unchanged.
+4. **Admin gate**: `/api/capture` calls `resolveIdentity()` (the same forward-auth path the WS uses) and returns 403 if the caller isn't an admin. Stops viewers triggering paid Vision calls.
+5. **Timing**: `capturedAt` is the wallclock when the frame hit disk on the server. The client subtracts it from `Date.now()` when applying the OCR'd elapsed back onto the live timer, compensating for Vision + JSON + network + click latency.
 
 ### Real-Time Collaborative Sync (WebSocket)
 Multiple users on the same schedule see the same state. Any user can control the timer, advance runs, add notes.
@@ -81,29 +68,24 @@ Configurable multi-panel grid display for role-specific views (host, tech, runne
 
 **npm**: `express`, `ws`
 
-**System tools** (must be installed):
+**System tools** (must be installed in the container):
 - `streamlink` — extracts live Twitch stream to stdout
-- `ffmpeg` — frame capture and image preprocessing
-- `tesseract` — OCR engine
+- `ffmpeg` — single-frame capture from the streamlink stdout
+
+**External services:**
+- Anthropic API — Claude Vision powers `/api/capture`. Set `ANTHROPIC_API_KEY` (and optionally `VISION_MODEL`, defaults to `claude-sonnet-4-6`).
+- tools.skenmy.com — issues the shared `.skenmy.com` session cookie. Set `TOOLS_AUTH_URL=http://tools-skenmy:3000` so this app can call `/auth/me?app=schedule&role=admin` to gate mutations + the capture endpoint.
 
 ## Deployment
 
-- **Server**: `root@89.167.17.202`
-- **Path**: `/opt/schedule-helper/`
-- **Service**: `schedule-helper.service` (systemd, auto-restart on failure)
-- **Port**: 3000
+Lives on the shared **skenmy-vps** Hostinger box at `vps-uk` via docker compose.
+A push to `main` triggers CI which builds + pushes `ghcr.io/skenmy/schedule-helper`,
+then fires the `skenmy-vps` deploy workflow which updates the pinned tag and runs
+`docker compose pull && up -d`. URL: <https://schedule.skenmy.com>.
 
-Deploy with:
-```
-scp server.js root@89.167.17.202:/opt/schedule-helper/
-scp public/index.html root@89.167.17.202:/opt/schedule-helper/public/index.html
-ssh root@89.167.17.202 "cd /opt/schedule-helper && npm install ws && systemctl restart schedule-helper"
-```
-
-First-time setup also needs:
-```
-ssh root@89.167.17.202 "mkdir -p /opt/schedule-helper/data"
-```
+The Caddy fragment is at `skenmy-vps/conf.d/30-schedule.skenmy.com.caddy`; the
+service block at `skenmy-vps/services.d/schedule-helper.yml`. Persistent room
+JSON lives in the `./data/schedule-helper/` volume mount on the host.
 
 ## Data Directory
 
@@ -132,6 +114,6 @@ These are overwritten on each capture.
 
 ## Known Limitations
 
-- Tesseract OCR is unreliable — timer detection depends on font, contrast, and overlay layout. The two-frame comparison approach mitigates this but still requires OCR to read the timer correctly in both frames.
+- Stream OCR depends on Claude Vision being able to see the overlay. Heavily obscured timers, very low-resolution streams, or non-English UI may still confuse it.
 - The channel input accepts both bare slugs (`uksgmarathon`) and full URLs (`https://twitch.tv/uksgmarathon`), including with query strings and trailing slashes.
 - Capture takes several seconds (streamlink connection + waiting for 2 frames 1s apart + 2x preprocessing + 2x OCR).
