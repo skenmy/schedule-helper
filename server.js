@@ -220,7 +220,9 @@ const tmpDir = path.join(os.tmpdir(), 'schedule-helper');
 fs.mkdirSync(tmpDir, { recursive: true });
 
 function captureStreamFrames(channel) {
-  // Capture TWO frames ~1 second apart so we can diff to find the running timer
+  // Grab a single frame from the live stream. Claude Vision doesn't need the
+  // two-frame diff that Tesseract did — it identifies the running timer from
+  // visual context alone, so we save ~1.5s by only capturing once.
   return new Promise((resolve, reject) => {
     const sl = spawn('streamlink', [
       '--stdout',
@@ -231,12 +233,12 @@ function captureStreamFrames(channel) {
     const ff = spawn('ffmpeg', [
       '-i', 'pipe:0',
       '-vf', 'fps=1',
-      '-frames:v', '2',
-      '-y', path.join(tmpDir, 'frame_%d.png'),
+      '-frames:v', '1',
+      '-y', path.join(tmpDir, 'frame_1.png'),
     ], { stdio: ['pipe', 'pipe', 'pipe'] });
 
     sl.stdout.pipe(ff.stdin);
-    // ffmpeg exits after 2 frames while streamlink is still writing — ignore EPIPE
+    // ffmpeg exits after 1 frame while streamlink is still writing — ignore EPIPE
     ff.stdin.on('error', () => {});
 
     let slErr = '';
@@ -255,15 +257,13 @@ function captureStreamFrames(channel) {
       clearTimeout(timeout);
       sl.kill();
       const frame1 = path.join(tmpDir, 'frame_1.png');
-      const frame2 = path.join(tmpDir, 'frame_2.png');
       if (code !== 0 || !fs.existsSync(frame1)) {
         return reject(new Error(`Capture failed. streamlink: ${slErr.slice(-200)}`));
       }
-      // Mark the moment frame 2 (the preview / OCR target) was written to disk so
-      // the client can compensate for the OCR / network delay when applying the
-      // detected elapsed back onto the live timer.
+      // Mark the moment the frame hits disk so the client can compensate for
+      // every step that follows (vision call + network round-trip + click).
       const capturedAt = Date.now();
-      resolve({ frame1, frame2: fs.existsSync(frame2) ? frame2 : null, capturedAt });
+      resolve({ frame1, capturedAt });
     });
 
     ff.on('error', (err) => {
@@ -280,31 +280,103 @@ function captureStreamFrames(channel) {
   });
 }
 
-function preprocessFrame(inputPath, outputPath) {
-  return new Promise((resolve, reject) => {
-    const ff = spawn('ffmpeg', [
-      '-i', inputPath,
-      '-vf', 'format=gray,eq=contrast=2:brightness=0.1',
-      '-frames:v', '1',
-      '-update', '1',
-      '-y', outputPath,
-    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+// ─── Claude Vision OCR ───
+//
+// Replaces the streamlink→ffmpeg→tesseract chain. Sends the captured frame to
+// Claude with a structured prompt that asks for: (1) the elapsed timer,
+// (2) the estimate, (3) the game name (best-matched against the loaded
+// schedule). Claude returns JSON; we parse + adapt it into the existing
+// {elapsed,estimate,matchedGames,...} shape so the client wire format is
+// unchanged.
 
-    ff.on('close', (code) => {
-      if (code !== 0 || !fs.existsSync(outputPath)) return reject(new Error('Preprocessing failed'));
-      resolve(outputPath);
-    });
-    ff.on('error', reject);
-  });
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const VISION_MODEL = process.env.VISION_MODEL || 'claude-sonnet-4-6';
+
+function parseHMS(str) {
+  if (typeof str !== 'string') return null;
+  const m = str.trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!m) return null;
+  const h = parseInt(m[1], 10);
+  const mm = parseInt(m[2], 10);
+  const ss = m[3] != null ? parseInt(m[3], 10) : 0;
+  if (mm >= 60 || ss >= 60) return null;
+  // Two-segment values from the model (MM:SS) come back via the H slot — treat
+  // them as MM:SS rather than HH:MM, matching how speedrun overlays read.
+  if (m[3] == null) return { display: `${pad2(0)}:${pad2(h)}:${pad2(mm)}`, seconds: h * 60 + mm };
+  return { display: `${pad2(h)}:${pad2(mm)}:${pad2(ss)}`, seconds: h * 3600 + mm * 60 + ss };
+}
+function pad2(n) { return String(n).padStart(2, '0'); }
+
+function buildVisionPrompt(gameNames) {
+  const list = (gameNames || []).slice(0, 200).map(g => `- ${g}`).join('\n') || '(no schedule loaded)';
+  return `You're reading a single frame from a Twitch broadcast of a speedrunning marathon.
+
+Find these three things in the image and report them as JSON:
+
+1. The **elapsed run timer** — the count-up timer ticking forward in real time. Usually large, often labelled "TIMER", "ELAPSED", or unlabelled. Report as HH:MM:SS.
+2. The **estimate** — usually labelled "EST", "ESTIMATE", "Goal", or shown alongside the elapsed timer. Same format. Skip if you can't see it.
+3. The **game being played** — pick the closest match from the schedule below. Game overlays often show the full title. If nothing on screen plausibly matches any scheduled run, return null.
+
+Schedule on file for this marathon (pick the closest match by name):
+${list}
+
+Return JSON only, exactly this shape, no markdown fences, no commentary:
+{"elapsed":"HH:MM:SS"|null,"estimate":"HH:MM:SS"|null,"game":"<exact name from list>"|null,"confidence":"high"|"medium"|"low"}`;
 }
 
-function runOCR(imagePath) {
-  return new Promise((resolve, reject) => {
-    execFile('tesseract', [imagePath, 'stdout', '--psm', '11'], { maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
-      if (err) return reject(new Error(`OCR failed: ${err.message}`));
-      resolve(stdout);
-    });
+async function callClaudeVision(framePath, gameNames) {
+  if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not set on the server');
+  const data = fs.readFileSync(framePath).toString('base64');
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: VISION_MODEL,
+      max_tokens: 256,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data } },
+          { type: 'text', text: buildVisionPrompt(gameNames) },
+        ],
+      }],
+    }),
   });
+  const json = await res.json();
+  if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${json.error?.message || JSON.stringify(json).slice(0, 200)}`);
+  const text = (json.content || []).map(c => c.text).filter(Boolean).join('\n');
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('Claude response had no JSON block');
+  let parsed;
+  try { parsed = JSON.parse(m[0]); }
+  catch (e) { throw new Error('Claude response JSON parse failed: ' + e.message); }
+  return { parsed, rawText: text };
+}
+
+function adaptVisionResult({ parsed, rawText }, gameNames) {
+  const elapsed = parseHMS(parsed.elapsed);
+  const estimate = parseHMS(parsed.estimate);
+  const confidenceMap = { high: 0.95, medium: 0.7, low: 0.4 };
+  const matchedGames = [];
+  if (parsed.game && (gameNames || []).includes(parsed.game)) {
+    matchedGames.push({ name: parsed.game, confidence: confidenceMap[parsed.confidence] ?? 0.7 });
+  } else if (parsed.game) {
+    // Claude returned something not in the schedule — still surface it so the
+    // operator can see what was on screen, just at low confidence.
+    matchedGames.push({ name: parsed.game, confidence: confidenceMap.low });
+  }
+  return {
+    elapsed,
+    estimate,
+    allTimers: [elapsed, estimate].filter(Boolean),
+    matchedGames,
+    rawText,
+    detectionMethod: 'claude-vision',
+  };
 }
 
 function cleanOCRSpaces(line) {
@@ -429,6 +501,12 @@ function parseOCRResults(ocrText1, ocrText2, gameNames) {
 }
 
 app.post('/api/capture', async (req, res) => {
+  // Admin gate — viewers can't trigger Twitch capture + a paid Vision call.
+  const identity = await resolveIdentity(req.headers.cookie || '');
+  if (!identity || !identity.canWrite) {
+    return res.status(403).json({ error: 'Stream capture requires admin sign-in.' });
+  }
+
   const { channel, gameNames } = req.body;
 
   if (!channel) {
@@ -444,30 +522,14 @@ app.post('/api/capture', async (req, res) => {
   }
 
   try {
-    console.log(`Capturing 2 frames from twitch.tv/${cleanChannel}...`);
-    const { frame1, frame2, capturedAt } = await captureStreamFrames(cleanChannel);
+    console.log(`Capturing one frame from twitch.tv/${cleanChannel}…`);
+    const { frame1, capturedAt } = await captureStreamFrames(cleanChannel);
 
-    console.log('Preprocessing...');
-    const ocr1Path = path.join(tmpDir, 'frame_ocr_1.png');
-    await preprocessFrame(frame1, ocr1Path);
+    console.log(`Running Claude Vision (${VISION_MODEL})…`);
+    const vision = await callClaudeVision(frame1, gameNames || []);
+    const result = adaptVisionResult(vision, gameNames || []);
 
-    let ocrText1, ocrText2 = '';
-    console.log('Running OCR on frame 1...');
-    ocrText1 = await runOCR(ocr1Path);
-
-    if (frame2) {
-      const ocr2Path = path.join(tmpDir, 'frame_ocr_2.png');
-      await preprocessFrame(frame2, ocr2Path);
-      console.log('Running OCR on frame 2...');
-      ocrText2 = await runOCR(ocr2Path);
-    }
-
-    console.log('Parsing results (comparing frames)...');
-    const result = parseOCRResults(ocrText1, ocrText2, gameNames || []);
-
-    // Use most recent frame for preview
-    const previewFrame = frame2 || frame1;
-    const frameData = fs.readFileSync(previewFrame);
+    const frameData = fs.readFileSync(frame1);
     result.frameBase64 = `data:image/png;base64,${frameData.toString('base64')}`;
     result.capturedAt = capturedAt;
 
