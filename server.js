@@ -9,7 +9,7 @@ const { WebSocketServer } = require('ws');
 
 const app = express();
 const server = http.createServer(app);
-const PORT = 3000;
+const PORT = parseInt(process.env.PORT, 10) || 3000;
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());

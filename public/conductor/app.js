@@ -260,6 +260,35 @@ function writeHash() {
     : `${STATE.marathonId}/${STATE.scheduleSlug}`;
 }
 
+// ============================================================ BRAND THEME
+// Apply UKSG brand styling when an Oengus marathon id starts with
+// "uksg" (e.g. uksgred26, uksggrn25, uksgblu, uksg). Variant is
+// derived from the abbreviated colour suffix used in slugs:
+// "red" / "grn" / "blu". Anything else under "uksg" falls back to
+// the standard primary-blue brand.
+function detectBrand(marathonId, source) {
+  if (source !== 'oengus' || !marathonId) return null;
+  const id = String(marathonId).toLowerCase();
+  if (!id.startsWith('uksg')) return null;
+  const suffix = id.slice(4);
+  if (suffix.startsWith('red')) return { brand: 'uksg', event: 'red' };
+  if (suffix.startsWith('grn')) return { brand: 'uksg', event: 'green' };
+  if (suffix.startsWith('blu')) return { brand: 'uksg', event: 'blue' };
+  return { brand: 'uksg', event: null };
+}
+
+function applyBrandTheme() {
+  const b = detectBrand(STATE.marathonId, STATE.scheduleSource);
+  if (b) {
+    document.body.setAttribute('data-brand', b.brand);
+    if (b.event) document.body.setAttribute('data-brand-event', b.event);
+    else document.body.removeAttribute('data-brand-event');
+  } else {
+    document.body.removeAttribute('data-brand');
+    document.body.removeAttribute('data-brand-event');
+  }
+}
+
 // ============================================================ SCHEDULE LOAD
 async function loadSchedule() {
   const url = STATE.scheduleSource === 'horaro'
@@ -1453,6 +1482,7 @@ function showLanding() {
   location.hash = '';
   $('#trackerView').classList.add('hidden');
   $('#landingView').classList.remove('hidden');
+  applyBrandTheme();
   renderRecentSchedules();
   $('#urlInput').focus();
 }
@@ -1460,6 +1490,7 @@ function showLanding() {
 async function showTracker() {
   $('#landingView').classList.add('hidden');
   $('#trackerView').classList.remove('hidden');
+  applyBrandTheme();
   await loadMarathonInfo();
   await loadSchedule();
   writeHash();
