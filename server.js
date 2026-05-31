@@ -701,19 +701,45 @@ wss.on('connection', async (ws, req) => {
     switch (action) {
       case 'timer:start': {
         const seconds = typeof data.seconds === 'number' ? data.seconds : state.elapsedSeconds;
+        const wasRunning = state.timerRunning;
         state.timerEpoch = Date.now() - seconds * 1000;
         state.elapsedSeconds = seconds;
         state.timerRunning = true;
         state.lastUpdated = new Date().toISOString();
+        if (!wasRunning && state.actualRunIndex >= 0) {
+          const schedule = await getScheduleForRoom(roomKey, room);
+          const runName = schedule[state.actualRunIndex]?.game || 'Unknown';
+          state.eventLog.unshift({
+            id: state.eventLogNextId++,
+            timestamp: new Date().toISOString(),
+            text: '▶ Running: ' + runName,
+            type: 'auto',
+            runIndex: state.actualRunIndex,
+            runName,
+          });
+        }
         break;
       }
       case 'timer:stop': {
+        const wasRunning = state.timerRunning;
         if (state.timerRunning && state.timerEpoch) {
           state.elapsedSeconds = Math.round((Date.now() - state.timerEpoch) / 1000);
         }
         state.timerRunning = false;
         state.timerEpoch = null;
         state.lastUpdated = new Date().toISOString();
+        if (wasRunning && state.elapsedSeconds > 0 && state.actualRunIndex >= 0) {
+          const schedule = await getScheduleForRoom(roomKey, room);
+          const runName = schedule[state.actualRunIndex]?.game || 'Unknown';
+          state.eventLog.unshift({
+            id: state.eventLogNextId++,
+            timestamp: new Date().toISOString(),
+            text: '■ Run Finished: ' + runName,
+            type: 'auto',
+            runIndex: state.actualRunIndex,
+            runName,
+          });
+        }
         break;
       }
       case 'timer:reset': {
