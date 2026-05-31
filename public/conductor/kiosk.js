@@ -63,9 +63,14 @@
         ? `<span class="over">over by ${window.fmtDelta(over)}</span>`
         : `<span class="ok">${window.fmtDelta(over)} of estimate</span>`;
       const runners = (r.runners||[]).join(', ');
+      const runState = window.getRunState ? window.getRunState() : 'running';
+      const titles = { setting_up: 'Setting Up', running: 'Now Running', finished: 'Run Finished' };
+      const title = titles[runState] || 'Now running';
+      const badge = runState && runState !== 'running' ? title.toUpperCase()
+        : (r.type && r.type !== 'SINGLE' ? r.type : '');
       return {
-        title: 'Now running',
-        badge: r.type && r.type !== 'SINGLE' ? r.type : '',
+        title,
+        badge,
         html: `<div class="kpanel-current">
           <h2>${escapeHtml(r.game)}</h2>
           <div class="cat">${escapeHtml(runners || '—')} · ${escapeHtml(r.console || '—')}${r.category ? ' · ' + escapeHtml(r.category) : ''}</div>

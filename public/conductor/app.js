@@ -554,6 +554,28 @@ function getSelectedRun() {
   return STATE.schedule[idx] || null;
 }
 
+// Derived run state for the *current* run.
+// 'setting_up' before the timer is started for the first time after select/advance/reset.
+// 'running'    while the timer is running.
+// 'finished'   after the timer has been stopped (elapsed > 0) but before advancing.
+// Future: NodeCG/OBS scene transitions can replace this derivation with explicit server state.
+function getRunState() {
+  if (STATE.actualRunIndex < 0) return null;
+  if (STATE.timerRunning) return 'running';
+  return elapsedNow() > 0 ? 'finished' : 'setting_up';
+}
+const RUN_STATE_LABEL = {
+  setting_up: 'Setting Up',
+  running: 'Now Playing',
+  finished: 'Run Finished',
+};
+const RUN_STATE_BADGE = {
+  setting_up: 'SETUP',
+  running: 'LIVE',
+  finished: 'DONE',
+};
+window.getRunState = getRunState;
+
 function getNextRunIndex(fromIndex) {
   let n = fromIndex + 1;
   while (n < STATE.schedule.length && (STATE.schedule[n].setupBlock || STATE.skippedRuns.has(n))) n++;
@@ -810,7 +832,8 @@ function renderTimeline() {
       const meta = fmtHM(estSec);
       const typeBadge = r.type && r.type !== 'SINGLE'
         ? `<span class="typebadge ${r.type.toLowerCase()}">${r.type[0]}</span>` : '';
-      el.innerHTML = `${typeBadge}<div class="name">${escapeHtml(label)}</div><div class="meta">${meta}${isNow ? ' · LIVE' : ''}</div>${isNow ? '<div class="progress"></div>' : ''}`;
+      const liveBadge = isNow ? ` · ${RUN_STATE_BADGE[getRunState()] || 'LIVE'}` : '';
+      el.innerHTML = `${typeBadge}<div class="name">${escapeHtml(label)}</div><div class="meta">${meta}${liveBadge}</div>${isNow ? '<div class="progress"></div>' : ''}`;
       el.addEventListener('click', () => selectRun(i));
     });
 
@@ -892,9 +915,12 @@ function renderDetail() {
   }
   const isNow = (STATE.selectedRunIndex === STATE.actualRunIndex);
 
+  const runState = isNow ? getRunState() : null;
   $('#det-eyebrow').className = 'eyebrow' + (isNow ? ' live' : '');
   $('#det-eyebrow').style.color = isNow ? '' : 'var(--signal)';
-  $('#det-eyebrow-text').textContent = isNow ? 'Now playing' : `Upcoming · #${STATE.selectedRunIndex + 1}`;
+  $('#det-eyebrow-text').textContent = isNow
+    ? (RUN_STATE_LABEL[runState] || 'Now playing')
+    : `Upcoming · #${STATE.selectedRunIndex + 1}`;
 
   $('#det-title').textContent = run.game || run.setupBlockText || 'Setup';
   const schedTime = run.scheduledStart ? fmtTime(new Date(run.scheduledStart)) : '—';
@@ -964,7 +990,8 @@ function renderRail() {
   $('#elapsed-rail').textContent = fmtHMS(elapsed);
   if (cur) {
     const est = parseDuration(cur.estimate);
-    $('#rail-sub').textContent = `of ${fmtHMS(est)}`;
+    const stateLbl = RUN_STATE_LABEL[getRunState()];
+    $('#rail-sub').textContent = stateLbl ? `${stateLbl} · of ${fmtHMS(est)}` : `of ${fmtHMS(est)}`;
   } else {
     $('#rail-sub').textContent = STATE.actualRunIndex < 0 ? 'no run selected' : '—';
   }
