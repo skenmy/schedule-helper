@@ -1,0 +1,116 @@
+/* Design tokens. Status colours (ok / info / warn / bad) are semantic and stay
+   fixed across themes so "behind" always reads red; themes only change the
+   accent and the surface tint. */
+
+:root {
+  color-scheme: dark;
+
+  --font-ui:
+    'Inter Tight Variable', 'Inter Tight', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --bg: #0a0c10;
+  --bg-2: #0d1015;
+  --surface: #12161d;
+  --surface-2: #171c25;
+  --surface-3: #1e242f;
+  --border: #232935;
+  --border-strong: #2f3746;
+  --text: #eceff4;
+  --text-2: #bdc4d0;
+  --muted: #7f8898;
+  --faint: #4e5666;
+
+  --accent: #34d399;
+  --accent-2: #6ee7b7;
+  --accent-ink: #03170f;
+
+  --ok: #34d399;
+  --info: #38bdf8;
+  --warn: #fbbf24;
+  --bad: #f87171;
+
+  --accent-soft: color-mix(in oklab, var(--accent) 15%, transparent);
+  --ok-soft: color-mix(in oklab, var(--ok) 14%, transparent);
+  --info-soft: color-mix(in oklab, var(--info) 14%, transparent);
+  --warn-soft: color-mix(in oklab, var(--warn) 14%, transparent);
+  --bad-soft: color-mix(in oklab, var(--bad) 14%, transparent);
+
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 16px;
+  --shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 8px 24px -12px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 24px 60px -16px rgb(0 0 0 / 0.7);
+  --ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --topbar-h: 56px;
+  --gutter: clamp(12px, 2vw, 24px);
+}
+
+[data-theme='lightblue'] {
+  --accent: #60a5fa;
+  --accent-2: #93c5fd;
+  --accent-ink: #04111f;
+  --bg: #060b14;
+  --bg-2: #081223;
+  --surface: #0d1a2c;
+  --surface-2: #112136;
+  --surface-3: #162942;
+  --border: #1a2f4d;
+  --border-strong: #24406a;
+  --text-2: #d0dcee;
+}
+[data-theme='darkblue'] {
+  --accent: #3b82f6;
+  --accent-2: #60a5fa;
+  --accent-ink: #ffffff;
+  --bg: #060812;
+  --bg-2: #0a0f1f;
+  --surface: #0f152c;
+  --surface-2: #131b38;
+  --surface-3: #1a2447;
+  --border: #1c2852;
+  --border-strong: #283a72;
+  --text-2: #cad2ea;
+}
+[data-theme='amber'] {
+  --accent: #fbbf24;
+  --accent-2: #fcd34d;
+  --accent-ink: #1a1102;
+  --warn: #fb923c;
+  --bg: #0f0a04;
+  --bg-2: #161007;
+  --surface: #20170b;
+  --surface-2: #281d0e;
+  --surface-3: #312412;
+  --border: #3f2f17;
+  --border-strong: #574120;
+  --text-2: #eee3d1;
+}
+[data-theme='purple'] {
+  --accent: #a78bfa;
+  --accent-2: #c4b5fd;
+  --accent-ink: #12082b;
+  --bg: #0b0813;
+  --bg-2: #110d1d;
+  --surface: #1a1530;
+  --surface-2: #211b3b;
+  --surface-3: #292247;
+  --border: #302854;
+  --border-strong: #433873;
+  --text-2: #dcd4ec;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ease: linear;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
