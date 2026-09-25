@@ -6,7 +6,7 @@ import { roomKey } from '../../shared/sources.ts';
 import type { RoomRef, RoomState, Schedule, UndoInfo } from '../../shared/types.ts';
 import { logger } from '../logger.ts';
 import { appendLog, reduce } from './reducer.ts';
-import { UNDO_LIMIT, takeSnapshot, type UndoEntry } from './state.ts';
+import { UNDO_LIMIT, initialState, takeSnapshot, type UndoEntry } from './state.ts';
 import { ROOM_FILE_FORMAT, type RoomFile, type RoomStore } from './store.ts';
 
 const log = logger('room');
@@ -39,6 +39,8 @@ export class Room {
   readonly clients = new Set<RoomClient>();
   readonly frames = new Map<string, CaptureFrame>();
   lastActive = Date.now();
+  /** Bumped by a reset: background work started before it must not land after it. */
+  epoch = 0;
 
   private undoStack: UndoEntry[];
   private readonly listeners = new Set<() => void>();
@@ -135,6 +137,8 @@ export class Room {
           reply({ type: 'error', code: 'upstream', message: err.message, action: action.action }),
         );
         return { ok: true, undo: null };
+      case 'room:reset':
+        return this.reset(actor);
       case 'capture:run':
         if (this.state.captureBusy) {
           return { ok: false, code: 'conflict', message: 'A capture is already running.' };
@@ -182,6 +186,46 @@ export class Room {
         at: Date.now(),
       });
     });
+    return { ok: true, undo: null };
+  }
+
+  /**
+   * Back to a fresh start for the same schedule: no live run, no timings, skips
+   * or check-ins, an empty log, no broadcasts, capture reading or undo history.
+   * The Twitch channel and drift settings stay. Not undoable, so the previous
+   * state is written aside first — and the reset is refused if that fails.
+   */
+  private reset(actor: string | null): DispatchResult {
+    if (this.store) {
+      try {
+        const file = this.store.backup(this.ref, JSON.stringify(this.snapshot()));
+        log.info(`${this.key} reset by ${actor ?? 'an operator'}; previous state in ${file}`);
+      } catch (err) {
+        log.error(`backup before reset failed for ${this.key}`, err);
+        return {
+          ok: false,
+          code: 'conflict',
+          message: 'Couldn’t back up the current state, so nothing was reset.',
+        };
+      }
+    }
+    const prev = this.state;
+    const next = initialState(prev.twitchChannel);
+    next.drift = { ...prev.drift };
+    // A capture in flight still has to clear this when it finishes (and is then discarded).
+    next.captureBusy = prev.captureBusy;
+    next.logSeq = Math.max(prev.logSeq ?? 0, prev.log[0]?.id ?? 0);
+    appendLog(next, {
+      kind: 'system',
+      text: '⟲ Reset the marathon: timings, check-ins, log and broadcasts cleared',
+      runKey: null,
+      actor,
+      at: Date.now(),
+    });
+    this.epoch++;
+    this.undoStack = [];
+    this.frames.clear();
+    this.commit(next);
     return { ok: true, undo: null };
   }
 

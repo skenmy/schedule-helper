@@ -201,6 +201,69 @@ describe('undo and acknowledgements', () => {
   });
 });
 
+describe('reset', () => {
+  it('starts the marathon over, keeps settings, and backs up what was there', async () => {
+    const a = await connect();
+    const b = await connect();
+    await a.join();
+    await b.join();
+    for (const action of [
+      { action: 'twitch:set', channel: 'otherchannel' },
+      { action: 'drift:configure', enabled: true, intervalMin: 3, thresholdSec: 20 },
+      { action: 'timer:start' },
+      { action: 'runner:checkin', key: 'd3', status: 'missing' },
+      { action: 'run:skip', key: 'd5' },
+      { action: 'announcement:set', text: 'Test run', color: '#fbbf24' },
+      { action: 'log:add', text: 'Mic check', kind: 'tech' },
+    ]) {
+      const done = a.next('applied', (m) => m.rid === action.action);
+      a.send({ ...action, rid: action.action });
+      await done;
+    }
+    const before = b.messages.filter((m) => m.type === 'state').at(-1)!;
+    const lastLogId = before.type === 'state' ? before.state.log[0]!.id : 0;
+
+    const applied = a.next('applied', (m) => m.rid === 'reset');
+    const reset = b.nextState((s) => s.currentKey == null && Object.keys(s.runs).length === 0);
+    a.send({ action: 'room:reset', rid: 'reset' });
+    expect((await applied).undo).toBeNull();
+    const state = await reset;
+    expect(state).toMatchObject({
+      finishedAt: null,
+      announcement: null,
+      message: null,
+      capture: null,
+      undo: null,
+      twitchChannel: 'otherchannel',
+      drift: { enabled: true, intervalMin: 3, thresholdSec: 20 },
+    });
+    expect(state.log).toHaveLength(1);
+    expect(state.log[0]?.text).toMatch(/Reset the marathon/);
+    expect(state.log[0]?.id).toBeGreaterThan(lastLogId);
+
+    const nothing = a.next('error', (m) => m.rid === 'undo');
+    a.send({ action: 'undo', rid: 'undo' });
+    expect((await nothing).message).toBe('Nothing to undo.');
+
+    const backups = fs
+      .readdirSync(path.join(dataDir, 'rooms'))
+      .filter((f) => f.startsWith('oengus--testmarathon--main.json.reset-'));
+    expect(backups).toHaveLength(1);
+    const saved = JSON.parse(fs.readFileSync(path.join(dataDir, 'rooms', backups[0]!), 'utf8'));
+    expect(saved.state.runs.d3.checkIn).toBe('missing');
+    expect(saved.state.announcement.text).toBe('Test run');
+
+    // The reset is what persists.
+    for (const c of clients.splice(0)) c.ws.close();
+    await server.close();
+    await boot();
+    const c = await connect();
+    const reloaded = await c.join();
+    expect(reloaded.runs).toEqual({});
+    expect(reloaded.undo).toBeNull();
+  });
+});
+
 describe('overlay feed', () => {
   it('serves JSON with CORS and streams updates', async () => {
     const res = await fetch(

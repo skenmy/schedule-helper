@@ -9,6 +9,8 @@ import type { UndoEntry } from './state.ts';
 
 const log = logger('store');
 const FORMAT = 2;
+/** Reset backups kept per room; older ones are pruned. */
+const BACKUP_LIMIT = 5;
 
 export interface RoomFile {
   format: typeof FORMAT;
@@ -79,6 +81,29 @@ export class RoomStore {
     const tmp = this.tmpFor(file);
     fs.writeFileSync(tmp, json);
     fs.renameSync(tmp, file);
+  }
+
+  /**
+   * Writes a copy of a room aside before a reset (`{file}.reset-{epoch ms}`),
+   * keeping the newest few. To restore one, stop the server and copy it over
+   * the room file.
+   */
+  backup(ref: RoomRef, json: string, label = 'reset'): string {
+    const file = this.file(ref);
+    const prefix = `${path.basename(file)}.${label}-`;
+    let stamp = Date.now();
+    while (fs.existsSync(`${file}.${label}-${stamp}`)) stamp++;
+    const target = `${file}.${label}-${stamp}`;
+    const tmp = this.tmpFor(file);
+    fs.writeFileSync(tmp, json);
+    fs.renameSync(tmp, target);
+    const old = fs
+      .readdirSync(this.dir)
+      .filter((f) => f.startsWith(prefix) && /^\d+$/.test(f.slice(prefix.length)))
+      .sort((a, b) => Number(b.slice(prefix.length)) - Number(a.slice(prefix.length)))
+      .slice(BACKUP_LIMIT);
+    for (const f of old) fs.rmSync(path.join(this.dir, f), { force: true });
+    return target;
   }
 
   private tmpFor(file: string): string {

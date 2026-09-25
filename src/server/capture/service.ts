@@ -104,6 +104,7 @@ export async function runCapture(
   { auto, actor }: { auto: boolean; actor: string | null },
 ): Promise<void> {
   if (room.state.captureBusy) return;
+  const epoch = room.epoch;
   const channel = room.state.twitchChannel || normalizeTwitchChannel(room.schedule.twitch);
   const base: CaptureResult = {
     id: `${Date.now().toString(36)}${randomUUID().slice(0, 6)}`,
@@ -135,7 +136,7 @@ export async function runCapture(
         currentKey: room.state.currentKey,
         runs: room.state.runs,
       });
-      room.addFrame(base.id, frame);
+      if (room.epoch === epoch) room.addFrame(base.id, frame);
       const names = [
         ...new Set(room.schedule.lines.filter((l) => !l.setupBlock && l.game).map((l) => l.game)),
       ];
@@ -161,6 +162,8 @@ export async function runCapture(
   room.mutate((s) => {
     const prev = s.capture;
     s.captureBusy = false;
+    // The room was reset while we were reading: the result belongs to the old run.
+    if (room.epoch !== epoch) return;
     s.capture = result;
     if (auto) warn(s, room.schedule.lines, prev, result);
   });

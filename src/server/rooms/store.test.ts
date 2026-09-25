@@ -31,4 +31,15 @@ describe('RoomStore', () => {
     expect(files.some((f) => f.includes('.corrupt-'))).toBe(true);
     expect(fs.existsSync(s.file(REF))).toBe(false);
   });
+
+  it('backs up before a reset and keeps only the newest five', () => {
+    const s = store();
+    const written = Array.from({ length: 7 }, (_, i) => s.backup(REF, JSON.stringify(i)));
+    expect(new Set(written).size).toBe(7);
+    const backups = fs.readdirSync(s.dir).filter((f) => f.includes('.reset-'));
+    expect(backups).toHaveLength(5);
+    const kept = backups.map((f) => fs.readFileSync(path.join(s.dir, f), 'utf8')).sort();
+    expect(kept).toEqual(['2', '3', '4', '5', '6']);
+    expect(fs.readdirSync(s.dir).filter((f) => f.endsWith('.tmp'))).toEqual([]);
+  });
 });
