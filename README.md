@@ -104,21 +104,21 @@ Read-only and CORS-open — the same information any viewer can already see.
 
 ## Environment
 
-| var                  | default                                      | notes                                                               |
-| -------------------- | -------------------------------------------- | ------------------------------------------------------------------- |
-| `PORT`               | `3000`                                       |                                                                     |
-| `DATA_DIR`           | `./data`                                     | Room files live in `DATA_DIR/rooms/`. Mount as a volume.            |
-| `TOOLS_AUTH_URL`     | _(empty)_                                    | tools-skenmy base URL. Empty = everyone can write (local dev only). |
-| `AUTH_APP_ID`        | `schedule`                                   | Passed to `/auth/me?app=…&role=admin`.                              |
-| `AUTH_LOGIN_URL`     | `https://tools.skenmy.com/auth/twitch/login` | Sign-in link shown to viewers.                                      |
-| `AUTH_MANAGE_URL`    | `https://tools.skenmy.com/`                  | Linked from the user chip.                                          |
-| `PUBLIC_URL`         | `https://schedule.skenmy.com`                | Where sign-in redirects back to.                                    |
-| `ANTHROPIC_API_KEY`  | _(empty)_                                    | Required for stream capture.                                        |
-| `VISION_MODEL`       | `claude-sonnet-4-6`                          | Model that reads stream frames.                                     |
-| `BUILD_SHA`          | `dev`                                        | Set by CI; clients offer a reload when it changes.                  |
-| `CAPTURE_FRAME_FILE` | _(empty)_                                    | Dev/testing: use this image instead of grabbing a live frame.       |
-| `CLIENT_DIR`         | `dist/client`                                | Built client assets.                                                |
-| `LOG_LEVEL`          | `info`                                       | `debug`, `info`, `warn` or `error`.                                 |
+| var                  | default                                      | notes                                                                      |
+| -------------------- | -------------------------------------------- | -------------------------------------------------------------------------- |
+| `PORT`               | `3000`                                       |                                                                            |
+| `DATA_DIR`           | `./data`                                     | Room files live in `DATA_DIR/rooms/`. Mount as a volume.                   |
+| `TOOLS_AUTH_URL`     | _(empty)_                                    | tools-skenmy base URL. Empty = everyone can write (local dev only).        |
+| `AUTH_APP_ID`        | `schedule`                                   | Passed to `/auth/me?app=…&role=admin`.                                     |
+| `AUTH_LOGIN_URL`     | `https://tools.skenmy.com/auth/twitch/login` | Sign-in link shown to viewers.                                             |
+| `AUTH_MANAGE_URL`    | `https://tools.skenmy.com/`                  | Linked from the user chip.                                                 |
+| `PUBLIC_URL`         | `https://schedule.skenmy.com`                | Where sign-in redirects back to.                                           |
+| `ANTHROPIC_API_KEY`  | _(empty)_                                    | Required for stream capture.                                               |
+| `VISION_MODEL`       | `claude-sonnet-5`                            | Model that reads stream frames (needs `effort` support: Sonnet/Opus 4.6+). |
+| `BUILD_SHA`          | `dev`                                        | Set by CI; clients offer a reload when it changes.                         |
+| `CAPTURE_FRAME_FILE` | _(empty)_                                    | Dev/testing: use this image instead of grabbing a live frame.              |
+| `CLIENT_DIR`         | `dist/client`                                | Built client assets.                                                       |
+| `LOG_LEVEL`          | `info`                                       | `debug`, `info`, `warn` or `error`.                                        |
 
 Stream capture needs `streamlink` and `ffmpeg` on the server; both are in the Docker image. Each
 capture costs roughly $0.01 in API usage.

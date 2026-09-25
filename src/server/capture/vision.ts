@@ -65,7 +65,9 @@ export async function readFrame(frame: CaptureFrame, gameNames: string[]): Promi
   try {
     response = await client.messages.parse({
       model: config.visionModel,
-      max_tokens: 1024,
+      // Headroom: adaptive thinking counts toward max_tokens, and a truncated
+      // reply would lose the JSON.
+      max_tokens: 4096,
       messages: [
         {
           role: 'user',
@@ -82,7 +84,9 @@ export async function readFrame(frame: CaptureFrame, gameNames: string[]): Promi
           ],
         },
       ],
-      output_config: { format: zodOutputFormat(Reading) },
+      // Reading a timer is simple: low effort keeps adaptive thinking short and
+      // captures fast. VISION_MODEL must support `effort` (Sonnet/Opus 4.6+).
+      output_config: { format: zodOutputFormat(Reading), effort: 'low' },
     });
   } catch (err) {
     if (err instanceof Anthropic.APIError) {

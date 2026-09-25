@@ -73,7 +73,7 @@ the room from `sessionStorage`.
 ## Stream capture
 
 `capture:run` (WebSocket) → `grabFrame` → `readFrame` (Claude, `VISION_MODEL`, default
-`claude-sonnet-4-6`) → `evaluateReading` compares with our timer at the frame's capture time →
+`claude-sonnet-5`, adaptive thinking at `effort: low`) → `evaluateReading` compares with our timer at the frame's capture time →
 result stored in `state.capture`, frame served from memory at
 `/api/rooms/{ref}/frames/{id}`. `capture:apply` back-dates the matched run's `startedAt` from the
 frame time, so processing latency doesn't matter. Set `CAPTURE_FRAME_FILE=fixtures/stream-frame.png`
