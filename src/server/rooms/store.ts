@@ -91,18 +91,20 @@ export class RoomStore {
   backup(ref: RoomRef, json: string, label = 'reset'): string {
     const file = this.file(ref);
     const prefix = `${path.basename(file)}.${label}-`;
-    let stamp = Date.now();
-    while (fs.existsSync(`${file}.${label}-${stamp}`)) stamp++;
+    const stamps = fs
+      .readdirSync(this.dir)
+      .filter((f) => f.startsWith(prefix) && /^\d+$/.test(f.slice(prefix.length)))
+      .map((f) => Number(f.slice(prefix.length)))
+      .sort((a, b) => b - a);
+    // Always sorts newest, so pruning can't take it — even if the clock stepped back.
+    const stamp = Math.max(Date.now(), (stamps[0] ?? 0) + 1);
     const target = `${file}.${label}-${stamp}`;
     const tmp = this.tmpFor(file);
     fs.writeFileSync(tmp, json);
     fs.renameSync(tmp, target);
-    const old = fs
-      .readdirSync(this.dir)
-      .filter((f) => f.startsWith(prefix) && /^\d+$/.test(f.slice(prefix.length)))
-      .sort((a, b) => Number(b.slice(prefix.length)) - Number(a.slice(prefix.length)))
-      .slice(BACKUP_LIMIT);
-    for (const f of old) fs.rmSync(path.join(this.dir, f), { force: true });
+    for (const old of stamps.slice(BACKUP_LIMIT - 1)) {
+      fs.rmSync(`${file}.${label}-${old}`, { force: true });
+    }
     return target;
   }
 
