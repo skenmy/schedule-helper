@@ -1,8 +1,12 @@
 node_modules
+dist
 data
-*.bak
+fixtures
+e2e
+test-results
+playwright-report
 .git
 .github
 .DS_Store
-example-layout.png
-public/index.html.bak
+*.md
+src/**/*.test.ts

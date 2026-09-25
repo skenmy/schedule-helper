@@ -1,10 +1,16 @@
-FROM node:22-slim
+# ── Build the client ─────────────────────────────────────────────────────────
+FROM node:24-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
 
-# System tools required by the stream-OCR pipeline:
-#   - streamlink: extracts the live Twitch HLS stream
-#   - ffmpeg:     single-frame capture from the streamlink stdout
-# OCR itself runs in the Anthropic API via Claude Vision (see ANTHROPIC_API_KEY).
-# ca-certificates so streamlink can reach Twitch over TLS.
+# ── Runtime ──────────────────────────────────────────────────────────────────
+FROM node:24-slim
+
+# streamlink + ffmpeg grab single frames from Twitch for stream capture; the
+# frame is then read by Claude (ANTHROPIC_API_KEY). ca-certificates for TLS.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         streamlink \
         ffmpeg \
@@ -12,23 +18,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-COPY server.js ./
-COPY public/ ./public/
+# The server is TypeScript, run directly by Node's built-in type stripping.
+COPY src/shared ./src/shared
+COPY src/server ./src/server
+COPY --from=build /app/dist/client ./dist/client
 
-ENV NODE_ENV=production
-ENV PORT=3000
-# Override at runtime to point at the mounted volume
-ENV DATA_DIR=/data
+ENV NODE_ENV=production \
+    PORT=3000 \
+    DATA_DIR=/data \
+    CLIENT_DIR=/app/dist/client \
+    NODE_NO_WARNINGS=1
 
-# Build-time identity — CI passes the short git SHA so the client can
-# detect when a new image has been published and prompt a reload.
+# CI passes the git SHA so open clients can prompt a reload after a deploy.
 ARG BUILD_SHA=dev
 ENV BUILD_SHA=${BUILD_SHA}
 
 EXPOSE 3000
-
-CMD ["node", "server.js"]
+CMD ["node", "src/server/index.ts"]
