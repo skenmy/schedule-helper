@@ -4,7 +4,7 @@
 
 import { z } from 'zod';
 import { ID_PATTERN, SOURCES } from './sources.ts';
-import type { AuthInfo, RoomRef, RoomState, Schedule } from './types.ts';
+import type { AuthInfo, RoomRef, RoomState, Schedule, UndoInfo } from './types.ts';
 
 export const RoomRefSchema = z.object({
   source: z.enum(SOURCES),
@@ -74,7 +74,8 @@ export const ClientActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('capture:apply') }),
 
   z.object({ action: z.literal('schedule:refresh') }),
-  z.object({ action: z.literal('undo') }),
+  /** `id` names the change the operator saw; a different latest change is left alone. */
+  z.object({ action: z.literal('undo'), id: z.number().int().optional() }),
 ]);
 
 export type ClientAction = z.infer<typeof ClientActionSchema>;
@@ -103,4 +104,6 @@ export type ServerMessage =
   | { type: 'state'; state: RoomState }
   | { type: 'presence'; count: number }
   | { type: 'pong'; t: number; serverTime: number }
-  | { type: 'error'; code: ErrorCode; message: string; action?: string };
+  /** Reply to a mutating action sent with a request id (`rid`). */
+  | { type: 'applied'; rid: string; undo: UndoInfo | null }
+  | { type: 'error'; code: ErrorCode; message: string; action?: string; rid?: string };

@@ -69,6 +69,8 @@
     if (live.state.captureBusy)
       return { tone: 'muted', text: 'Checking the stream…', apply: false };
     if (!capture || !line || live.now - capture.at > 30 * 60_000) return null;
+    // Taken before the live run changed: it says nothing about this run.
+    if (capture.currentKey !== live.state.currentKey) return null;
     if (capture.error)
       return { tone: 'warn', text: `Stream check failed: ${capture.error}`, apply: false };
     if (capture.runKey && capture.runKey !== line.key) {

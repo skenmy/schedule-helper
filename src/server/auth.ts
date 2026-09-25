@@ -8,9 +8,8 @@ import { config } from './config.ts';
 import { logger } from './logger.ts';
 
 const log = logger('auth');
-const TTL_OK_MS = 60_000;
-const TTL_ERROR_MS = 5_000;
-const cache = new Map<string, { at: number; ttl: number; value: AuthInfo }>();
+const TTL_MS = 60_000;
+const cache = new Map<string, { at: number; value: AuthInfo }>();
 
 function loginUrl(): string {
   const u = new URL(config.authLoginUrl);
@@ -46,7 +45,16 @@ export function actorName(auth: AuthInfo): string | null {
   return auth.user ? auth.user.display || auth.user.login : null;
 }
 
-export async function resolveIdentity(cookieHeader: string | undefined): Promise<AuthInfo> {
+export function anonymousIdentity(): AuthInfo {
+  return identity({});
+}
+
+/**
+ * Who is behind this cookie. Returns null when tools-skenmy can't be reached
+ * (network error or 5xx) so callers keep what they knew instead of demoting
+ * every operator to read-only during an auth-service restart.
+ */
+export async function resolveIdentity(cookieHeader: string | undefined): Promise<AuthInfo | null> {
   if (!config.toolsAuthUrl) {
     return {
       authenticated: false,
@@ -62,15 +70,18 @@ export async function resolveIdentity(cookieHeader: string | undefined): Promise
 
   const key = createHash('sha256').update(cookie).digest('base64url');
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < hit.ttl) return hit.value;
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.value;
 
   let value: AuthInfo;
-  let ttl = TTL_OK_MS;
   try {
     const u = new URL('/auth/me', config.toolsAuthUrl);
     u.searchParams.set('app', config.authAppId);
     u.searchParams.set('role', 'admin');
     const res = await fetch(u, { headers: { cookie }, signal: AbortSignal.timeout(5_000) });
+    if (res.status >= 500) {
+      log.warn(`/auth/me returned ${res.status}`);
+      return null;
+    }
     if (res.ok) {
       const body = (await res.json()) as Record<string, unknown>;
       value = identity({
@@ -84,10 +95,9 @@ export async function resolveIdentity(cookieHeader: string | undefined): Promise
     }
   } catch (err) {
     log.warn(`/auth/me failed: ${(err as Error).message}`);
-    value = identity({});
-    ttl = TTL_ERROR_MS;
+    return null;
   }
-  cache.set(key, { at: Date.now(), ttl, value });
+  cache.set(key, { at: Date.now(), value });
   if (cache.size > 5_000) cache.delete(cache.keys().next().value!);
   return value;
 }

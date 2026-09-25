@@ -9,7 +9,7 @@ import {
   type ServerMessage,
 } from '../shared/protocol.ts';
 import type { AuthInfo, RoomRef } from '../shared/types.ts';
-import { actorName, resolveIdentity } from './auth.ts';
+import { actorName, anonymousIdentity, resolveIdentity } from './auth.ts';
 import { config } from './config.ts';
 import { logger } from './logger.ts';
 import type { RoomRegistry } from './rooms/registry.ts';
@@ -18,6 +18,7 @@ import { UpstreamError } from './sources/index.ts';
 
 const log = logger('ws');
 const AUTH_REFRESH_MS = 5 * 60_000;
+const AUTH_RETRY_MS = 10_000;
 const HEARTBEAT_MS = 30_000;
 
 class Session implements RoomClient {
@@ -27,6 +28,7 @@ class Session implements RoomClient {
   /** Messages are handled strictly in arrival order. */
   private queue: Promise<void> = Promise.resolve();
   private alive = true;
+  private authRetry: NodeJS.Timeout | undefined;
   private readonly ws: WebSocket;
   private readonly cookie: string | undefined;
   private readonly registry: RoomRegistry;
@@ -54,6 +56,7 @@ class Session implements RoomClient {
     ws.on('close', () => {
       clearInterval(refresh);
       clearInterval(heartbeat);
+      clearTimeout(this.authRetry);
       this.room?.leave(this);
     });
   }
@@ -63,7 +66,15 @@ class Session implements RoomClient {
   }
 
   private async refreshAuth(): Promise<void> {
-    this.auth = await resolveIdentity(this.cookie);
+    const next = await resolveIdentity(this.cookie);
+    clearTimeout(this.authRetry);
+    if (next) {
+      this.auth = next;
+    } else {
+      // Auth service unreachable (e.g. mid-deploy): keep what we knew, retry soon.
+      this.auth ??= anonymousIdentity();
+      this.authRetry = setTimeout(() => void this.refreshAuth(), AUTH_RETRY_MS);
+    }
     this.send({ type: 'auth', auth: this.auth });
   }
 
@@ -85,6 +96,9 @@ class Session implements RoomClient {
       });
     }
     const action: ClientAction = parsed.data;
+    // Optional request id, echoed back so the client can match the outcome.
+    const rawRid = (json as { rid?: unknown }).rid;
+    const rid = typeof rawRid === 'string' ? rawRid.slice(0, 40) : undefined;
 
     if (action.action === 'ping') {
       return this.send({ type: 'pong', t: action.t, serverTime: Date.now() });
@@ -102,6 +116,7 @@ class Session implements RoomClient {
           ? 'You’re signed in, but don’t have operator access to this app.'
           : 'Sign in to control the schedule.',
         action: action.action,
+        rid,
       });
     }
     if (!this.room) {
@@ -110,11 +125,21 @@ class Session implements RoomClient {
         code: 'not_joined',
         message: 'Not in a room.',
         action: action.action,
+        rid,
       });
     }
     const res = this.room.dispatch(action, actorName(auth), (msg) => this.send(msg));
-    if (!res.ok)
-      this.send({ type: 'error', code: res.code, message: res.message, action: action.action });
+    if (!res.ok) {
+      this.send({
+        type: 'error',
+        code: res.code,
+        message: res.message,
+        action: action.action,
+        rid,
+      });
+    } else if (rid) {
+      this.send({ type: 'applied', rid, undo: res.undo });
+    }
   }
 
   private async join(ref: RoomRef): Promise<void> {

@@ -2,13 +2,21 @@
 // read-only snapshots; the server stays authoritative for everything shared.
 
 import { getContext, setContext } from 'svelte';
-import type { ClientAction, ServerMessage } from '../../shared/protocol.ts';
-import type { AuthInfo, RoomRef, RoomState, Schedule } from '../../shared/types.ts';
+import type {
+  ClientAction,
+  ErrorCode,
+  MutatingAction,
+  ServerMessage,
+} from '../../shared/protocol.ts';
+import type { AuthInfo, RoomRef, RoomState, Schedule, UndoInfo } from '../../shared/types.ts';
 import { clock } from './clock.svelte.ts';
 import { router } from './router.svelte.ts';
 import { toasts } from './toasts.svelte.ts';
 
 export type ConnectionStatus = 'connecting' | 'open' | 'reconnecting' | 'closed';
+
+export type ActionResult =
+  { ok: true; undo: UndoInfo | null } | { ok: false; code: ErrorCode; message: string };
 
 const PING_MS = 30_000;
 /** First build this tab saw; a different one later means a deploy landed. */
@@ -33,6 +41,10 @@ export class RoomConnection {
   #retryTimer: ReturnType<typeof setTimeout> | null = null;
   #pingTimer: ReturnType<typeof setInterval> | null = null;
   #closed = false;
+  /** Actions awaiting the server's verdict, by request id. Bookkeeping, not UI state. */
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
+  #pending = new Map<string, (result: ActionResult) => void>();
+  #nextRid = 1;
 
   constructor(ref: RoomRef) {
     this.ref = ref;
@@ -64,6 +76,10 @@ export class RoomConnection {
       this.#pingTimer = null;
       if (this.#ws !== ws) return;
       this.#ws = null;
+      // Anything awaiting a verdict won't get one from this socket.
+      for (const settle of [...this.#pending.values()]) {
+        settle({ ok: false, code: 'not_joined', message: 'Disconnected' });
+      }
       if (this.#closed) {
         this.status = 'closed';
         return;
@@ -76,6 +92,9 @@ export class RoomConnection {
 
   close(): void {
     this.#closed = true;
+    for (const settle of [...this.#pending.values()]) {
+      settle({ ok: false, code: 'not_joined', message: 'Closed' });
+    }
     if (this.#retryTimer) clearTimeout(this.#retryTimer);
     this.#ws?.close();
     this.#ws = null;
@@ -88,6 +107,34 @@ export class RoomConnection {
    * timer presses later would do more harm than good.
    */
   send(action: ClientAction): boolean {
+    if (!this.#canSend(action)) return false;
+    this.#raw(action);
+    return true;
+  }
+
+  /**
+   * Sends an action and resolves with the server's verdict — including the undo
+   * entry it created, if any. Resolves null when it couldn't be sent or no
+   * answer arrived.
+   */
+  request(action: MutatingAction): Promise<ActionResult | null> {
+    if (!this.#canSend(action)) return Promise.resolve(null);
+    const rid = String(this.#nextRid++);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.#pending.delete(rid);
+        resolve(null);
+      }, 10_000);
+      this.#pending.set(rid, (result) => {
+        clearTimeout(timer);
+        this.#pending.delete(rid);
+        resolve(result);
+      });
+      this.#raw({ ...action, rid });
+    });
+  }
+
+  #canSend(action: ClientAction): boolean {
     if (action.action !== 'join' && action.action !== 'ping' && !this.canWrite) {
       this.promptSignIn();
       return false;
@@ -100,7 +147,6 @@ export class RoomConnection {
       });
       return false;
     }
-    this.#raw(action);
     return true;
   }
 
@@ -127,7 +173,7 @@ export class RoomConnection {
     }
   }
 
-  #raw(action: ClientAction): void {
+  #raw(action: ClientAction & { rid?: string }): void {
     if (this.#ws?.readyState === WebSocket.OPEN) this.#ws.send(JSON.stringify(action));
   }
 
@@ -167,7 +213,12 @@ export class RoomConnection {
       case 'presence':
         this.presence = msg.count;
         break;
+      case 'applied':
+        this.#pending.get(msg.rid)?.({ ok: true, undo: msg.undo });
+        break;
       case 'error':
+        if (msg.rid)
+          this.#pending.get(msg.rid)?.({ ok: false, code: msg.code, message: msg.message });
         if (msg.action === 'schedule:refresh') this.refreshing = false;
         if (msg.action === 'join') {
           this.fatal = { code: msg.code, message: msg.message };

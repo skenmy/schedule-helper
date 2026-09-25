@@ -14,6 +14,7 @@ export function initialState(twitchChannel = ''): RoomState {
     finishedAt: null,
     runs: {},
     log: [],
+    logSeq: 0,
     message: null,
     announcement: null,
     twitchChannel,
@@ -38,6 +39,7 @@ export const UNDO_FIELDS = [
 export type UndoSnapshot = Pick<RoomState, (typeof UNDO_FIELDS)[number]>;
 
 export interface UndoEntry {
+  id: number;
   summary: string;
   actor: string | null;
   at: number;

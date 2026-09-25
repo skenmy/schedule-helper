@@ -3,7 +3,7 @@
 
 import type { MutatingAction, ServerMessage } from '../../shared/protocol.ts';
 import { roomKey } from '../../shared/sources.ts';
-import type { RoomRef, RoomState, Schedule } from '../../shared/types.ts';
+import type { RoomRef, RoomState, Schedule, UndoInfo } from '../../shared/types.ts';
 import { logger } from '../logger.ts';
 import { appendLog, reduce } from './reducer.ts';
 import { UNDO_LIMIT, takeSnapshot, type UndoEntry } from './state.ts';
@@ -28,7 +28,8 @@ export interface RoomServices {
 }
 
 export type DispatchResult =
-  { ok: true } | { ok: false; code: 'invalid' | 'conflict' | 'upstream'; message: string };
+  | { ok: true; undo: UndoInfo | null }
+  | { ok: false; code: 'invalid' | 'conflict' | 'upstream'; message: string };
 
 export class Room {
   readonly ref: RoomRef;
@@ -45,6 +46,10 @@ export class Room {
   private readonly services: RoomServices;
   private saveTimer: NodeJS.Timeout | null = null;
   private refreshing: Promise<void> | null = null;
+  /** Saves are serialised; a save older than what's on disk is dropped. */
+  private saveChain: Promise<void> = Promise.resolve();
+  private persistSeq = 0;
+  private committedSeq = 0;
 
   constructor(opts: {
     ref: RoomRef;
@@ -124,36 +129,48 @@ export class Room {
   ): DispatchResult {
     switch (action.action) {
       case 'undo':
-        return this.undo(actor);
+        return this.undo(actor, action.id);
       case 'schedule:refresh':
         void this.refreshSchedule({ by: actor ?? 'an operator', fresh: true }).catch((err: Error) =>
           reply({ type: 'error', code: 'upstream', message: err.message, action: action.action }),
         );
-        return { ok: true };
+        return { ok: true, undo: null };
       case 'capture:run':
         if (this.state.captureBusy) {
           return { ok: false, code: 'conflict', message: 'A capture is already running.' };
         }
         void this.services.capture(this, { auto: false, actor });
-        return { ok: true };
+        return { ok: true, undo: null };
     }
 
     const now = Date.now();
     const before = takeSnapshot(this.state);
     const res = reduce(this.state, action, { lines: this.schedule.lines, now, actor });
     if (!res.ok) return res;
-    if (!res.changed) return { ok: true };
+    if (!res.changed) return { ok: true, undo: null };
+    let undo: UndoInfo | null = null;
     if (res.undo) {
-      this.undoStack.push({ summary: res.undo, actor, at: now, snapshot: before });
+      // The entry shares its id with the revision this change commits as.
+      undo = { id: this.state.rev + 1, summary: res.undo, actor, at: now };
+      this.undoStack.push({ ...undo, snapshot: before });
       if (this.undoStack.length > UNDO_LIMIT) this.undoStack.shift();
     }
     this.commit(res.state);
-    return { ok: true };
+    return { ok: true, undo };
   }
 
-  private undo(actor: string | null): DispatchResult {
-    const entry = this.undoStack.pop();
-    if (!entry) return { ok: false, code: 'conflict', message: 'Nothing to undo.' };
+  /** Reverts the newest undoable change — only if it's the one the operator saw (`id`). */
+  private undo(actor: string | null, id?: number): DispatchResult {
+    const top = this.undoStack.at(-1);
+    if (!top) return { ok: false, code: 'conflict', message: 'Nothing to undo.' };
+    if (id != null && top.id !== id) {
+      return {
+        ok: false,
+        code: 'conflict',
+        message: `Not undone: someone has changed things since. The latest change is “${top.summary}”.`,
+      };
+    }
+    const entry = this.undoStack.pop()!;
     this.mutate((s) => {
       Object.assign(s, structuredClone(entry.snapshot));
       const by = entry.actor && entry.actor !== actor ? ` (by ${entry.actor})` : '';
@@ -165,7 +182,7 @@ export class Room {
         at: Date.now(),
       });
     });
-    return { ok: true };
+    return { ok: true, undo: null };
   }
 
   /** System-initiated change (capture results, schedule notices). */
@@ -179,7 +196,7 @@ export class Room {
     const top = this.undoStack.at(-1);
     next.rev = this.state.rev + 1;
     next.updatedAt = Date.now();
-    next.undo = top ? { summary: top.summary, actor: top.actor, at: top.at } : null;
+    next.undo = top ? { id: top.id, summary: top.summary, actor: top.actor, at: top.at } : null;
     this.state = next;
     this.broadcast({ type: 'state', state: next });
     this.notify();
@@ -193,6 +210,11 @@ export class Room {
     by = null,
     fresh = false,
   }: { by?: string | null; fresh?: boolean } = {}): Promise<void> {
+    // An operator's re-import must not silently merge into a background refresh
+    // (which wouldn't answer them if nothing changed): run it afterwards.
+    if (this.refreshing && by) {
+      return this.refreshing.catch(() => {}).then(() => this.refreshSchedule({ by, fresh }));
+    }
     this.refreshing ??= this.services
       .fetchSchedule(this.ref, { fresh })
       .then((schedule) => this.setSchedule(schedule, by))
@@ -257,22 +279,31 @@ export class Room {
   }
 
   private schedulePersist(): void {
-    if (!this.store || this.saveTimer) return;
+    const store = this.store;
+    if (!store || this.saveTimer) return;
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
-      this.store
-        ?.save(this.snapshot())
+      const seq = ++this.persistSeq;
+      const json = JSON.stringify(this.snapshot());
+      this.saveChain = this.saveChain
+        .then(async () => {
+          if (await store.save(this.ref, json, () => seq > this.committedSeq)) {
+            this.committedSeq = seq;
+          }
+        })
         .catch((err) => log.error(`save failed for ${this.key}`, err));
     }, SAVE_DEBOUNCE_MS);
   }
 
-  /** Synchronous write for shutdown and eviction. */
+  /** Synchronous write for shutdown and eviction; supersedes any save in flight. */
   flush(): void {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = null;
     if (!this.store) return;
+    const seq = ++this.persistSeq;
     try {
-      this.store.saveSync(this.snapshot());
+      this.store.saveSync(this.ref, JSON.stringify(this.snapshot()));
+      this.committedSeq = seq;
     } catch (err) {
       log.error(`flush failed for ${this.key}`, err);
     }

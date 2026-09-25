@@ -53,6 +53,9 @@ const UNDOABLE: ReadonlySet<ReducibleAction['action']> = new Set([
   'capture:apply',
 ]);
 
+const LIVE_RUN_REMOVED =
+  'The live run is no longer on the schedule. Select the run that’s live now.';
+
 class Rejection extends Error {
   readonly code: 'invalid' | 'conflict';
   constructor(code: 'invalid' | 'conflict', message: string) {
@@ -70,7 +73,9 @@ export function appendLog(
   state: RoomState,
   entry: { kind: LogKind; text: string; runKey?: RunKey | null; actor: string | null; at: number },
 ): void {
-  const id = (state.log[0]?.id ?? 0) + 1;
+  // Ids never repeat, even after the log is cleared (clients track "seen" by id).
+  const id = Math.max(state.logSeq ?? 0, state.log[0]?.id ?? 0) + 1;
+  state.logSeq = id;
   state.log.unshift({ id, runKey: null, ...entry });
   if (state.log.length > LOG_LIMIT) state.log.length = LOG_LIMIT;
 }
@@ -115,12 +120,15 @@ function apply(s: RoomState, action: ReducibleAction, ctx: ReduceContext): strin
   const ensureCurrent = (): { line: ScheduleLine; index: number } => {
     if (s.finishedAt != null)
       throw conflict('The marathon is complete. Select a run to reopen it.');
-    let index = currentIndex(lines, s);
-    if (index < 0) {
-      index = firstPlayableIndex(lines, s.runs);
-      if (index < 0) throw conflict('There are no runs on this schedule.');
-      s.currentKey = lines[index]!.key;
+    if (s.currentKey == null) {
+      const first = firstPlayableIndex(lines, s.runs);
+      if (first < 0) throw conflict('There are no runs on this schedule.');
+      s.currentKey = lines[first]!.key;
+      return { line: lines[first]!, index: first };
     }
+    const index = currentIndex(lines, s);
+    // Never guess: restarting some other run would corrupt its timings.
+    if (index < 0) throw conflict(LIVE_RUN_REMOVED);
     return { line: lines[index]!, index };
   };
 
@@ -199,6 +207,13 @@ function apply(s: RoomState, action: ReducibleAction, ctx: ReduceContext): strin
     }
 
     case 'run:advance': {
+      if (s.currentKey == null && s.finishedAt == null) {
+        // Nothing live yet: "next" is the first run, not the one after it.
+        const first = firstPlayableIndex(lines, s.runs);
+        if (first < 0) throw conflict('There are no runs on this schedule.');
+        moveTo(first);
+        return log(`↦ Advanced to ${lineTitle(lines[first]!)}`);
+      }
       const { line, index } = ensureCurrent();
       const next = nextPlayableIndex(lines, s.runs, index);
       if (next < 0) {
@@ -352,6 +367,10 @@ function apply(s: RoomState, action: ReducibleAction, ctx: ReduceContext): strin
       const c = s.capture;
       if (!c || c.error || c.elapsedSec == null)
         throw conflict('There’s no stream reading to apply.');
+      // A reading taken before someone changed the live run would rewind the marathon.
+      if (c.currentKey !== s.currentKey) {
+        throw conflict('The live run has changed since that capture. Capture again.');
+      }
       const key = c.runKey ?? c.currentKey ?? s.currentKey;
       if (!key) throw conflict('No run to apply the reading to.');
       const { line, index } = lineFor(key);

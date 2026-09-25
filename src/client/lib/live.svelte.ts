@@ -29,6 +29,7 @@ const EMPTY_STATE: RoomState = {
   finishedAt: null,
   runs: {},
   log: [],
+  logSeq: 0,
   message: null,
   announcement: null,
   twitchChannel: '',
@@ -90,9 +91,15 @@ export class Ops {
     return this.room.send(action);
   }
 
-  private withUndo(title: string, sent: boolean): void {
-    if (!sent) return;
-    toasts.push({ kind: 'info', title, action: { label: 'Undo', run: () => this.undo() } });
+  /**
+   * Sends an undoable action and, once the server confirms it changed something,
+   * offers an Undo pinned to that exact change (not whatever is newest by then).
+   */
+  private async withUndo(title: string, action: MutatingAction): Promise<void> {
+    const result = await this.room.request(action);
+    if (!result?.ok || !result.undo) return;
+    const { id } = result.undo;
+    toasts.push({ kind: 'info', title, action: { label: 'Undo', run: () => this.undo(id) } });
   }
 
   toggleTimer(): void {
@@ -115,12 +122,13 @@ export class Ops {
     this.send({ action: 'run:back' });
   }
 
-  undo(): void {
-    this.send({ action: 'undo' });
+  /** Undoes the change the operator is looking at (the latest one by default). */
+  undo(id: number | undefined = this.live.state.undo?.id): void {
+    this.send({ action: 'undo', id });
   }
 
   reset(): void {
-    this.withUndo('Timer reset', this.send({ action: 'timer:reset' }));
+    void this.withUndo('Timer reset', { action: 'timer:reset' });
   }
 
   setElapsed(seconds: number): void {
@@ -128,12 +136,12 @@ export class Ops {
   }
 
   select(key: RunKey): void {
-    this.withUndo(`Jumped to ${this.live.titleOf(key)}`, this.send({ action: 'run:select', key }));
+    void this.withUndo(`Jumped to ${this.live.titleOf(key)}`, { action: 'run:select', key });
   }
 
   skip(key?: RunKey): void {
     const title = this.live.titleOf(key ?? this.live.current?.key);
-    this.withUndo(`Skipped ${title}`, this.send({ action: 'run:skip', key }));
+    void this.withUndo(`Skipped ${title}`, { action: 'run:skip', key });
   }
 
   unskip(key: RunKey): void {
@@ -160,7 +168,7 @@ export class Ops {
   }
 
   applyCapture(): void {
-    this.withUndo('Applied the stream timer', this.send({ action: 'capture:apply' }));
+    void this.withUndo('Applied the stream timer', { action: 'capture:apply' });
   }
 
   configureDrift(enabled: boolean, intervalMin: number, thresholdSec: number): void {
@@ -196,7 +204,7 @@ export class Ops {
   }
 
   clearAnnouncement(): void {
-    this.withUndo('Announcement cleared', this.send({ action: 'announcement:clear' }));
+    void this.withUndo('Announcement cleared', { action: 'announcement:clear' });
   }
 }
 

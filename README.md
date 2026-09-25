@@ -66,28 +66,31 @@ so every screen shows the same elapsed time even when laptop clocks disagree.
 
 Client → server messages are validated with zod (`src/shared/protocol.ts`):
 
-| action                                                                            | data                                             |
-| --------------------------------------------------------------------------------- | ------------------------------------------------ |
-| `join`                                                                            | `{ ref: { source, event, slug } }`               |
-| `ping`                                                                            | `{ t }` (clock sync)                             |
-| `timer:start` / `timer:stop` / `timer:reset`                                      | —                                                |
-| `timer:set`                                                                       | `{ seconds }`                                    |
-| `run:select` / `run:unskip`                                                       | `{ key }`                                        |
-| `run:advance` / `run:back`                                                        | —                                                |
-| `run:skip`                                                                        | `{ key? }` (defaults to the current run)         |
-| `run:edit`                                                                        | `{ key, startedAt, endedAt }` (epoch ms or null) |
-| `runner:checkin`                                                                  | `{ key, status: 'ready' \| 'missing' \| null }`  |
-| `log:add` / `log:remove` / `log:clear`                                            | `{ text, kind }` / `{ id }` / —                  |
-| `twitch:set`                                                                      | `{ channel }`                                    |
-| `message:set` / `announcement:set`                                                | `{ text, color }`                                |
-| `message:clear` / `announcement:clear` / `capture:run` / `capture:apply` / `undo` | —                                                |
-| `drift:configure`                                                                 | `{ enabled, intervalMin, thresholdSec }`         |
-| `schedule:refresh`                                                                | —                                                |
+| action                                                                   | data                                             |
+| ------------------------------------------------------------------------ | ------------------------------------------------ |
+| `join`                                                                   | `{ ref: { source, event, slug } }`               |
+| `ping`                                                                   | `{ t }` (clock sync)                             |
+| `timer:start` / `timer:stop` / `timer:reset`                             | —                                                |
+| `timer:set`                                                              | `{ seconds }`                                    |
+| `run:select` / `run:unskip`                                              | `{ key }`                                        |
+| `run:advance` / `run:back`                                               | —                                                |
+| `run:skip`                                                               | `{ key? }` (defaults to the current run)         |
+| `run:edit`                                                               | `{ key, startedAt, endedAt }` (epoch ms or null) |
+| `runner:checkin`                                                         | `{ key, status: 'ready' \| 'missing' \| null }`  |
+| `log:add` / `log:remove` / `log:clear`                                   | `{ text, kind }` / `{ id }` / —                  |
+| `twitch:set`                                                             | `{ channel }`                                    |
+| `message:set` / `announcement:set`                                       | `{ text, color }`                                |
+| `message:clear` / `announcement:clear` / `capture:run` / `capture:apply` | —                                                |
+| `undo`                                                                   | `{ id? }` (refused if the latest change differs) |
+| `drift:configure`                                                        | `{ enabled, intervalMin, thresholdSec }`         |
+| `schedule:refresh`                                                       | —                                                |
 
-Everything except `join` and `ping` needs operator access. Server → client: `hello` (build id,
-server time), `auth`, `joined`, `schedule` (full schedule), `state` (full room state on every
-change), `presence`, `pong`, and `error` (`signin_required`, `forbidden`, `invalid`, `not_found`,
-`upstream`, `conflict`, `not_joined`).
+Everything except `join` and `ping` needs operator access. Any action may carry a string `rid`;
+the server then answers that sender with `applied` (`{ rid, undo }`, the undo entry the change
+created) or an `error` carrying the same `rid`. Server → client: `hello` (build id, server time),
+`auth`, `joined`, `schedule` (full schedule), `state` (full room state on every change),
+`presence`, `pong`, `applied`, and `error` (`signin_required`, `forbidden`, `invalid`,
+`not_found`, `upstream`, `conflict`, `not_joined`).
 
 ## Overlay feed
 
