@@ -11,6 +11,8 @@ export interface ConfirmRequest {
   body?: string;
   confirmLabel: string;
   danger?: boolean;
+  /** For irreversible actions: the word the operator must type to enable the button. */
+  typeToConfirm?: string;
   resolve: (ok: boolean) => void;
 }
 

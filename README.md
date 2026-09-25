@@ -21,6 +21,10 @@ Horaro schedule. Try it offline with the built-in demo marathon (`/demo/demo/mai
 - **Runner check-ins** per run (ready / missing), summarised for the next five runs.
 - **Undo and audit trail.** Every change is logged with who made it; undo reverts the most recent
   change to runs, timers, check-ins or broadcasts.
+- **Reset marathon.** Schedule tab → **Reset…** (or the command palette) starts the marathon over
+  for a rehearsal: no live run, no timings, skips or check-ins, an empty log, no broadcasts,
+  capture reading or undo history. The schedule, Twitch channel and drift settings stay. You type
+  `reset` to confirm, and the previous state is kept as a backup file (see below).
 - **Stream capture.** `streamlink → ffmpeg → Claude` reads the run timer and game off the live
   Twitch stream, compares it with ours and offers a one-click correction. The optional **auto
   drift check** does this every few minutes while a run is live and logs a warning when the
@@ -59,6 +63,10 @@ stack persist to `DATA_DIR/rooms/{source}--{event}--{slug}.json`, written atomic
 one-second debounce and flushed on shutdown. Schedules refresh from upstream every 10 minutes
 while someone is watching, and on demand via **Re-import**.
 
+A reset first writes the room's previous state to `{source}--{event}--{slug}.json.reset-{epoch ms}`
+next to the room file (the newest five are kept). To restore one, stop the server, copy it over the
+room file and start it again.
+
 Timers are absolute server timestamps. Clients measure their clock offset against the server,
 so every screen shows the same elapsed time even when laptop clocks disagree.
 
@@ -84,6 +92,7 @@ Client → server messages are validated with zod (`src/shared/protocol.ts`):
 | `undo`                                                                   | `{ id? }` (refused if the latest change differs) |
 | `drift:configure`                                                        | `{ enabled, intervalMin, thresholdSec }`         |
 | `schedule:refresh`                                                       | —                                                |
+| `room:reset`                                                             | — (clears progress; not undoable)                |
 
 Everything except `join` and `ping` needs operator access. Any action may carry a string `rid`;
 the server then answers that sender with `applied` (`{ rid, undo }`, the undo entry the change

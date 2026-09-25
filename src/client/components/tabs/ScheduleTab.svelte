@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Ellipsis, RefreshCw, Search } from '@lucide/svelte';
+  import { Ellipsis, RefreshCw, RotateCcw, Search } from '@lucide/svelte';
   import { lineTitle } from '../../../shared/derive.ts';
   import { upstreamUrl } from '../../../shared/sources.ts';
   import {
@@ -119,6 +119,15 @@
       <RefreshCw size={14} />
       {room.refreshing ? 'Re-importing…' : 'Re-import'}
     </button>
+    {#if room.canWrite}
+      <button
+        class="btn ghost sm reset"
+        title="Clear all progress and start the marathon over"
+        onclick={() => ops.resetMarathon()}
+      >
+        <RotateCcw size={14} /> Reset…
+      </button>
+    {/if}
   </div>
 </div>
 
@@ -258,6 +267,9 @@
   .actions {
     display: flex;
     gap: 6px;
+  }
+  .reset:hover {
+    color: var(--bad);
   }
   .sched {
     width: 100%;

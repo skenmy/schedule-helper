@@ -43,6 +43,10 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
   entries have ids; the client always sends the id it showed, so an undo never reverts a change
   someone made in between. Undo toasts appear only after the server's `applied` reply
   (`room.request()`), never optimistically.
+- **`room:reset` is the one irreversible action.** It lives on `Room` (not the reducer): writes a
+  backup via `store.backup()` (refusing to reset if that fails), clears progress/log/broadcasts/
+  capture/undo but keeps the schedule, Twitch channel and drift settings, and bumps `room.epoch` so
+  a capture in flight is discarded. The client asks for a typed confirmation (`ui.ask({ typeToConfirm })`).
 - **Never guess the live run.** If `currentKey` points at a run that's gone from the schedule,
   actions that need it are refused; a stale capture (taken before the live run changed) can't be
   applied.

@@ -20,6 +20,7 @@ import type { CheckIn, LogKind, RoomState, RunKey } from '../../shared/types.ts'
 import { clock } from './clock.svelte.ts';
 import type { RoomConnection } from './room.svelte.ts';
 import { toasts } from './toasts.svelte.ts';
+import { ui } from './ui.svelte.ts';
 
 export type Tone = 'on' | 'ahead' | 'behind' | 'idle';
 
@@ -160,6 +161,32 @@ export class Ops {
     if (this.send({ action: 'schedule:refresh' })) {
       this.room.refreshing = true;
       toasts.push({ kind: 'info', title: 'Re-importing schedule…', timeout: 2500 });
+    }
+  }
+
+  /** Clears the whole marathon for everyone, after a typed confirmation. */
+  async resetMarathon(): Promise<void> {
+    const running = this.live.timing?.phase === 'running';
+    const live = running
+      ? `${this.live.titleOf(this.live.current?.key)} is live right now.\n\n`
+      : '';
+    const ok = await ui.ask({
+      title: 'Reset the whole marathon?',
+      body:
+        `${live}Clears the live run, every run’s times, skips and check-ins, the event log, the announcement, the message board, the last stream capture and the undo history — for everyone.\n\n` +
+        'The schedule, Twitch channel and auto drift settings stay. This can’t be undone here, but a backup of the current state is kept on the server.',
+      confirmLabel: 'Reset marathon',
+      danger: true,
+      typeToConfirm: 'reset',
+    });
+    if (!ok) return;
+    const result = await this.room.request({ action: 'room:reset' });
+    if (result?.ok) {
+      toasts.push({
+        kind: 'success',
+        title: 'Marathon reset',
+        body: 'Back to a fresh start. The previous state was backed up on the server.',
+      });
     }
   }
 

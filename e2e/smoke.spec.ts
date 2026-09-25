@@ -75,3 +75,18 @@ test('phones get the mobile layout', async ({ browser }) => {
   await nav.getByRole('button', { name: 'Schedule' }).click();
   await expect(page.getByPlaceholder('Filter by game, runner, platform…')).toBeVisible();
 });
+
+// Keep last: it wipes the shared demo room.
+test('the whole marathon can be reset after typing to confirm', async ({ page }) => {
+  await openDemo(page);
+  await page.getByRole('button', { name: 'Reset…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Reset the whole marathon?' });
+  const confirm = dialog.getByRole('button', { name: 'Reset marathon' });
+  await expect(confirm).toBeDisabled();
+  await dialog.getByLabel('Type reset to confirm').fill('reset');
+  await confirm.click();
+  await expect(page.getByText('Marathon reset', { exact: true })).toBeVisible();
+  const activity = page.getByRole('region', { name: 'Recent activity' });
+  await expect(activity).toContainText('Reset the marathon');
+  await expect(activity).not.toContainText('Started');
+});

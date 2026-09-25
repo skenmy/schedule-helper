@@ -74,6 +74,8 @@ export const ClientActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('capture:apply') }),
 
   z.object({ action: z.literal('schedule:refresh') }),
+  /** Back to a fresh start: clears progress, log, broadcasts and undo; keeps settings. */
+  z.object({ action: z.literal('room:reset') }),
   /** `id` names the change the operator saw; a different latest change is left alone. */
   z.object({ action: z.literal('undo'), id: z.number().int().optional() }),
 ]);

@@ -19,7 +19,7 @@ import { LOG_LIMIT } from './state.ts';
 /** Actions handled by the reducer; the rest need I/O and live on Room. */
 export type ReducibleAction = Exclude<
   MutatingAction,
-  { action: 'capture:run' | 'schedule:refresh' | 'undo' }
+  { action: 'capture:run' | 'schedule:refresh' | 'room:reset' | 'undo' }
 >;
 
 export interface ReduceContext {
