@@ -1,133 +1,145 @@
 # schedule-helper
 
-Operator console for running a speedrunning marathon. Pulls the schedule
-from [Oengus](https://oengus.io) or [Horaro](https://horaro.net), syncs
-state across every operator's browser in real time, and verifies the
-on-stream timer against the live Twitch broadcast via Claude Vision.
+The operator console for speedrunning marathons. Paste an [Oengus](https://oengus.io) or
+[Horaro](https://horaro.net) schedule and every operator, host and venue screen shares one
+live timer, delta and run order.
 
-Live at **<https://schedule.skenmy.com>** — built for UKSG marathons
-but works against any Oengus/Horaro schedule.
+Live at **<https://schedule.skenmy.com>**. Built for UKSG marathons, works with any Oengus or
+Horaro schedule. Try it offline with the built-in demo marathon (`/demo/demo/main`).
 
 ## What it does
 
-- **Real-time room sync.** Every browser on the same `#marathonId/slug`
-  hash sees the same state — timer, current run, run-status pills,
-  edited times, message panel, kiosk config. Anyone can drive it; the
-  server holds the authoritative state and broadcasts full snapshots
-  on every mutation (no deltas, no merge logic).
-- **Schedule timeline + Conductor UI.** Runs render as blocks on a
-  horizontal timeline with two playheads (scheduled vs actual). The
-  "drift gap" between them is the live delta — colour-coded ahead /
-  behind / on-time. Setup blocks are stacked separately so you can see
-  the buffer between runs.
-- **Live elapsed timer.** Click the digits to set elapsed manually
-  (useful when you start the timer late). Keyboard: `Space` toggle,
-  `N` advance, `⌘K` palette.
-- **Run-edit modal.** Override actualStart / actualEnd / actualDuration
-  per row; missing fields are inferred from the other two and broadcast.
-- **Stream OCR.** `streamlink → ffmpeg → Claude Vision` grabs a single
-  frame from the live Twitch channel, asks Claude (`claude-sonnet-4-6`
-  by default) for the elapsed timer + estimate + the best-matched game
-  from the loaded schedule, and returns them as structured JSON. The
-  endpoint is **admin-gated** server-side — anonymous viewers get a
-  403 so nobody can racket up API costs by hitting Capture. Cost is
-  ~$0.005–0.015 per capture; ~$1 covers a full marathon day.
-- **Kiosk mode.** `?kiosk=1` overlays a configurable multi-panel grid
-  (delta, current, on-deck, schedule, controls, log, message, marathon,
-  progress, timing, twitch). 10 preset layouts + four canned presets
-  (host / tech / runner green room / schedule-only).
-- **Mobile shell.** Below 820 px the layout swaps to a single column,
-  bottom-nav (Now / Up next / Schedule / Log / More), sticky Start /
-  Next action bar, swipe between views, long-press a row to open the
-  action sheet, pull-to-refresh, haptics, and Screen Wake Lock while
-  the timer is running.
-- **Auth gate.** Read access is open to everyone — viewers see the
-  schedule update live. Any state-mutating action (timer, advance,
-  edit, runner status, log, message, twitch channel) is gated behind a
-  Twitch sign-in via [tools.skenmy.com](https://tools.skenmy.com). The
-  signed-in operator's name + role is shown in the chrome.
-- **Twitch overlay.** A tiny iframe of the configured channel docks
-  into the chrome so the operator can watch the stream alongside the
-  controls.
+- **Real-time sync.** The server owns each schedule's state and broadcasts every change to every
+  connected browser. Anyone signed in as an operator can drive it; everyone else watches live.
+- **Delta and projections.** Ahead / behind is measured against the live run's slot (±15 min
+  counts as on schedule). Upcoming start times and the projected finish chain every remaining
+  estimate and setup from where the live run will realistically end.
+- **Timeline.** A plan lane (scheduled) over a live lane (actual and projected), so drift is
+  visible at a glance. 3h / 6h / 12h / all zoom.
+- **Run control.** Start, stop, resume, advance, back, skip / restore, set the timer after a late
+  start, and edit actual start/end times (absolute timestamps — multi-day marathons work).
+- **Runner check-ins** per run (ready / missing), summarised for the next five runs.
+- **Undo and audit trail.** Every change is logged with who made it; undo reverts the most recent
+  change to runs, timers, check-ins or broadcasts.
+- **Stream capture.** `streamlink → ffmpeg → Claude` reads the run timer and game off the live
+  Twitch stream, compares it with ours and offers a one-click correction. The optional **auto
+  drift check** does this every few minutes while a run is live and logs a warning when the
+  timers diverge or the stream shows a different run.
+- **Broadcast.** An announcement banner for all operators, and a message board for kiosk screens.
+- **Kiosk mode.** Configurable multi-panel displays for venue TVs (delta, now running, up next,
+  check-ins, schedule, progress, clock, message board, controls, log, stream). The layout lives in
+  the URL, so set up a screen once and bookmark it. Kiosks keep the screen awake.
+- **Overlay feed.** Read-only JSON and Server-Sent Events for stream overlays, NodeCG or bots.
+- **Mobile layout.** Below 820 px: bottom navigation, a thumb-reachable Start / Next bar, swipe
+  between views, haptics and screen wake lock while a run is live.
+- Command palette (⌘K / Ctrl K), keyboard shortcuts (`?` lists them), five colour themes, the UKSG
+  brand theme for `uksg*` marathons, and a surprise if you type `huds`.
 
 ## Architecture
 
-Two files do almost everything:
+```
+src/
+  shared/   Pure TypeScript used by both sides: domain types, the WebSocket protocol (zod),
+            time formatting, schedule-URL parsing, and all schedule maths (derive.ts).
+  server/   Node HTTP + WebSocket server, run directly as TypeScript (Node type stripping).
+    rooms/    reducer.ts (pure state transitions), room.ts (undo, broadcast, persistence),
+              registry.ts (load/evict), store.ts (atomic JSON files)
+    sources/  Oengus, Horaro and demo adapters behind a cached facade
+    capture/  frame grab, Claude Vision reading, drift checks
+    feed.ts   overlay feed · http.ts routes · ws.ts sessions · auth.ts tools.skenmy.com
+  client/   Svelte 5 (runes) single-page app, built by Vite
+    lib/        room connection, derived view model, clock, prefs, router, kiosk config
+    views/      Landing, Conductor (desktop), MobileConductor, Kiosk
+    components/ conductor panels, workspace tabs, dialogs, kiosk panels, UI primitives
+```
 
-- `server.js` (~900 lines) — Express + the `ws` library on `/ws`.
-  Hosts the Oengus/Horaro proxies, the OCR pipeline, the room model
-  (state object + dirty flag + debounced disk persist), and the
-  auth check against `tools-skenmy`.
-- `public/index.html` + `public/conductor/{styles.css,tabs.js,edit.js,
-  app.js,kiosk.js,mobile.css,mobile.js}` — the Conductor UI. No bundler,
-  no framework. `render()` rebuilds the DOM on every state arrival;
-  `tickFrame()` only updates text content per tick to keep the timeline
-  smooth.
+Rooms are keyed by `{source}/{event}/{slug}` and served at the same path (for example
+`/oengus/uksgred26/main`). Old `#event/slug` links redirect. Each room's schedule, state and undo
+stack persist to `DATA_DIR/rooms/{source}--{event}--{slug}.json`, written atomically with a
+one-second debounce and flushed on shutdown. Schedules refresh from upstream every 10 minutes
+while someone is watching, and on demand via **Re-import**.
 
-Each room is keyed by `{marathonId}/{slug}`. The state file lives at
-`./data/{marathonId}--{slug}.json` (or `DATA_DIR` if set) and is
-written atomically (`.tmp` → rename) with a 1-second debounce. Rooms
-expire from memory 7 days after the last client leaves, but the JSON
-on disk is permanent.
+Timers are absolute server timestamps. Clients measure their clock offset against the server,
+so every screen shows the same elapsed time even when laptop clocks disagree.
 
-## WebSocket protocol
+## WebSocket protocol (`/ws`)
 
-Client → server `{ action, ...data }`:
+Client → server messages are validated with zod (`src/shared/protocol.ts`):
 
-| action | data |
-|---|---|
-| `join` | `{ marathonId, slug, scheduleSource? }` |
-| `timer:start` | `{ seconds }` |
-| `timer:stop` / `timer:reset` | `{}` |
-| `run:select` | `{ index }` |
-| `run:advance` / `run:skip` | `{}` |
-| `runner:cycle` | `{ index }` (per-run, cycles unchecked → ready → missing) |
-| `log:add` | `{ text, type? }` (type ∈ note/tech/runner/start/delta) |
-| `log:remove` / `log:clear` | `{ id }` / `{}` |
-| `twitch:set` | `{ channel }` |
-| `run:edit` | `{ index, actualStart?, actualEnd?, actualDuration? }` (all seconds) |
-| `run:editClear` | `{ index }` |
-| `message:set` / `message:clear` | `{ text, color }` / `{}` |
+| action                                                                            | data                                             |
+| --------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `join`                                                                            | `{ ref: { source, event, slug } }`               |
+| `ping`                                                                            | `{ t }` (clock sync)                             |
+| `timer:start` / `timer:stop` / `timer:reset`                                      | —                                                |
+| `timer:set`                                                                       | `{ seconds }`                                    |
+| `run:select` / `run:unskip`                                                       | `{ key }`                                        |
+| `run:advance` / `run:back`                                                        | —                                                |
+| `run:skip`                                                                        | `{ key? }` (defaults to the current run)         |
+| `run:edit`                                                                        | `{ key, startedAt, endedAt }` (epoch ms or null) |
+| `runner:checkin`                                                                  | `{ key, status: 'ready' \| 'missing' \| null }`  |
+| `log:add` / `log:remove` / `log:clear`                                            | `{ text, kind }` / `{ id }` / —                  |
+| `twitch:set`                                                                      | `{ channel }`                                    |
+| `message:set` / `announcement:set`                                                | `{ text, color }`                                |
+| `message:clear` / `announcement:clear` / `capture:run` / `capture:apply` / `undo` | —                                                |
+| `drift:configure`                                                                 | `{ enabled, intervalMin, thresholdSec }`         |
+| `schedule:refresh`                                                                | —                                                |
 
-Server → client:
+Everything except `join` and `ping` needs operator access. Server → client: `hello` (build id,
+server time), `auth`, `joined`, `schedule` (full schedule), `state` (full room state on every
+change), `presence`, `pong`, and `error` (`signin_required`, `forbidden`, `invalid`, `not_found`,
+`upstream`, `conflict`, `not_joined`).
 
-- `{ type: 'state', ...stateFields }` — full state, broadcast on every mutation
-- `{ type: 'users', count }` — connected-client count
-- `{ type: 'auth', authenticated, canWrite, root, user, loginUrl }` — per-socket identity (sent on connect + every 5 min)
-- `{ type: 'denied', action, reason, loginUrl }` — sent to the originator when a mutation is blocked
+## Overlay feed
 
-## Env
+Read-only and CORS-open — the same information any viewer can already see.
 
-| var | default | notes |
-|---|---|---|
-| `PORT` | `3000` | |
-| `DATA_DIR` | `./data` | Room JSON lives here; mount as a volume in prod. |
-| `TOOLS_AUTH_URL` | *(empty)* | URL of tools-skenmy. Empty = wide-open (local dev). |
-| `AUTH_APP_ID` | `schedule` | Passed to `/auth/me?app=…` when checking write permission. |
-| `ANTHROPIC_API_KEY` | *(empty)* | Required for `/api/capture`. Without it the endpoint returns 500 to admins. |
-| `VISION_MODEL` | `claude-sonnet-4-6` | Override to swap to a cheaper / faster vision model. |
-| `BUILD_SHA` | `dev` | Build-time arg; CI passes the short git SHA so clients can prompt a reload after a new deploy. |
+- `GET /api/rooms/{source}/{event}/{slug}/feed` — JSON snapshot: event, phase, current run (with
+  `startedAt` so overlays can tick the timer locally), next five runs with projected starts and
+  check-ins, delta, scheduled and projected end, progress, message and announcement.
+- `GET /api/rooms/{source}/{event}/{slug}/feed/stream` — the same snapshot as Server-Sent Events
+  (`event: feed`), pushed on every change.
 
-System tools needed in the container: `streamlink`, `ffmpeg`. Baked
-into the published image. Stream OCR itself runs via the Anthropic
-API — set `ANTHROPIC_API_KEY` (and optionally `VISION_MODEL`) on the
-deploy box.
+## Environment
 
-## Local dev
+| var                  | default                                      | notes                                                               |
+| -------------------- | -------------------------------------------- | ------------------------------------------------------------------- |
+| `PORT`               | `3000`                                       |                                                                     |
+| `DATA_DIR`           | `./data`                                     | Room files live in `DATA_DIR/rooms/`. Mount as a volume.            |
+| `TOOLS_AUTH_URL`     | _(empty)_                                    | tools-skenmy base URL. Empty = everyone can write (local dev only). |
+| `AUTH_APP_ID`        | `schedule`                                   | Passed to `/auth/me?app=…&role=admin`.                              |
+| `AUTH_LOGIN_URL`     | `https://tools.skenmy.com/auth/twitch/login` | Sign-in link shown to viewers.                                      |
+| `AUTH_MANAGE_URL`    | `https://tools.skenmy.com/`                  | Linked from the user chip.                                          |
+| `PUBLIC_URL`         | `https://schedule.skenmy.com`                | Where sign-in redirects back to.                                    |
+| `ANTHROPIC_API_KEY`  | _(empty)_                                    | Required for stream capture.                                        |
+| `VISION_MODEL`       | `claude-sonnet-4-6`                          | Model that reads stream frames.                                     |
+| `BUILD_SHA`          | `dev`                                        | Set by CI; clients offer a reload when it changes.                  |
+| `CAPTURE_FRAME_FILE` | _(empty)_                                    | Dev/testing: use this image instead of grabbing a live frame.       |
+| `CLIENT_DIR`         | `dist/client`                                | Built client assets.                                                |
+| `LOG_LEVEL`          | `info`                                       | `debug`, `info`, `warn` or `error`.                                 |
+
+Stream capture needs `streamlink` and `ffmpeg` on the server; both are in the Docker image. Each
+capture costs roughly $0.01 in API usage.
+
+## Development
 
 ```sh
 npm install
-npm start
-open http://localhost:3000
+npm run dev          # server on :3000 (restarts on change) + Vite on :5173 with HMR
+open http://localhost:5173/demo/demo/main
 ```
 
-State persists to `./data/`. Paste any Oengus URL on the landing page
-(e.g. `https://oengus.io/marathon/uksggrn26/schedule/event`) or a
-Horaro URL (`https://horaro.net/esa/2026-winter1`). No auth is enforced
-unless you set `TOOLS_AUTH_URL`.
+| command            | what it does                                                                     |
+| ------------------ | -------------------------------------------------------------------------------- |
+| `npm run check`    | typecheck (server under Node rules, client via svelte-check), lint, format check |
+| `npm test`         | unit + integration tests (Vitest)                                                |
+| `npm run test:e2e` | browser smoke tests (Playwright; builds and starts the server)                   |
+| `npm run build`    | production client build into `dist/client`                                       |
+| `npm start`        | production server                                                                |
+
+Node 22.18+ is required locally (native TypeScript type stripping); the image uses Node 24.
 
 ## Deploy
 
-Standard skenmy-vps pattern: a push to `main` triggers CI which builds
-+ pushes `ghcr.io/skenmy/schedule-helper`, then fires the deploy
-workflow on `skenmy/skenmy-vps`. Live at <https://schedule.skenmy.com>.
+A push to `main` runs the checks and browser tests, builds and pushes
+`ghcr.io/skenmy/schedule-helper`, then triggers the `skenmy/skenmy-vps` deploy workflow. The
+container listens on `3000` and keeps state in `/data`.
