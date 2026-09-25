@@ -23,6 +23,7 @@ export interface RoomFile {
 export class RoomStore {
   readonly dir: string;
   private writes = 0;
+  private lastBackupStamp = 0;
 
   constructor(dataDir: string) {
     this.dir = path.join(dataDir, 'rooms');
@@ -91,8 +92,10 @@ export class RoomStore {
   backup(ref: RoomRef, json: string, label = 'reset'): string {
     const file = this.file(ref);
     const prefix = `${path.basename(file)}.${label}-`;
-    let stamp = Date.now();
-    while (fs.existsSync(`${file}.${label}-${stamp}`)) stamp++;
+    // A monotonic counter, not existsSync: pruning can delete an earlier backup's
+    // file, which would otherwise free its stamp for reuse by a same-millisecond call.
+    const stamp = Math.max(Date.now(), this.lastBackupStamp + 1);
+    this.lastBackupStamp = stamp;
     const target = `${file}.${label}-${stamp}`;
     const tmp = this.tmpFor(file);
     fs.writeFileSync(tmp, json);
