@@ -26,7 +26,7 @@ export const config = {
   publicUrl: (env.PUBLIC_URL || 'https://schedule.skenmy.com').replace(/\/$/, ''),
 
   anthropicApiKey: env.ANTHROPIC_API_KEY || '',
-  visionModel: env.VISION_MODEL || 'claude-sonnet-4-6',
+  visionModel: env.VISION_MODEL || 'claude-sonnet-5',
   /** Dev/testing: serve this image instead of grabbing a live Twitch frame. */
   captureFrameFile: env.CAPTURE_FRAME_FILE || '',
 } as const;
