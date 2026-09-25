@@ -7,7 +7,7 @@ import type { ServerMessage } from '../shared/protocol.ts';
 import type { RoomRef, RoomState, Schedule } from '../shared/types.ts';
 import { startServer, type RunningServer } from './server.ts';
 import { demoSchedule } from './sources/demo.ts';
-import { UpstreamError } from './sources/index.ts';
+import { UpstreamError, fetchSchedule } from './sources/index.ts';
 
 const REF: RoomRef = { source: 'oengus', event: 'testmarathon', slug: 'main' };
 
@@ -81,7 +81,8 @@ async function boot() {
     port: 0,
     dataDir,
     services: {
-      fetchSchedule: async (ref) => {
+      fetchSchedule: async (ref, opts) => {
+        if (ref.source === 'demo') return fetchSchedule(ref, opts);
         if (ref.event === 'missing') throw new UpstreamError('Not found', 404);
         return fixtureSchedule(ref);
       },
@@ -159,6 +160,47 @@ describe('websocket protocol', () => {
   });
 });
 
+describe('undo and acknowledgements', () => {
+  it('acknowledges requests with the undo entry they created', async () => {
+    const c = await connect();
+    await c.join();
+    const applied = c.next('applied', (m) => m.rid === 'r1');
+    c.send({ action: 'run:skip', key: 'd5', rid: 'r1' });
+    const { undo } = await applied;
+    expect(undo).toMatchObject({ summary: expect.stringMatching(/Skipped/) });
+
+    const noop = c.next('applied', (m) => m.rid === 'r2');
+    c.send({ action: 'run:skip', key: 'd5', rid: 'r2' });
+    expect((await noop).undo).toBeNull();
+  });
+
+  it('only undoes the change the operator saw', async () => {
+    const a = await connect();
+    const b = await connect();
+    await a.join();
+    await b.join();
+    const skipped = a.next('applied', (m) => m.rid === 'skip');
+    a.send({ action: 'run:skip', key: 'd5', rid: 'skip' });
+    const skipUndo = (await skipped).undo!;
+
+    const checked = b.next('applied', (m) => m.rid === 'ci');
+    b.send({ action: 'runner:checkin', key: 'd6', status: 'ready', rid: 'ci' });
+    await checked;
+
+    const refused = a.next('error', (m) => m.rid === 'u1');
+    a.send({ action: 'undo', id: skipUndo.id, rid: 'u1' });
+    expect((await refused).message).toMatch(/changed things since/);
+
+    // Undoing the latest (the check-in) by its id works, then the skip is next.
+    const latest = b.messages.filter((m) => m.type === 'state').at(-1)!;
+    const latestId = latest.type === 'state' ? latest.state.undo!.id : 0;
+    const reverted = a.nextState((s) => s.runs.d6?.checkIn == null && s.undo?.id === skipUndo.id);
+    b.send({ action: 'undo', id: latestId, rid: 'u2' });
+    const state = await reverted;
+    expect(state.runs.d5?.skipped).toBe(true);
+  });
+});
+
 describe('overlay feed', () => {
   it('serves JSON with CORS and streams updates', async () => {
     const res = await fetch(
@@ -188,6 +230,13 @@ describe('overlay feed', () => {
     c.send({ action: 'timer:start' });
     await readUntil('"phase":"running"');
     controller.abort();
+  });
+
+  it('only serves the one demo room', async () => {
+    const bad = await fetch(`http://localhost:${server.port}/api/rooms/demo/other/main/feed`);
+    expect(bad.status).toBe(404);
+    const events = await fetch(`http://localhost:${server.port}/api/events/demo/other`);
+    expect(events.status).toBe(404);
   });
 
   it('rejects invalid refs', async () => {

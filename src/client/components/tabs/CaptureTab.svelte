@@ -19,7 +19,9 @@
   const drifting = $derived(
     c?.driftSec != null && Math.abs(c.driftSec) > live.state.drift.thresholdSec,
   );
-  const canApply = $derived(!!c && !c.error && c.elapsedSec != null);
+  /** The live run changed since this capture; applying it would rewind the marathon. */
+  const stale = $derived(!!c && c.currentKey !== live.state.currentKey);
+  const canApply = $derived(!!c && !c.error && c.elapsedSec != null && !stale);
 
   // Local drafts: other operators' changes never clobber what you're typing.
   let channel = $state(live.state.twitchChannel);
@@ -53,8 +55,16 @@
     channelDirty = false;
   }
 
+  /** Whole number within range; blank or junk falls back to the current setting. */
+  function clampInt(value: number, min: number, max: number, fallback: number): number {
+    const n = Math.round(Number(value));
+    return Number.isFinite(n) && n > 0 ? Math.min(max, Math.max(min, n)) : fallback;
+  }
+
   function saveDrift() {
-    ops.configureDrift(driftEnabled, Math.round(intervalMin), Math.round(thresholdSec));
+    intervalMin = clampInt(intervalMin, 1, 60, live.state.drift.intervalMin);
+    thresholdSec = clampInt(thresholdSec, 2, 600, live.state.drift.thresholdSec);
+    ops.configureDrift(driftEnabled, intervalMin, thresholdSec);
   }
 </script>
 
@@ -139,6 +149,11 @@
           {/if}
           <span class="muted">Captured {relTime(c.at, live.now)}.</span>
         </p>
+        {#if stale && !c.error}
+          <p class="hint">
+            The live run has changed since this capture. Capture again to apply it.
+          </p>
+        {/if}
         {#if canApply}
           <button
             class="btn {mismatch || drifting ? 'primary' : ''}"

@@ -39,7 +39,13 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
 - **Times are absolute epoch ms** everywhere (including edits). Clients use `clock.now` /
   `clock.read()` (server-corrected), never raw `Date.now()`, for anything compared with state.
 - **Undoable actions** are listed in `reducer.ts` (`UNDOABLE`); undo restores `UNDO_FIELDS` from a
-  snapshot. The log, capture results and drift settings are deliberately not undoable.
+  snapshot. The log, capture results and drift settings are deliberately not undoable. Undo
+  entries have ids; the client always sends the id it showed, so an undo never reverts a change
+  someone made in between. Undo toasts appear only after the server's `applied` reply
+  (`room.request()`), never optimistically.
+- **Never guess the live run.** If `currentKey` points at a run that's gone from the schedule,
+  actions that need it are refused; a stale capture (taken before the live run changed) can't be
+  applied.
 - **Never let broadcasts clobber drafts.** The server sends a new state object on every change
   and the clock ticks every 250 ms. Effects that seed form fields must read state via `untrack`
   or key off a primitive `$derived` (see `CaptureTab.svelte`, `EditTimesDialog.svelte`).

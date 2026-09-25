@@ -242,3 +242,51 @@ describe('capture:apply', () => {
     expect(fail(initialState(), { action: 'capture:apply' }).code).toBe('conflict');
   });
 });
+
+describe('review follow-ups', () => {
+  it('advancing before anything is live selects the first run', () => {
+    const { state } = run(initialState(), { action: 'run:advance' });
+    expect(state.currentKey).toBe('a');
+  });
+
+  it('refuses to guess when the live run was removed from the schedule', () => {
+    const s = initialState();
+    s.currentKey = 'gone';
+    s.runs.a = { startedAt: T0, endedAt: T0 + 30 * MIN };
+    expect(fail(s, { action: 'timer:start' }).code).toBe('conflict');
+    expect(fail(s, { action: 'run:advance' }).code).toBe('conflict');
+    expect(fail(s, { action: 'timer:set', seconds: 5 }).code).toBe('conflict');
+  });
+
+  it('rejects applying a capture taken before the live run changed', () => {
+    const s = initialState();
+    s.currentKey = 'b';
+    s.capture = {
+      id: 'x',
+      at: T0,
+      auto: false,
+      by: 'op',
+      channel: 'uksg',
+      error: null,
+      elapsedSec: 300,
+      estimateSec: null,
+      game: 'Game a',
+      runKey: 'a',
+      confidence: 'high',
+      ourElapsedSec: 290,
+      driftSec: 10,
+      currentKey: 'a',
+    };
+    const res = fail(s, { action: 'capture:apply' }, T0 + MIN);
+    expect(res.message).toMatch(/changed since that capture/);
+  });
+
+  it('never reuses log ids, even after clearing the log', () => {
+    let s = run(initialState(), { action: 'log:add', text: 'one', kind: 'note' }).state;
+    s = run(s, { action: 'log:add', text: 'two', kind: 'note' }).state;
+    s = run(s, { action: 'log:clear' }).state;
+    expect(s.log.map((e) => e.id)).toEqual([3]);
+    s = run(s, { action: 'log:add', text: 'three', kind: 'note' }).state;
+    expect(s.log[0]?.id).toBe(4);
+  });
+});

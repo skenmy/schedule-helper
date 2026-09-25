@@ -113,6 +113,8 @@ export interface CaptureResult {
 }
 
 export interface UndoInfo {
+  /** Identifies the entry, so an undo can't revert a different change. */
+  id: number;
   summary: string;
   actor: string | null;
   at: number;
@@ -127,6 +129,8 @@ export interface RoomState {
   runs: Record<RunKey, RunRecord>;
   /** Newest first. Doubles as the audit trail. */
   log: LogEntry[];
+  /** Last log id handed out; ids never repeat. */
+  logSeq: number;
   /** Message board shown on kiosk message panels. */
   message: Broadcast | null;
   /** Banner pinned to the top of every operator's screen. */

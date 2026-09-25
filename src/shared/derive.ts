@@ -95,7 +95,8 @@ export function computeDelta(lines: Lines, state: RoomState, now: number): numbe
   let delta = (line.scheduledStart - actualStart) / 1000;
   for (let j = cur + 1; j < lines.length; j++) {
     const next = lines[j]!.scheduledStart;
-    if (next == null) continue;
+    // A skipped run's slot isn't a deadline: the run after it can still start on time.
+    if (next == null || state.runs[lines[j]!.key]?.skipped) continue;
     if (now > next) delta = Math.min(delta, (next - now) / 1000);
     break;
   }
@@ -147,7 +148,8 @@ export function project(lines: Lines, state: RoomState, now: number): (Span | nu
       end = t.endedAt!;
     }
     out[i] = { start, end };
-    cursor = end + line.setupSec * 1000;
+    // A finished run waiting to be advanced can't make the next one start in the past.
+    cursor = Math.max(end + line.setupSec * 1000, now);
   } else {
     const first = scheduledStartOf(lines);
     cursor = first != null && first > now ? first : now;

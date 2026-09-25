@@ -1,21 +1,33 @@
 // Schedule sources behind one cached interface.
 
+import { DEMO_REF } from '../../shared/sources.ts';
 import type { RoomRef, Schedule, ScheduleSource, ScheduleSummary } from '../../shared/types.ts';
 import { demoSchedule, demoSchedules } from './demo.ts';
 import { horaroEvent, horaroSchedule, horaroSchedules } from './horaro.ts';
+import { UpstreamError } from './http.ts';
 import { oengusEvent, oengusSchedule, oengusSchedules } from './oengus.ts';
 
-export { UpstreamError } from './http.ts';
+export { UpstreamError };
 
 const TTL_MS = 60_000;
+const CACHE_LIMIT = 200;
 const cache = new Map<string, { at: number; value: Promise<unknown> }>();
+
+const isDemoRef = (ref: RoomRef) => ref.event === DEMO_REF.event && ref.slug === DEMO_REF.slug;
 
 /** Caches successful lookups for a minute and collapses concurrent requests. */
 function cached<T>(key: string, fresh: boolean, load: () => Promise<T>): Promise<T> {
+  const now = Date.now();
   const hit = cache.get(key);
-  if (!fresh && hit && Date.now() - hit.at < TTL_MS) return hit.value as Promise<T>;
+  if (!fresh && hit && now - hit.at < TTL_MS) return hit.value as Promise<T>;
   const value = load();
-  cache.set(key, { at: Date.now(), value });
+  cache.delete(key);
+  cache.set(key, { at: now, value });
+  // Bounded: drop expired entries, then the oldest, so lookups can't grow memory forever.
+  if (cache.size > CACHE_LIMIT) {
+    for (const [k, v] of cache) if (now - v.at >= TTL_MS) cache.delete(k);
+    while (cache.size > CACHE_LIMIT) cache.delete(cache.keys().next().value!);
+  }
   value.catch(() => {
     if (cache.get(key)?.value === value) cache.delete(key);
   });
@@ -30,7 +42,11 @@ export function fetchSchedule(ref: RoomRef, { fresh = false } = {}): Promise<Sch
       case 'horaro':
         return horaroSchedule(ref.event, ref.slug);
       case 'demo':
-        return Promise.resolve(demoSchedule());
+        // Only the one demo room exists; anything else would let anonymous
+        // clients create unlimited rooms.
+        return isDemoRef(ref)
+          ? Promise.resolve(demoSchedule())
+          : Promise.reject(new UpstreamError('Not found', 404));
     }
   });
 }
@@ -52,6 +68,7 @@ export function fetchEventListing(source: ScheduleSource, event: string): Promis
         return { name: info.name, schedules };
       }
       case 'demo':
+        if (event !== DEMO_REF.event) throw new UpstreamError('Not found', 404);
         return { name: 'Demo Marathon', schedules: demoSchedules };
     }
   });

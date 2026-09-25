@@ -54,6 +54,7 @@ function state(partial: Partial<RoomState> = {}): RoomState {
     finishedAt: null,
     runs: {},
     log: [],
+    logSeq: 0,
     message: null,
     announcement: null,
     twitchChannel: '',
@@ -111,6 +112,13 @@ describe('computeDelta', () => {
     expect(computeDelta(LINES, s, T0 + 45 * MIN)).toBe(-300);
   });
 
+  it('ignores the slot of a skipped next run', () => {
+    // a started on time; b (10:40) is skipped, so the 11:50 interlude is the next deadline.
+    const s = state({ currentKey: 'a', runs: { a: { startedAt: T0 }, b: { skipped: true } } });
+    expect(computeDelta(LINES, s, T0 + 45 * MIN)).toBe(0);
+    expect(computeDelta(LINES, s, T0 + 115 * MIN)).toBe(-5 * 60);
+  });
+
   it('does not drift while a finished run waits to be advanced', () => {
     const s = state({
       currentKey: 'a',
@@ -151,6 +159,12 @@ describe('project', () => {
     const p = project(LINES, s, T0 + 22 * MIN);
     expect(p[0]).toBeNull();
     expect(p[1]?.start).toBe(T0 + 30 * MIN);
+  });
+
+  it('never projects the next run into the past after a finished run', () => {
+    const s = state({ currentKey: 'a', runs: { a: { startedAt: T0, endedAt: T0 + 30 * MIN } } });
+    const p = project(LINES, s, T0 + 70 * MIN);
+    expect(p[1]?.start).toBe(T0 + 70 * MIN);
   });
 
   it('drops skipped runs from the chain', () => {

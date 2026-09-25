@@ -20,6 +20,7 @@ export interface RoomFile {
 
 export class RoomStore {
   readonly dir: string;
+  private writes = 0;
 
   constructor(dataDir: string) {
     this.dir = path.join(dataDir, 'rooms');
@@ -44,23 +45,44 @@ export class RoomStore {
       if (data.format !== FORMAT) return null;
       return data;
     } catch (err) {
-      log.error(`Corrupt room file ${this.file(ref)}; starting fresh`, err);
+      // Keep the evidence: the next save would otherwise overwrite it.
+      const aside = `${this.file(ref)}.corrupt-${Date.now()}`;
+      log.error(`Corrupt room file ${this.file(ref)}; moved to ${aside} and starting fresh`, err);
+      try {
+        fs.renameSync(this.file(ref), aside);
+      } catch (moveErr) {
+        log.error(`Couldn't move the corrupt file aside`, moveErr);
+      }
       return null;
     }
   }
 
-  async save(data: RoomFile): Promise<void> {
-    const file = this.file(data.ref);
-    const tmp = `${file}.${process.pid}.tmp`;
-    await fsp.writeFile(tmp, JSON.stringify(data));
-    await fsp.rename(tmp, file);
+  /**
+   * Writes `json` to a unique temp file, then renames it into place — unless
+   * `isCurrent()` says a newer write has landed meanwhile. The check and the
+   * rename happen synchronously together, so a shutdown flush can't interleave.
+   */
+  async save(ref: RoomRef, json: string, isCurrent: () => boolean = () => true): Promise<boolean> {
+    const file = this.file(ref);
+    const tmp = this.tmpFor(file);
+    await fsp.writeFile(tmp, json);
+    if (!isCurrent()) {
+      await fsp.rm(tmp, { force: true });
+      return false;
+    }
+    fs.renameSync(tmp, file);
+    return true;
   }
 
-  saveSync(data: RoomFile): void {
-    const file = this.file(data.ref);
-    const tmp = `${file}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(data));
+  saveSync(ref: RoomRef, json: string): void {
+    const file = this.file(ref);
+    const tmp = this.tmpFor(file);
+    fs.writeFileSync(tmp, json);
     fs.renameSync(tmp, file);
+  }
+
+  private tmpFor(file: string): string {
+    return `${file}.${process.pid}.${++this.writes}.tmp`;
   }
 }
 
