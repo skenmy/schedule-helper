@@ -1,0 +1,360 @@
+/* Reset, typography and the small set of shared primitives (buttons, inputs,
+   chips, labels). Component-specific styling lives in each .svelte file. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  min-height: 100dvh;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--accent) 35%, transparent);
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 10px;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ── Typography helpers ─────────────────────────────────────────────────── */
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+
+.btn {
+  --btn-bg: var(--surface-2);
+  --btn-fg: var(--text);
+  --btn-border: var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--btn-border);
+  border-radius: var(--radius-sm);
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background 0.15s var(--ease),
+    border-color 0.15s var(--ease),
+    transform 0.08s var(--ease),
+    opacity 0.15s;
+}
+.btn:hover:not(:disabled) {
+  --btn-bg: var(--surface-3);
+  --btn-border: var(--border-strong);
+}
+.btn:active:not(:disabled) {
+  transform: translateY(1px) scale(0.99);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.btn.primary {
+  --btn-bg: var(--accent);
+  --btn-fg: var(--accent-ink);
+  --btn-border: transparent;
+}
+.btn.primary:hover:not(:disabled) {
+  --btn-bg: var(--accent-2);
+  --btn-border: transparent;
+}
+.btn.danger {
+  --btn-bg: var(--bad);
+  --btn-fg: #1f0505;
+  --btn-border: transparent;
+}
+.btn.danger:hover:not(:disabled) {
+  --btn-bg: color-mix(in oklab, var(--bad) 85%, white);
+  --btn-border: transparent;
+}
+.btn.ghost {
+  --btn-bg: transparent;
+  --btn-border: transparent;
+  color: var(--text-2);
+}
+.btn.ghost:hover:not(:disabled) {
+  --btn-bg: var(--surface-2);
+  --btn-border: transparent;
+  color: var(--text);
+}
+.btn.sm {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+.btn.lg {
+  min-height: 52px;
+  padding: 0 20px;
+  font-size: 16px;
+  border-radius: var(--radius);
+}
+.btn.icon {
+  padding: 0;
+  width: 36px;
+}
+.btn.icon.sm {
+  width: 30px;
+}
+.btn .kbd {
+  margin-left: 2px;
+}
+
+/* ── Inputs ─────────────────────────────────────────────────────────────── */
+
+.input,
+.select,
+.textarea {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+  color: var(--text);
+  transition: border-color 0.15s;
+}
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--faint);
+}
+.input:hover,
+.select:hover,
+.textarea:hover {
+  border-color: var(--border-strong);
+}
+.input:focus,
+.select:focus,
+.textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.textarea {
+  resize: vertical;
+  min-height: 90px;
+}
+.field {
+  display: grid;
+  gap: 6px;
+}
+.field > .label {
+  color: var(--text-2);
+}
+.hint {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* ── Chips, keys, cards ─────────────────────────────────────────────────── */
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1;
+}
+.btn.primary .kbd,
+.btn.danger .kbd {
+  background: rgb(0 0 0 / 0.12);
+  border-color: rgb(0 0 0 / 0.2);
+  color: inherit;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.chip.ok {
+  background: var(--ok-soft);
+  border-color: color-mix(in oklab, var(--ok) 35%, transparent);
+  color: var(--ok);
+}
+.chip.info {
+  background: var(--info-soft);
+  border-color: color-mix(in oklab, var(--info) 35%, transparent);
+  color: var(--info);
+}
+.chip.warn {
+  background: var(--warn-soft);
+  border-color: color-mix(in oklab, var(--warn) 35%, transparent);
+  color: var(--warn);
+}
+.chip.bad {
+  background: var(--bad-soft);
+  border-color: color-mix(in oklab, var(--bad) 35%, transparent);
+  color: var(--bad);
+}
+.chip.accent {
+  background: var(--accent-soft);
+  border-color: color-mix(in oklab, var(--accent) 35%, transparent);
+  color: var(--accent);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+.dot.pulse {
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 color-mix(in oklab, currentColor 60%, transparent);
+  }
+  50% {
+    opacity: 0.6;
+    box-shadow: 0 0 0 5px transparent;
+  }
+}
+
+/* Status tone helpers shared by delta displays. */
+.tone-on {
+  --tone: var(--ok);
+  --tone-soft: var(--ok-soft);
+}
+.tone-ahead {
+  --tone: var(--info);
+  --tone-soft: var(--info-soft);
+}
+.tone-behind {
+  --tone: var(--bad);
+  --tone-soft: var(--bad-soft);
+}
+.tone-idle {
+  --tone: var(--warn);
+  --tone-soft: var(--warn-soft);
+}

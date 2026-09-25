@@ -1,0 +1,46 @@
+/* UKSG brand theme — applied when an Oengus marathon id starts with "uksg"
+   (uksgred26, uksggrn25, uksgblu…). Variant from the colour suffix.
+   Source: UKSG Brand Guidelines, Sep 2025. Surfaces stay dark for digital use;
+   the brand colour becomes the accent. Metropolis is loaded on demand. */
+
+[data-brand='uksg'] {
+  --uksg-primary: #44a0e3;
+  --uksg-accent: #8cc4ed;
+  --uksg-logo: url('/brand/uksg/logos/uksg-standard-oneline.png');
+
+  --accent: var(--uksg-primary);
+  --accent-2: var(--uksg-accent);
+  --accent-ink: #ffffff;
+  --bg: #07090c;
+  --bg-2: #0b0e13;
+  --surface: #12161d;
+  --surface-2: #161b24;
+  --surface-3: #1d2330;
+  --border: #1f2530;
+  --border-strong: #2c3442;
+  --text-2: #d8dde6;
+  --font-ui: 'Metropolis', 'Inter Tight Variable', system-ui, sans-serif;
+  --font-mono: 'Metropolis', 'JetBrains Mono', ui-monospace, monospace;
+}
+[data-brand='uksg'][data-brand-variant='red'] {
+  --uksg-primary: #d00c27;
+  --uksg-accent: #f4485e;
+  --uksg-logo: url('/brand/uksg/logos/uksg-red-oneline.svg');
+}
+[data-brand='uksg'][data-brand-variant='green'] {
+  --uksg-primary: #4bd133;
+  --uksg-accent: #93eb84;
+  --uksg-logo: url('/brand/uksg/logos/uksg-green-oneline.svg');
+  --accent-ink: #071a03;
+}
+[data-brand='uksg'][data-brand-variant='blue'] {
+  --uksg-primary: #0091ff;
+  --uksg-accent: #66bdff;
+  --uksg-logo: url('/brand/uksg/logos/uksg-blue-oneline.svg');
+}
+
+/* Metropolis has no true tabular figures by default; force them for timers. */
+[data-brand='uksg'] .num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}

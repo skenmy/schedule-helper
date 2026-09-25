@@ -1,0 +1,13 @@
+{
+  // Editor + svelte-check config: covers client, shared and server code.
+  // The server is additionally checked under Node's own resolution rules by
+  // tsconfig.server.json.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node", "svelte", "vite/client"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.svelte", "e2e/**/*.ts", "*.config.ts"]
+}

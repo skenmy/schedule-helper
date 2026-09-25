@@ -1,0 +1,102 @@
+/* 🏳️‍🌈 HUDS mode — type "huds" anywhere (outside inputs). Esc to leave.
+   https://huds601.co.uk */
+
+@keyframes huds-rainbow-text {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 400% 50%;
+  }
+}
+@keyframes huds-wash {
+  from {
+    background-position: 0% 0%;
+  }
+  to {
+    background-position: 0% 100%;
+  }
+}
+@keyframes huds-bars {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 168px 0;
+  }
+}
+@keyframes huds-fall {
+  from {
+    transform: translate3d(0, -10vh, 0) rotate(0deg);
+  }
+  to {
+    transform: translate3d(0, 110vh, 0) rotate(720deg);
+  }
+}
+
+html.huds {
+  --accent: #ff69b4;
+  --accent-2: #ff9bd0;
+  --accent-ink: #2a0017;
+  --info: #00d4ff;
+  --bad: #ff1493;
+  --warn: #ffd700;
+  --pride: linear-gradient(90deg, #e40303, #ff8c00, #ffed00, #008026, #004dff, #750787, #e40303);
+}
+html.huds body {
+  background:
+    linear-gradient(
+        180deg,
+        rgb(228 3 3 / 0.1),
+        rgb(255 140 0 / 0.1),
+        rgb(255 237 0 / 0.1),
+        rgb(0 128 38 / 0.1),
+        rgb(0 77 255 / 0.1),
+        rgb(117 7 135 / 0.1),
+        rgb(228 3 3 / 0.1)
+      )
+      fixed,
+    var(--bg);
+  background-size: 100% 800%;
+  animation: huds-wash 30s linear infinite;
+}
+html.huds [data-huds='bar'] {
+  background: repeating-linear-gradient(
+    90deg,
+    #e40303 0 28px,
+    #ff8c00 28px 56px,
+    #ffed00 56px 84px,
+    #008026 84px 112px,
+    #004dff 112px 140px,
+    #750787 140px 168px
+  ) !important;
+  animation: huds-bars 6s linear infinite;
+}
+html.huds [data-huds='bar'] > * {
+  background: rgb(10 11 14 / 0.6);
+  border-radius: 6px;
+}
+html.huds [data-huds='text'] {
+  background: var(--pride);
+  background-size: 400% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: huds-rainbow-text 4s linear infinite;
+}
+html.huds .btn.primary {
+  background: var(--pride);
+  background-size: 400% 100%;
+  color: #fff;
+  text-shadow: 0 1px 0 rgb(0 0 0 / 0.4);
+  animation: huds-rainbow-text 4s linear infinite;
+}
+
+.huds-confetti {
+  position: fixed;
+  top: 0;
+  z-index: 9998;
+  pointer-events: none;
+  border-radius: 2px;
+  animation: huds-fall linear forwards;
+}

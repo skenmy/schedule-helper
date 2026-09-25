@@ -1,0 +1,12 @@
+{
+  // The server runs as plain .ts under Node's built-in type stripping, so it
+  // is checked with Node's module resolution and without DOM types.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": ["ES2023"],
+    "types": ["node"]
+  },
+  "include": ["src/server/**/*.ts", "src/shared/**/*.ts"]
+}

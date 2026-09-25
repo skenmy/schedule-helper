@@ -1,5 +1,7 @@
 node_modules/
+dist/
 data/
-*.bak
+test-results/
+playwright-report/
 .DS_Store
-public/index.html.bak
+*.bak

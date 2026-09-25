@@ -1,0 +1,7 @@
+dist/
+data/
+fixtures/
+test-results/
+playwright-report/
+src/client/public/
+package-lock.json
