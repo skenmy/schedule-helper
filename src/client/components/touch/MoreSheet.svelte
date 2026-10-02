@@ -21,6 +21,7 @@
   import { getRoom } from '../../lib/room.svelte.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { ui, type TabId } from '../../lib/ui.svelte.ts';
+  import AlertsSetting from '../AlertsSetting.svelte';
   import Dialog from '../ui/Dialog.svelte';
 
   /** Tools, navigation and per-device settings for the phone and tablet layouts. */
@@ -116,6 +117,7 @@
     </li>
   </ul>
   <div class="settings">
+    {#if room.isOperator}<AlertsSetting />{/if}
     <label class="field">
       <span class="label">Theme</span>
       <select class="select" bind:value={prefs.theme}>

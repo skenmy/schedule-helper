@@ -383,6 +383,63 @@ describe('runner self check-in', () => {
   });
 });
 
+describe('push notifications', () => {
+  const keys = { p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA', auth: 'tBHItJI5svbpez7KI4CCXg' };
+  const fcm = 'https://fcm.googleapis.com/fcm/send/device-1';
+  const post = (route: string, body: unknown) =>
+    fetch(`http://localhost:${server.port}/api/rooms/oengus/testmarathon/main${route}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  const status = async (endpoint: string) =>
+    ((await (await post('/push/status', { endpoint })).json()) as { on: boolean }).on;
+
+  it('publishes its key and turns a device’s alerts on and off', async () => {
+    const key = (await (await fetch(`http://localhost:${server.port}/api/push/key`)).json()) as {
+      publicKey: string;
+    };
+    expect(key.publicKey).toMatch(/^[A-Za-z0-9_-]{87}$/);
+
+    expect(await status(fcm)).toBe(false);
+    const on = await post('/push', { subscription: { endpoint: fcm, keys }, on: true });
+    expect(on.status).toBe(200);
+    expect(await status(fcm)).toBe(true);
+    await post('/push', { subscription: { endpoint: fcm, keys }, on: false });
+    expect(await status(fcm)).toBe(false);
+  });
+
+  it('only sends to real push services', async () => {
+    for (const endpoint of [
+      'http://fcm.googleapis.com/fcm/send/x',
+      'https://localhost:3000/x',
+      'https://tools-skenmy/auth',
+      'https://fcm.googleapis.com.evil.example/x',
+      'https://evil.example/?u=fcm.googleapis.com',
+      'https://fcm.googleapis.com:8443/x',
+      'https://169.254.169.254/latest',
+    ]) {
+      const res = await post('/push', { subscription: { endpoint, keys }, on: true });
+      expect(res.status, endpoint).toBe(400);
+    }
+  });
+
+  it('sends a test notification to a device that follows the room', async () => {
+    await server.close();
+    const sent: string[] = [];
+    server = await startServer({
+      port: 0,
+      dataDir,
+      services: { fetchSchedule: async (ref) => fixtureSchedule(ref) },
+      pushSender: async (sub, n) => void sent.push(`${sub.endpoint} ${n.title}`),
+    });
+    expect((await post('/push/test', { endpoint: fcm })).status).toBe(409);
+    await post('/push', { subscription: { endpoint: fcm, keys }, on: true });
+    expect((await post('/push/test', { endpoint: fcm })).status).toBe(200);
+    expect(sent).toEqual([`${fcm} Alerts are on · Test Marathon`]);
+  });
+});
+
 describe('event report', () => {
   const url = (format: string) =>
     `http://localhost:${server.port}/api/rooms/oengus/testmarathon/main/report.${format}`;

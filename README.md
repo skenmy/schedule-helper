@@ -41,6 +41,19 @@ Horaro schedule. Try it offline with the built-in demo marathon (`/demo/demo/mai
   an amber "late" state with the ETA in Up next, On deck, the schedule and kiosks, and a warning in
   the log. Runners need no account; a link can only check in its own run. Operator check-ins still
   work as before and replace whatever the runner said.
+- **Alerts on your phone.** Operators can turn on push notifications per schedule (bell in the
+  top bar, the More sheet, or the command palette) and hear about what needs them, even with the
+  app closed:
+  - runners who say they're running late, or are marked missing
+  - the next run's runners not checked in 15 minutes before it starts
+  - a run 15 minutes over its estimate
+  - a run change spotted on stream (or auto-tracking moving on by itself)
+  - stream timer warnings from the drift check
+
+  Nobody is alerted about what they did themselves. On iPhone and iPad this needs the app added
+  to the Home Screen (iOS 16.4+). A followed schedule stays loaded on the server so the timed
+  alerts keep coming with nobody looking at it.
+
 - **Undo and audit trail.** Every change is logged with who made it; undo reverts the most recent
   change to runs, timers, check-ins or broadcasts.
 - **Reset marathon.** Schedule tab → **Reset…** (or the command palette) starts the marathon over
@@ -167,6 +180,18 @@ Read-only and CORS-open — the same information any viewer can already see.
   start against schedule, and the changeover after it against its plan; plus the overall
   figures. CSV times are ISO 8601 UTC, durations `HH:MM:SS`, deltas signed seconds.
 
+## Push alerts
+
+- `GET /api/push/key` — the VAPID public key.
+- `POST /api/rooms/{ref}/push` with `{ subscription, on }` — operators only. Endpoints must be
+  `https` on a known push service (FCM, Mozilla, Apple, Windows), so the server never posts
+  anywhere else.
+- `POST /api/rooms/{ref}/push/status` / `push/test` with `{ endpoint }`.
+
+What's worth an alert is `src/server/push/alerts.ts` (pure, tested); delivery, the 30-second clock
+for timed alerts and cleaning up dead subscriptions is `push/service.ts`. Subscriptions live in
+`DATA_DIR/push-subscriptions.json`.
+
 ## Runner check-in links
 
 A link is `/{source}/{event}/{slug}?checkin={run key}&t={token}`, where the token is an HMAC of
@@ -202,6 +227,9 @@ and deploys. Delete it (or change `CHECKIN_SECRET`) to invalidate every link.
 | `TWITCH_CLIENT_SECRET` | _(empty)_                                    | Its secret. Without both, Twitch tracking says it isn't set up.                        |
 | `STREAM_INFO_FILE`     | _(empty)_                                    | Dev/testing: read channel info from this JSON file instead of Twitch.                  |
 | `TRACKING_TICK_MS`     | `30000`                                      | How often auto-tracking polls Twitch.                                                  |
+| `VAPID_PUBLIC_KEY`     | _(empty)_                                    | Push notification keys. Empty: generated once into `DATA_DIR/vapid.json`.              |
+| `VAPID_PRIVATE_KEY`    | _(empty)_                                    | Set both or neither. New keys orphan every device's subscription.                      |
+| `VAPID_SUBJECT`        | `PUBLIC_URL`                                 | Contact the push services see (an `https:` or `mailto:` URL).                          |
 | `CHECKIN_SECRET`       | _(empty)_                                    | Signs runner check-in links. Empty: generated once into `DATA_DIR/checkin-secret`.     |
 | `CLIENT_DIR`           | `dist/client`                                | Built client assets.                                                                   |
 | `LOG_LEVEL`            | `info`                                       | `debug`, `info`, `warn` or `error`.                                                    |

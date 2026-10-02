@@ -5,12 +5,18 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import { SelfCheckInSchema, type MutatingAction } from '../shared/protocol.ts';
+import {
+  PushEndpointSchema,
+  PushFollowSchema,
+  SelfCheckInSchema,
+  type MutatingAction,
+} from '../shared/protocol.ts';
 import { buildReport, reportCsv } from '../shared/report.ts';
 import { ID_PATTERN, SOURCES, isValidRef } from '../shared/sources.ts';
-import type { RoomRef, RunKey, ScheduleSource } from '../shared/types.ts';
-import { resolveIdentity } from './auth.ts';
+import type { AuthInfo, RoomRef, RunKey, ScheduleSource } from '../shared/types.ts';
+import { actorName, resolveIdentity } from './auth.ts';
 import type { CheckInTokens } from './checkin.ts';
+import type { PushService } from './push/service.ts';
 import { config } from './config.ts';
 import { buildFeed } from './feed.ts';
 import { logger } from './logger.ts';
@@ -26,6 +32,28 @@ function refFrom(req: Request): RoomRef | null {
     slug: String(req.params.slug),
   };
   return isValidRef(ref) ? ref : null;
+}
+
+/** The caller's operator identity, or null after answering 401/403/503 for them. */
+async function requireOperator(
+  req: Request,
+  res: Response,
+  what: string,
+): Promise<AuthInfo | null> {
+  const auth = await resolveIdentity(req.headers.cookie);
+  if (!auth) {
+    res.status(503).json({ error: 'Can’t check your sign-in right now. Try again shortly.' });
+    return null;
+  }
+  if (!auth.canWrite) {
+    res.status(auth.authenticated ? 403 : 401).json({
+      error: auth.authenticated
+        ? 'You’re signed in, but don’t have operator access to this app.'
+        : `Sign in to ${what}.`,
+    });
+    return null;
+  }
+  return auth;
 }
 
 function sendError(res: Response, err: unknown): void {
@@ -44,7 +72,7 @@ const cors = (_req: Request, res: Response, next: NextFunction) => {
 
 export function createApp(
   registry: RoomRegistry,
-  { checkins }: { checkins: CheckInTokens },
+  { checkins, push }: { checkins: CheckInTokens; push: PushService },
 ): express.Express {
   const app = express();
   app.disable('x-powered-by');
@@ -156,19 +184,7 @@ export function createApp(
       res.status(400).json({ error: 'Invalid room' });
       return;
     }
-    const auth = await resolveIdentity(req.headers.cookie);
-    if (!auth) {
-      res.status(503).json({ error: 'Can’t check your sign-in right now. Try again shortly.' });
-      return;
-    }
-    if (!auth.canWrite) {
-      res.status(auth.authenticated ? 403 : 401).json({
-        error: auth.authenticated
-          ? 'You’re signed in, but don’t have operator access to this app.'
-          : 'Sign in to get runner check-in links.',
-      });
-      return;
-    }
+    if (!(await requireOperator(req, res, 'get runner check-in links'))) return;
     try {
       const room = await registry.open(ref);
       const tokens: Record<RunKey, string> = {};
@@ -239,6 +255,85 @@ export function createApp(
         res.json({ ok: true });
       } catch (err) {
         sendError(res, err);
+      }
+    },
+  );
+
+  // ── Push notifications (operators) ──────────────────────────────────────────
+
+  app.get('/api/push/key', (_req, res) => {
+    res.json({ publicKey: push.publicKey });
+  });
+
+  // Turns this device's alerts for a room on or off.
+  app.post(
+    '/api/rooms/:source/:event/:slug/push',
+    express.json({ limit: '4kb' }),
+    async (req, res) => {
+      const ref = refFrom(req);
+      res.setHeader('cache-control', 'no-store');
+      const body = PushFollowSchema.safeParse(req.body);
+      if (!ref || !body.success) {
+        res.status(400).json({ error: 'That isn’t a subscription this server can send to.' });
+        return;
+      }
+      const auth = await requireOperator(req, res, 'get alerts');
+      if (!auth) return;
+      try {
+        const room = await registry.open(ref);
+        const { subscription, on } = body.data;
+        if (on) push.follow(room, subscription, actorName(auth));
+        else push.unfollow(ref, subscription.endpoint);
+        res.json({ on });
+      } catch (err) {
+        sendError(res, err);
+      }
+    },
+  );
+
+  // Whether this device gets alerts for a room. Knowing the endpoint is the proof.
+  app.post(
+    '/api/rooms/:source/:event/:slug/push/status',
+    express.json({ limit: '4kb' }),
+    (req, res) => {
+      const ref = refFrom(req);
+      const body = PushEndpointSchema.safeParse(req.body);
+      res.setHeader('cache-control', 'no-store');
+      if (!ref || !body.success) {
+        res.status(400).json({ error: 'Invalid request' });
+        return;
+      }
+      res.json({ on: push.isOn(ref, body.data.endpoint) });
+    },
+  );
+
+  app.post(
+    '/api/rooms/:source/:event/:slug/push/test',
+    express.json({ limit: '4kb' }),
+    async (req, res) => {
+      const ref = refFrom(req);
+      const body = PushEndpointSchema.safeParse(req.body);
+      res.setHeader('cache-control', 'no-store');
+      if (!ref || !body.success) {
+        res.status(400).json({ error: 'Invalid request' });
+        return;
+      }
+      if (!(await requireOperator(req, res, 'test alerts'))) return;
+      try {
+        const room = await registry.open(ref);
+        await push.test(room, body.data.endpoint);
+        res.json({ ok: true });
+      } catch (err) {
+        if (err instanceof UpstreamError) {
+          sendError(res, err);
+          return;
+        }
+        const status = (err as { statusCode?: number }).statusCode;
+        res.status(status ? 502 : 409).json({
+          error: status
+            ? `The push service refused it (${status}). Turn alerts off and on again.`
+            : (err as Error).message,
+        });
       }
     },
   );

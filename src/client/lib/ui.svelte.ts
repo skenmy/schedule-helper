@@ -30,6 +30,8 @@ class UI {
   setElapsed = $state(false);
   palette = $state(false);
   help = $state(false);
+  /** Push alerts for this device. */
+  alerts = $state(false);
   confirm = $state<ConfirmRequest | null>(null);
 
   ask(req: Omit<ConfirmRequest, 'resolve'>): Promise<boolean> {
@@ -52,6 +54,7 @@ class UI {
     this.setElapsed = false;
     this.palette = false;
     this.help = false;
+    this.alerts = false;
     this.moreOpen = false;
     this.confirm?.resolve(false);
     this.confirm = null;

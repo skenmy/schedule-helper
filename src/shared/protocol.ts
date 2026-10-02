@@ -105,6 +105,45 @@ export const SelfCheckInSchema = z.discriminatedUnion('status', [
 ]);
 export type SelfCheckIn = z.infer<typeof SelfCheckInSchema>;
 
+/**
+ * Push services browsers actually use. The server posts to whatever endpoint a
+ * subscription names, so anything else (an internal address) is refused.
+ */
+const PUSH_HOSTS = [
+  'fcm.googleapis.com',
+  'android.googleapis.com',
+  'push.services.mozilla.com',
+  'push.apple.com',
+  'notify.windows.com',
+];
+const pushEndpoint = z
+  .string()
+  .max(1024)
+  .url()
+  .refine((value) => {
+    const url = new URL(value);
+    return (
+      url.protocol === 'https:' &&
+      !url.port &&
+      PUSH_HOSTS.some((h) => url.hostname === h || url.hostname.endsWith(`.${h}`))
+    );
+  }, 'Not a push service this server sends to.');
+const base64url = z
+  .string()
+  .max(256)
+  .regex(/^[A-Za-z0-9_-]+=*$/);
+
+/** An operator turning alerts for a room on or off for this device. */
+export const PushFollowSchema = z.object({
+  subscription: z.object({
+    endpoint: pushEndpoint,
+    keys: z.object({ p256dh: base64url, auth: base64url }),
+  }),
+  on: z.boolean(),
+});
+export type PushFollow = z.infer<typeof PushFollowSchema>;
+export const PushEndpointSchema = z.object({ endpoint: z.string().max(1024) });
+
 export type ClientAction = z.infer<typeof ClientActionSchema>;
 export type ActionName = ClientAction['action'];
 /** Actions that change room state (everything except the session plumbing). */
