@@ -55,6 +55,25 @@
       it on the venue TV.
     </li>
   </ul>
+
+  <h3 class="label">iPad & iPhone</h3>
+  <ul class="notes">
+    <li>
+      <b>Install it.</b> In Safari, tap Share → <i>Add to Home Screen</i>. It opens full screen and
+      goes straight back to the schedule you last had open.
+    </li>
+    <li>
+      <b>No signal?</b> The app still opens and shows the last state it saw, with the run timer ticking.
+      Controls stay off until it reconnects, so nothing is ever sent from a stale view.
+    </li>
+    <li>
+      <b>Console or Floor</b> (iPad, top bar): the console has every tool; the floor view is the live
+      run, a big timer and one-tap runner check-ins. Each iPad remembers its choice.
+    </li>
+    <li>
+      <b>Wrong layout?</b> More → <i>Layout on this device</i> picks phone, tablet or desktop by hand.
+    </li>
+  </ul>
 </Dialog>
 
 <style>
@@ -77,7 +96,7 @@
     color: var(--text-2);
   }
   .notes {
-    margin: 0;
+    margin: 0 0 22px;
     padding-left: 18px;
     display: grid;
     gap: 8px;

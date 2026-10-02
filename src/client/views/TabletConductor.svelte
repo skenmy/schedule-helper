@@ -49,7 +49,7 @@
     <AnnouncementBanner />
     <StatusStrip />
     <div class="panes" class:floor>
-      <section class="pane live" aria-label="Live">
+      <section class="pane live" aria-label="Live run">
         <div class="scroll">
           <NowCard stage={floor} />
           {#if !floor}
@@ -59,7 +59,7 @@
         </div>
         <Transport variant={floor ? 'floor' : 'pane'} />
       </section>
-      <section class="pane side" aria-label={floor ? 'On deck' : 'Workspace'}>
+      <section class="pane side" aria-label={floor ? 'Runners' : 'Tools'}>
         {#if floor}
           <div class="scroll">
             <OnDeck />

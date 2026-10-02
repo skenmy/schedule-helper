@@ -3,6 +3,7 @@
   import { roomPath } from '../../shared/sources.ts';
   import Panel from '../components/kiosk/Panel.svelte';
   import { keepAwake } from '../lib/device.ts';
+  import { fmtClock } from '../lib/format.ts';
   import {
     areaNames,
     LAYOUTS,
@@ -102,7 +103,9 @@
 
   <div class="bar" data-huds="bar">
     <strong class="truncate">{room.schedule?.eventName}</strong>
-    {#if room.status !== 'open'}<span class="chip bad">Reconnecting…</span>{/if}
+    {#if room.offline}<span class="chip bad"
+        >Offline{room.syncedAt ? ` · last synced ${fmtClock(room.syncedAt)}` : ''}</span
+      >{/if}
     {#if live.state.announcement}<span class="chip warn truncate"
         >📣 {live.state.announcement.text}</span
       >{/if}
@@ -144,7 +147,9 @@
     inset: 0;
     display: grid;
     gap: 10px;
-    padding: 10px;
+    /* An iPad kiosk running as an installed app draws under the status bar. */
+    padding: calc(10px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right))
+      calc(10px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));
   }
   .cell {
     min-width: 0;
@@ -167,7 +172,7 @@
   .bar {
     position: absolute;
     left: 50%;
-    bottom: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom));
     transform: translateX(-50%);
     display: flex;
     align-items: center;
