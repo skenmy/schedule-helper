@@ -4,6 +4,7 @@
     ChartGantt,
     ChartNoAxesColumn,
     CircleQuestionMark,
+    FileChartColumn,
     House,
     LayoutGrid,
     Megaphone,
@@ -14,6 +15,7 @@
   import { roomPath } from '../../../shared/sources.ts';
   import { isStandalone } from '../../lib/device.ts';
   import { kioskUrl } from '../../lib/kiosk.ts';
+  import { reportPath } from '../../lib/report.ts';
   import { LAYOUT_PREFS } from '../../lib/layout.ts';
   import { prefs, THEMES } from '../../lib/prefs.svelte.ts';
   import { getRoom } from '../../lib/room.svelte.ts';
@@ -75,6 +77,13 @@
     <li>
       <button onclick={() => ((ui.moreOpen = false), (ui.palette = true))}>
         <Search size={20} /><span><b>Search</b><small>Jump to any run or action</small></span>
+      </button>
+    </li>
+    <li>
+      <button onclick={() => ((ui.moreOpen = false), router.navigate(reportPath(room.ref)))}>
+        <FileChartColumn size={20} /><span
+          ><b>Event report</b><small>Planned against actual, CSV export</small></span
+        >
       </button>
     </li>
     <li>

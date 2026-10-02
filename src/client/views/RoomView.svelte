@@ -12,9 +12,10 @@
   import Conductor from './Conductor.svelte';
   import Kiosk from './Kiosk.svelte';
   import MobileConductor from './MobileConductor.svelte';
+  import Report from './Report.svelte';
   import TabletConductor from './TabletConductor.svelte';
 
-  let { ref, kiosk }: { ref: RoomRef; kiosk: boolean } = $props();
+  let { ref, kiosk, report }: { ref: RoomRef; kiosk: boolean; report: boolean } = $props();
 
   const room = new RoomConnection(untrack(() => ref));
   setRoom(room);
@@ -45,7 +46,8 @@
     room.schedule ? `${room.schedule.eventName} · ${room.schedule.scheduleName}` : null,
   );
   $effect(() => {
-    document.title = title ? `${kiosk ? 'Kiosk · ' : ''}${title}` : 'Schedule Helper';
+    const prefix = kiosk ? 'Kiosk · ' : report ? 'Report · ' : '';
+    document.title = title ? `${prefix}${title}` : 'Schedule Helper';
   });
 
   let remembered = false;
@@ -81,6 +83,8 @@
   </main>
 {:else if kiosk}
   <Kiosk />
+{:else if report}
+  <Report />
 {:else if layout.kind === 'phone'}
   <MobileConductor />
 {:else if layout.kind === 'tablet'}

@@ -10,6 +10,8 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
   - `protocol.ts` zod schemas for client actions + `ServerMessage` union
   - `derive.ts` ALL schedule maths: run timing, delta, projections (plain, or at the event's own
     `eventPace()`), stats. Never duplicate this logic in a component or on the server — import it.
+  - `report.ts` the event report (`buildReport`, `reportCsv`): served at `/report.{json,csv}` and
+    rendered by `views/Report.svelte`, so the page and the exports can't disagree
   - `time.ts` duration parsing/formatting · `sources.ts` URL parsing, room paths, brand detection
 - `src/server/` — run directly by Node (type stripping, no build):
   - `rooms/reducer.ts` pure `reduce(state, action, ctx)`; every user-visible state rule lives here
@@ -31,7 +33,8 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
     `pointer: coarse` and iPad detection, plus the per-device `prefs.layout` override. Sets
     `<html data-layout data-touch>` for CSS.
   - `views/` Landing, RoomView (connection owner, picks the view by `layout.kind`), Conductor
-    (desktop), TabletConductor (iPad: console / floor modes), MobileConductor, Kiosk
+    (desktop), TabletConductor (iPad: console / floor modes), MobileConductor, Kiosk (`?kiosk=1`),
+    Report (`?report=1`, read-only; `components/report/DeltaChart.svelte` is its chart)
   - `components/touch/` Transport (run controls for touch), OnDeck (floor check-ins), MoreSheet
   - `sw.ts` service worker (app shell only), built by the plugin in `vite.config.ts` and
     type-checked by `tsconfig.sw.json` (WebWorker globals, not the DOM)

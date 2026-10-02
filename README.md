@@ -22,6 +22,13 @@ Horaro schedule. Try it offline with the built-in demo marathon (`/demo/demo/mai
   lists what could give the time back, least visible first: setup buffers still to come trimmed to
   five minutes (largest first), then interludes. Each shows when it happens and where the end lands
   with it, and the point where you're back on schedule is marked. Advisory only.
+- **Event report.** Planned against actual, for the debrief or the next event's planning: when it
+  started and finished against the schedule, run time against estimates, the median changeover
+  against plan, a chart of how far ahead or behind each run started, the runs furthest over and
+  under their estimates, and every run with its scheduled and actual times. It updates live while
+  the marathon runs and works offline from the last state the device saw. Open it from the
+  Progress tab, the command palette, the More sheet, or the status strip once the marathon is
+  complete (`?report=1` on any room). Export as CSV (spreadsheet-safe) or JSON, or print it.
 - **Timeline.** A plan lane (scheduled) over a live lane (actual and projected), so drift is
   visible at a glance. 3h / 6h / 12h / all zoom.
 - **Run control.** Start, stop, resume, advance, back, skip / restore, set the timer after a late
@@ -147,6 +154,10 @@ Read-only and CORS-open — the same information any viewer can already see.
   check-ins, delta, scheduled and projected end, progress, message and announcement.
 - `GET /api/rooms/{source}/{event}/{slug}/feed/stream` — the same snapshot as Server-Sent Events
   (`event: feed`), pushed on every change.
+- `GET /api/rooms/{source}/{event}/{slug}/report.json` / `report.csv` — the event report
+  (`shared/report.ts`): per run, the scheduled and actual start and end, estimate and time taken,
+  start against schedule, and the changeover after it against its plan; plus the overall
+  figures. CSV times are ISO 8601 UTC, durations `HH:MM:SS`, deltas signed seconds.
 
 ## Environment
 

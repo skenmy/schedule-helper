@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 import type { ServerMessage } from '../shared/protocol.ts';
+import type { Report } from '../shared/report.ts';
 import type { RoomRef, RoomState, Schedule } from '../shared/types.ts';
 import { config } from './config.ts';
 import { startServer, type RunningServer } from './server.ts';
@@ -333,6 +334,45 @@ describe('overlay feed', () => {
       `http://localhost:${server.port}/api/rooms/oengus/..%2F..%2Fetc/main/feed`,
     );
     expect(res.status).toBe(400);
+  });
+});
+
+describe('event report', () => {
+  const url = (format: string) =>
+    `http://localhost:${server.port}/api/rooms/oengus/testmarathon/main/report.${format}`;
+
+  it('serves the report as JSON, with the live run in it', async () => {
+    const c = await connect();
+    await c.join();
+    c.send({ action: 'timer:start' });
+    await c.nextState((s) => s.runs.d0?.startedAt != null);
+
+    const res = await fetch(url('json'));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    const report = (await res.json()) as Report;
+    expect(report).toMatchObject({
+      event: { name: 'Test Marathon', ref: REF },
+      complete: false,
+      runs: { done: 0, skipped: 0 },
+    });
+    expect(report.rows[0]).toMatchObject({ key: 'd0', status: 'live' });
+  });
+
+  it('serves a CSV download that Excel reads as UTF-8', async () => {
+    const res = await fetch(url('csv'));
+    expect(res.headers.get('content-type')).toBe('text/csv; charset=utf-8');
+    expect(res.headers.get('content-disposition')).toBe(
+      'attachment; filename="testmarathon-main-report.csv"',
+    );
+    const body = new Uint8Array(await res.arrayBuffer());
+    expect([...body.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+    expect(new TextDecoder().decode(body)).toContain('number,title,category,runners,status');
+  });
+
+  it('rejects other formats', async () => {
+    expect((await fetch(url('xml'))).status).toBe(400);
   });
 });
 
