@@ -13,7 +13,7 @@ import {
 import type { MutatingAction } from '../../shared/protocol.ts';
 import { normalizeTwitchChannel } from '../../shared/sources.ts';
 import { fmtClock, fmtHM, fmtHMS } from '../../shared/time.ts';
-import { describe } from '../tracking/detect.ts';
+import { describe, isReachable, settle, startFloor } from '../tracking/detect.ts';
 import type { LogKind, RoomState, RunKey, ScheduleLine } from '../../shared/types.ts';
 import { LOG_LIMIT } from './state.ts';
 
@@ -386,6 +386,7 @@ function apply(s: RoomState, action: ReducibleAction, ctx: ReduceContext): strin
       const d = s.detection;
       if (!d || d.id !== action.id) throw new NoChange();
       s.detection = null;
+      settle(s, d, now);
       log(`✕ Dismissed: ${describe(d, lines)}`);
       return null;
     }
@@ -401,19 +402,27 @@ function apply(s: RoomState, action: ReducibleAction, ctx: ReduceContext): strin
       }
       const { line, index } = lineFor(d.runKey);
       if (line.setupBlock) throw invalid('Setup blocks can’t be the current run.');
+      // Skipped, re-ordered behind the live run, or the live run itself is gone.
+      if (!isReachable(s, lines, index)) {
+        throw conflict('That run isn’t up next any more. Check the schedule.');
+      }
       s.detection = null;
+      settle(s, d, now);
       const via = [...new Set(d.signals.map((x) => x.source))].join(' + ');
       if (d.kind === 'advance') {
-        // The previous run ended about when the stream first moved on, not now.
+        // The previous run ended about when the stream first moved on (or the
+        // new run's timer started, if earlier), not when someone tapped.
         const prev = s.currentKey ? s.runs[s.currentKey] : undefined;
         moveTo(index);
         if (prev?.startedAt != null && prev.endedAt === now) {
-          prev.endedAt = Math.max(prev.startedAt, Math.min(now, d.firstAt));
+          const switched = Math.min(d.firstAt, d.startedAt ?? Infinity);
+          prev.endedAt = Math.min(now, Math.max(prev.startedAt, switched));
         }
       }
       const r = rec(line.key);
       if (d.startedAt != null && runTiming(r, now).phase === 'setup') {
-        r.startedAt = Math.min(d.startedAt, now);
+        // Never before the previous run ended, never in the future.
+        r.startedAt = Math.min(now, Math.max(d.startedAt, startFloor(s, lines, 'start')));
         delete r.endedAt;
       }
       const started =
@@ -425,6 +434,10 @@ function apply(s: RoomState, action: ReducibleAction, ctx: ReduceContext): strin
       const c = s.capture;
       if (!c || c.error || c.elapsedSec == null)
         throw conflict('There’s no stream reading to apply.');
+      // Readings now land every minute around run changes: apply the one the operator saw.
+      if (action.id != null && action.id !== c.id) {
+        throw conflict('A newer stream reading has arrived. Check it before applying.');
+      }
       // A reading taken before someone changed the live run would rewind the marathon.
       if (c.currentKey !== s.currentKey) {
         throw conflict('The live run has changed since that capture. Capture again.');

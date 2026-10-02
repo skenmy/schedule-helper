@@ -206,27 +206,29 @@ describe('observeCapture', () => {
 
   it('turns a reading of a later run into a detection, with the start from its timer', () => {
     const s = live();
-    observeCapture(s, host, null, { ...base, elapsedSec: 60 });
+    observeCapture(s, host, { ...base, elapsedSec: 60 });
     expect(s.detection).toMatchObject({ runKey: 'd1', startedAt: 1_000_000 - 60_000 });
   });
 
   it('ignores low-confidence readings, errors, and stream reading being off', () => {
     const s = live();
-    observeCapture(s, host, null, { ...base, confidence: 'low' });
-    observeCapture(s, host, null, { ...base, error: 'boom' });
+    observeCapture(s, host, { ...base, confidence: 'low' });
+    observeCapture(s, host, { ...base, error: 'boom' });
     s.tracking.vision = false;
-    observeCapture(s, host, null, base);
+    observeCapture(s, host, base);
     expect(s.detection).toBeNull();
   });
 
-  it('does not raise a dismissed reading again until the stream changes', () => {
+  it('adds repeat readings to a pending detection, and stays quiet once dismissed', () => {
     const s = live();
-    const prev = { ...base, elapsedSec: 60 };
-    // Same run, timer still running: a repeat, and nothing is pending for it.
-    observeCapture(s, host, prev, { ...base, at: base.at + 60_000, elapsedSec: 120 });
+    observeCapture(s, host, { ...base, elapsedSec: 60 });
+    observeCapture(s, host, { ...base, at: base.at + 60_000, elapsedSec: 120 });
+    expect(s.detection?.signals).toHaveLength(2);
+    s.settled = { runKey: 'd1', kind: 'advance', currentKey: 'd0', at: base.at + 60_000 };
+    s.detection = null;
+    // A failed reading in between doesn't make the next one "new".
+    observeCapture(s, host, { ...base, at: base.at + 120_000, error: 'stream offline' });
+    observeCapture(s, host, { ...base, at: base.at + 180_000, elapsedSec: 240 });
     expect(s.detection).toBeNull();
-    // The timer starting on stream is a change worth reporting.
-    observeCapture(s, host, { ...base, elapsedSec: 0 }, { ...base, elapsedSec: 5 });
-    expect(s.detection?.runKey).toBe('d1');
   });
 });

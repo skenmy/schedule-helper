@@ -64,16 +64,18 @@ export function matchStream(
   const category = squash(info.game ?? '');
   const titleSquashed = squash(info.title ?? '');
   const titleWords = words(info.title ?? '');
-  let best: { score: number; key: RunKey; why: string[] } | null = null;
+  const scored: { score: number; exact: boolean; key: RunKey; why: string[] }[] = [];
 
   for (const i of candidateIndexes(lines, state)) {
     const line = lines[i]!;
     const game = squash(line.game);
     if (!game) continue;
     let score = 0;
+    let exact = false;
     const why: string[] = [];
     if (category && category === game) {
       score += 4;
+      exact = true;
       why.push(`category “${info.game}”`);
     } else if (
       category.length >= 4 &&
@@ -95,8 +97,13 @@ export function matchStream(
       score += 3;
       why.push(`runner ${runner} in the title`);
     }
-    if (score >= 2 && (!best || score > best.score)) best = { score, key: line.key, why };
+    if (score >= 2) scored.push({ score, exact, key: line.key, why });
   }
+  // A category naming a run's game exactly outranks any title: "Up next: SM64 with
+  // ptkay" in the title of a stream still categorised as Celeste is still Celeste.
+  const pool = scored.some((x) => x.exact) ? scored.filter((x) => x.exact) : scored;
+  let best: (typeof scored)[number] | null = null;
+  for (const x of pool) if (!best || x.score > best.score) best = x;
   if (!best) return null;
   const { key, why } = best;
   return { key, detail: why.join(', ') };

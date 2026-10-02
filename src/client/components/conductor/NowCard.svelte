@@ -212,7 +212,9 @@
             : ''}</span
         >
         {#if captureInfo.apply && room.canWrite}
-          <button class="btn sm" onclick={() => ops.applyCapture()}>Apply stream timer</button>
+          <button class="btn sm" onclick={() => capture && ops.applyCapture(capture.id)}
+            >Apply stream timer</button
+          >
         {/if}
         <button class="btn ghost sm" onclick={() => ui.openTab('capture')}>Details</button>
       </div>

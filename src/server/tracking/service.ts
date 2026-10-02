@@ -9,7 +9,12 @@
 
 import { normalizeTwitchChannel } from '../../shared/sources.ts';
 import { fmtHMS } from '../../shared/time.ts';
-import type { CaptureResult, RoomState } from '../../shared/types.ts';
+import type {
+  CaptureResult,
+  RoomState,
+  SignalSource,
+  TrackingSettings,
+} from '../../shared/types.ts';
 import { logger } from '../logger.ts';
 import type { RoomRegistry } from '../rooms/registry.ts';
 import type { Room } from '../rooms/room.ts';
@@ -25,8 +30,15 @@ export function channelOf(room: Room): string {
   return room.state.twitchChannel || normalizeTwitchChannel(room.schedule.twitch);
 }
 
+/** Whether a source is switched on for the room (stream-PC sources are on when they post). */
+function enabled(t: TrackingSettings, source: SignalSource): boolean {
+  return source === 'twitch' ? t.twitch : source === 'vision' ? t.vision : true;
+}
+
 /** Feeds one signal to a room's detection, then acts on it if allowed. */
 export function signal(room: Room, sig: Signal): void {
+  // A source switched off mid-flight (a poll in progress) has nothing to say.
+  if (!enabled(room.state.tracking, sig.source)) return;
   // Try it on a copy first, so a signal that changes nothing doesn't bump the revision.
   if (observe(structuredClone(room.state), room.schedule.lines, sig)) {
     room.mutate((s) => void observe(s, room.schedule.lines, sig));
@@ -45,7 +57,12 @@ export function maybeAutoApply(room: Room, now = Date.now()): void {
 
 // ─── Twitch ──────────────────────────────────────────────────────────────────
 
-/** The last channel info each room acted on: sources report changes, not levels. */
+/**
+ * The run each room's Twitch info last pointed at. Only a change of run is a
+ * signal: retitling the stream (donation totals) or a blip offline isn't. A
+ * dismissed or undone suggestion is kept down by `state.settled`, which also
+ * survives a restart that loses this.
+ */
 const lastSeen = new WeakMap<Room, string>();
 
 const sameInfo = (a: RoomState['stream'], b: ChannelInfo) =>
@@ -58,11 +75,11 @@ export function observeTwitch(room: Room, info: ChannelInfo, now = Date.now()): 
       s.stream = { ...info, at: now, error: null };
     });
   }
-  const fingerprint = info.live ? `${info.game}\n${info.title}` : 'offline';
-  if (lastSeen.get(room) === fingerprint) return;
-  lastSeen.set(room, fingerprint);
   if (!info.live) return;
   const match = matchStream(room.schedule.lines, room.state, info);
+  const fingerprint = match?.key ?? '';
+  if (lastSeen.get(room) === fingerprint) return;
+  lastSeen.set(room, fingerprint);
   if (!match) return;
   signal(room, {
     runKey: match.key,
@@ -86,9 +103,15 @@ export async function pollTwitch(
   lookup: StreamLookup | null,
 ): Promise<void> {
   const now = Date.now();
-  const rooms = [...registry.all()].filter(
+  const all = [...registry.all()].filter(
     (r) => r.state.tracking.twitch && r.watcherCount > 0 && channelOf(r),
   );
+  if (!all.length) return;
+  // Twitch logins are 4–25 characters; a shorter one would fail the whole batch.
+  const rooms = all.filter((r) => channelOf(r).length >= 4);
+  for (const r of all) {
+    if (!rooms.includes(r)) reportError(r, `“${channelOf(r)}” isn’t a Twitch channel name.`, now);
+  }
   if (!rooms.length) return;
   if (!lookup) {
     for (const r of rooms) {
@@ -107,7 +130,8 @@ export async function pollTwitch(
   }
   for (const r of rooms) {
     const info = infos.get(channelOf(r));
-    if (info) observeTwitch(r, info, now);
+    // Switched off while we were asking: nothing to record.
+    if (info && r.state.tracking.twitch) observeTwitch(r, info, now);
   }
 }
 
@@ -115,20 +139,15 @@ export async function pollTwitch(
 
 /**
  * Turns a stream capture into a signal, inside the capture's own state change.
- * Like Twitch, only a change counts: the run read, or its timer starting.
- * Repeats of the same reading only add weight to a detection already raised.
+ * Every usable reading counts (repeats add weight to a detection, and a run's
+ * timer starting after an operator advanced by hand is still noticed); what
+ * was already dealt with stays down through `state.settled`. Failed,
+ * low-confidence and unmatched readings say nothing.
  */
-export function observeCapture(
-  s: RoomState,
-  room: Pick<Room, 'schedule'>,
-  prev: CaptureResult | null,
-  c: CaptureResult,
-): void {
+export function observeCapture(s: RoomState, room: Pick<Room, 'schedule'>, c: CaptureResult): void {
   if (!s.tracking.vision || c.error || !c.runKey || c.confidence === 'low') return;
+  // No timer visible is "unknown", not "stopped".
   const running = c.elapsedSec != null && c.elapsedSec > 0;
-  const prevRunning = prev?.elapsedSec != null && prev.elapsedSec > 0;
-  const repeat = prev != null && !prev.error && prev.runKey === c.runKey && prevRunning === running;
-  if (repeat && s.detection?.runKey !== c.runKey) return;
   observe(s, room.schedule.lines, {
     runKey: c.runKey,
     source: 'vision',
@@ -151,8 +170,11 @@ export function startTracking(
     const now = Date.now();
     // Stale suggestions go even when nothing new arrives.
     for (const room of registry.all()) {
-      const draft = structuredClone(room.state);
-      if (reconcile(draft, now)) room.mutate((s) => void reconcile(s, now));
+      if (!room.state.detection && !room.state.settled) continue;
+      const lines = room.schedule.lines;
+      if (reconcile(structuredClone(room.state), lines, now)) {
+        room.mutate((s) => void reconcile(s, lines, now));
+      }
     }
     pollTwitch(registry, opts.lookup)
       .catch((err) => log.error('poll failed', err))

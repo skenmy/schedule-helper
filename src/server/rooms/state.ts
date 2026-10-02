@@ -28,6 +28,7 @@ export function initialState(twitchChannel = ''): RoomState {
     captureBusy: false,
     tracking: { ...DEFAULT_TRACKING },
     detection: null,
+    settled: null,
     stream: null,
     undo: null,
     updatedAt: Date.now(),
