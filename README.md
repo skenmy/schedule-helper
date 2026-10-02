@@ -34,8 +34,19 @@ Horaro schedule. Try it offline with the built-in demo marathon (`/demo/demo/mai
   check-ins, schedule, progress, clock, message board, controls, log, stream). The layout lives in
   the URL, so set up a screen once and bookmark it. Kiosks keep the screen awake.
 - **Overlay feed.** Read-only JSON and Server-Sent Events for stream overlays, NodeCG or bots.
-- **Mobile layout.** Below 820 px: bottom navigation, a thumb-reachable Start / Next bar, swipe
-  between views, haptics and screen wake lock while a run is live.
+- **iPad interface.** A touch-first console: on a landscape iPad the live run and its controls sit
+  in one pane and the workspace tabs (timeline, schedule, log, tools) in another, each scrolling on
+  its own. In portrait the page scrolls, with the controls docked along the bottom. A **Floor**
+  mode (switch in the top bar, remembered per iPad) shows the live run, a big timer and one-tap
+  Ready / Missing check-ins for the next runs. Hardware-keyboard shortcuts still work.
+- **Phone interface.** Bottom tab bar (Now / Up next / Schedule / Log / More), Start / Next under
+  your thumb, swipe between views, swipe-down-to-close sheets, haptics, screen wake lock while a run
+  is live. Landscape switches to a side rail with Start / Next on the right.
+- **Installable, works without signal.** Add it to the Home Screen (Safari → Share → Add to Home
+  Screen) and it opens full screen, back on the schedule you last had open. With no connection it
+  still opens and shows the last state it saw, run timer ticking, with every control disabled until
+  it reconnects — nothing is ever sent from a stale view. The layout is picked from the screen and
+  pointer; More → _Layout on this device_ overrides it.
 - Command palette (⌘K / Ctrl K), keyboard shortcuts (`?` lists them), five colour themes, the UKSG
   brand theme for `uksg*` marathons, and a surprise if you type `huds`.
 
@@ -53,8 +64,9 @@ src/
     feed.ts   overlay feed · http.ts routes · ws.ts sessions · auth.ts tools.skenmy.com
   client/   Svelte 5 (runes) single-page app, built by Vite
     lib/        room connection, derived view model, clock, prefs, router, kiosk config
-    views/      Landing, Conductor (desktop), MobileConductor, Kiosk
-    components/ conductor panels, workspace tabs, dialogs, kiosk panels, UI primitives
+    views/      Landing, Conductor (desktop), TabletConductor (iPad), MobileConductor, Kiosk
+    components/ conductor panels, workspace tabs, dialogs, kiosk panels, touch controls, UI
+    sw.ts       service worker: caches the app shell so the installed app opens offline
 ```
 
 Rooms are keyed by `{source}/{event}/{slug}` and served at the same path (for example
@@ -69,6 +81,11 @@ room file and start it again.
 
 Timers are absolute server timestamps. Clients measure their clock offset against the server,
 so every screen shows the same elapsed time even when laptop clocks disagree.
+
+Each browser keeps the last state it received for its four most recent rooms in `localStorage`
+(`src/client/lib/offline.ts`), and the service worker (`src/client/sw.ts`) caches the app shell.
+So the installed app opens with no connection, and every launch paints at once instead of showing
+a spinner. Until the server sends fresh state over a live connection, controls stay disabled.
 
 ## WebSocket protocol (`/ws`)
 
@@ -145,7 +162,8 @@ open http://localhost:5173/demo/demo/main
 | `npm run check`    | typecheck (server under Node rules, client via svelte-check), lint, format check |
 | `npm test`         | unit + integration tests (Vitest)                                                |
 | `npm run test:e2e` | browser smoke tests (Playwright; builds and starts the server)                   |
-| `npm run build`    | production client build into `dist/client`                                       |
+| `npm run build`    | production client build into `dist/client`, including the service worker         |
+| `npm run icons`    | re-render the PNG app icons from `favicon.svg` (uses Playwright's Chromium)      |
 | `npm start`        | production server                                                                |
 
 Node 22.18+ is required locally (native TypeScript type stripping); the image uses Node 24.

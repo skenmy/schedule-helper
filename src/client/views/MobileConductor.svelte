@@ -20,6 +20,7 @@
   import ScheduleTab from '../components/tabs/ScheduleTab.svelte';
   import MoreSheet from '../components/touch/MoreSheet.svelte';
   import { haptic, keepAwake } from '../lib/device.ts';
+  import { fmtHMS } from '../lib/format.ts';
   import { getLive, getOps } from '../lib/live.svelte.ts';
   import { getRoom } from '../lib/room.svelte.ts';
   import { ui, type MobileView } from '../lib/ui.svelte.ts';
@@ -140,6 +141,7 @@
 <div class="dock">
   {#if ui.mobileView === 'now'}
     <div class="actions">
+      <span class="rail-time num" class:running aria-hidden="true">{fmtHMS(live.elapsedSec)}</span>
       <button
         class="btn lg {running ? 'danger' : 'primary'}"
         {disabled}
@@ -218,6 +220,17 @@
   }
   .actions .btn {
     min-height: 56px;
+  }
+  /* Landscape only: the timer, above the buttons, while the page scrolls. */
+  .rail-time {
+    display: none;
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    text-align: center;
+  }
+  .rail-time.running {
+    color: var(--accent);
   }
   nav {
     display: grid;
@@ -311,6 +324,10 @@
     .actions .btn {
       flex: 1;
       max-height: 120px;
+    }
+    .rail-time {
+      display: block;
+      margin-bottom: auto;
     }
   }
 </style>
