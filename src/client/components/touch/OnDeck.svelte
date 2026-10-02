@@ -221,10 +221,22 @@
   /* Narrow (portrait, or a slim pane): icon-only check-in buttons. */
   @container ondeck (max-width: 520px) {
     .checkin button {
-      min-width: 52px;
+      min-width: 48px;
+      min-height: 48px;
       padding: 0;
       font-size: 0;
       gap: 0;
+    }
+    .what {
+      grid-template-columns: 54px minmax(0, 1fr);
+      gap: 8px;
+      padding-left: 10px;
+    }
+    .when b {
+      font-size: 16px;
+    }
+    .names strong {
+      font-size: 15px;
     }
   }
 </style>

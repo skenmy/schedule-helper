@@ -83,6 +83,21 @@ test.describe('iPad, portrait', () => {
   });
 });
 
+test.describe('iPhone, portrait', () => {
+  test.use(device('iPhone 15'));
+
+  test('checks runners in from Up next', async ({ page }) => {
+    await open(page);
+    await page
+      .getByRole('navigation', { name: 'Views' })
+      .getByRole('button', { name: 'Up next' })
+      .click();
+    const deck = page.getByRole('region', { name: 'On deck' });
+    await expect(deck.getByRole('group').first()).toBeVisible();
+    await expect(deck.getByRole('button', { name: 'Ready' }).first()).toBeEnabled();
+  });
+});
+
 test.describe('iPhone', () => {
   test.use(device('iPhone 15 landscape'));
 

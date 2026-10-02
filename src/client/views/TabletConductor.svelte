@@ -13,7 +13,6 @@
   import OnDeck from '../components/touch/OnDeck.svelte';
   import Transport from '../components/touch/Transport.svelte';
   import { keepAwake } from '../lib/device.ts';
-  import { getLive } from '../lib/live.svelte.ts';
   import { prefs } from '../lib/prefs.svelte.ts';
 
   /**
@@ -26,11 +25,11 @@
    * pinned to the bottom of the live pane. Narrower ones scroll as a page
    * with the controls docked along the bottom.
    */
-  const live = getLive();
   const wide = new MediaQuery('min-width: 1000px');
   const floor = $derived(prefs.tabletMode === 'floor');
 
-  $effect(() => keepAwake(() => live.timing?.phase === 'running'));
+  // An operator's iPad shouldn't lock mid-show, setup gaps included.
+  $effect(() => keepAwake(() => true));
 
   $effect(() => {
     const html = document.documentElement;

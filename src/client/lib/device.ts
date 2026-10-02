@@ -51,32 +51,50 @@ export function enableActiveStates(): void {
 
 /**
  * Holds a screen wake lock while `active()` is true, re-acquiring it when the
- * tab becomes visible again (browsers drop locks for hidden tabs).
+ * tab becomes visible again (browsers drop locks for hidden tabs) and on the
+ * next tap (Safari can refuse one without a user gesture).
  * Returns a cleanup function.
  */
 export function keepAwake(active: () => boolean): () => void {
   let lock: WakeLockSentinel | null = null;
+  let requesting = false;
+  let stopped = false;
   const sync = async () => {
-    const want = active() && document.visibilityState === 'visible';
-    if (want && !lock && 'wakeLock' in navigator) {
+    const want = !stopped && active() && document.visibilityState === 'visible';
+    if (want && !lock && !requesting && 'wakeLock' in navigator) {
+      requesting = true;
       try {
-        lock = await navigator.wakeLock.request('screen');
-        lock.addEventListener('release', () => (lock = null));
+        const got = await navigator.wakeLock.request('screen');
+        if (stopped) {
+          void got.release().catch(() => {});
+        } else {
+          lock = got;
+          got.addEventListener('release', () => {
+            if (lock === got) lock = null;
+          });
+        }
       } catch {
         // denied, or battery saver
+      } finally {
+        requesting = false;
       }
     } else if (!want && lock) {
-      await lock.release().catch(() => {});
+      const held = lock;
       lock = null;
+      await held.release().catch(() => {});
     }
   };
   void sync();
   document.addEventListener('visibilitychange', sync);
+  document.addEventListener('pointerdown', sync, { passive: true });
   const timer = setInterval(sync, 5_000);
   return () => {
+    stopped = true;
     document.removeEventListener('visibilitychange', sync);
+    document.removeEventListener('pointerdown', sync);
     clearInterval(timer);
     void lock?.release().catch(() => {});
+    lock = null;
   };
 }
 

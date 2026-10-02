@@ -10,7 +10,6 @@
   import TimerPanel from '../components/conductor/TimerPanel.svelte';
   import Timeline from '../components/conductor/Timeline.svelte';
   import TopBar from '../components/conductor/TopBar.svelte';
-  import UpNext from '../components/conductor/UpNext.svelte';
   import RoomDialogs from '../components/RoomDialogs.svelte';
   import BroadcastTab from '../components/tabs/BroadcastTab.svelte';
   import CaptureTab from '../components/tabs/CaptureTab.svelte';
@@ -19,6 +18,7 @@
   import ProgressTab from '../components/tabs/ProgressTab.svelte';
   import ScheduleTab from '../components/tabs/ScheduleTab.svelte';
   import MoreSheet from '../components/touch/MoreSheet.svelte';
+  import OnDeck from '../components/touch/OnDeck.svelte';
   import { haptic, keepAwake } from '../lib/device.ts';
   import { fmtHMS } from '../lib/format.ts';
   import { getLive, getOps } from '../lib/live.svelte.ts';
@@ -52,7 +52,8 @@
     document.body.classList.add('has-bottom-nav');
     return () => document.body.classList.remove('has-bottom-nav');
   });
-  $effect(() => keepAwake(() => live.timing?.phase === 'running'));
+  // An operator's phone shouldn't lock mid-show, setup gaps included.
+  $effect(() => keepAwake(() => true));
   // Landscape keeps Start / Next in a rail on the right while the Now view is open.
   $effect(() => {
     document.body.classList.toggle('now-view', ui.mobileView === 'now');
@@ -118,7 +119,7 @@
         <TimerPanel compact />
         <MiniLog />
       {:else if ui.mobileView === 'upnext'}
-        <UpNext count={12} title={false} />
+        <OnDeck count={12} />
       {:else if ui.mobileView === 'schedule'}
         <ScheduleTab />
       {:else if ui.mobileView === 'log'}
