@@ -75,10 +75,11 @@ export function sameDay(a: number, b: number): boolean {
 
 /**
  * Parses operator-typed durations: `1:02:03`, `62:03` (m:ss), `45` (seconds).
- * Returns null for anything malformed.
+ * `.` and `,` count as `:` for phone number pads. Returns null for anything malformed.
  */
 export function parseDurationInput(input: string): number | null {
-  const parts = input.trim().split(':');
+  // Phone number pads have no colon key, but do have a decimal separator.
+  const parts = input.trim().replace(/[.,]/g, ':').split(':');
   if (parts.length === 0 || parts.length > 3 || parts.some((p) => !/^\d+$/.test(p))) return null;
   const nums = parts.map(Number);
   if (nums.length === 3) {

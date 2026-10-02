@@ -26,7 +26,7 @@
     // Stop a focused button from also being activated by the same keypress.
     (document.activeElement as HTMLElement | null)?.blur?.();
     if (!room.canWrite) {
-      room.promptSignIn();
+      room.explainReadOnly();
       return;
     }
     switch (key) {

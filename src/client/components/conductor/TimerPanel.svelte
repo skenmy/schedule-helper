@@ -53,7 +53,7 @@
     </span>
   </div>
 
-  {#if !room.canWrite && room.auth}
+  {#if !room.isOperator && room.auth}
     <div class="readonly">
       <span>Read-only view.</span>
       {#if room.auth.loginUrl && !room.auth.authenticated}
@@ -129,6 +129,7 @@
 
 <style>
   .timer {
+    container: timer / inline-size;
     padding: 18px;
     display: grid;
     gap: 14px;
@@ -226,7 +227,7 @@
     font-size: 12px;
     white-space: nowrap;
   }
-  @media (max-width: 1280px) {
+  @container timer (max-width: 480px) {
     .primary-row {
       grid-template-columns: 1fr;
     }

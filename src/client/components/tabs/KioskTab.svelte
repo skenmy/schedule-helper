@@ -258,12 +258,16 @@
   .input.num {
     font-size: 12px;
   }
+  /* 16px or iOS zooms in when the link is tapped to select it. */
+  :global([data-touch]) .input.num {
+    font-size: 16px;
+  }
   code {
     font-family: var(--font-mono);
     font-size: 12px;
     color: var(--text-2);
   }
-  @media (max-width: 1000px) {
+  @container panel (max-width: 950px) {
     .grid {
       grid-template-columns: 1fr;
     }

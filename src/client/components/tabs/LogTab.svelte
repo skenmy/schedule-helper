@@ -67,7 +67,11 @@
 <form class="composer" onsubmit={submit}>
   <input
     class="input"
-    placeholder={room.canWrite ? 'Add a note for the team…' : 'Sign in to add notes'}
+    placeholder={room.canWrite
+      ? 'Add a note for the team…'
+      : room.isOperator
+        ? 'Reconnecting…'
+        : 'Sign in to add notes'}
     maxlength="500"
     bind:value={text}
     disabled={!room.canWrite}
@@ -211,18 +215,21 @@
     font-size: 12px;
     color: var(--muted);
   }
-  .del {
-    opacity: 0;
-  }
-  .entry:hover .del,
-  .del:focus-visible {
-    opacity: 1;
+  /* Revealed on hover with a mouse; always there for fingers. */
+  @media (hover: hover) {
+    .del {
+      opacity: 0;
+    }
+    .entry:hover .del,
+    .del:focus-visible {
+      opacity: 1;
+    }
   }
   .empty {
     color: var(--muted);
     padding: 24px 0;
   }
-  @media (max-width: 640px) {
+  @container panel (max-width: 610px) {
     .entry {
       grid-template-columns: 46px 1fr auto;
     }

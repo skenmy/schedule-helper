@@ -1,9 +1,12 @@
 // Local UI state for the room view: open panels and dialogs, active tab.
 
 import type { RunKey } from '../../shared/types.ts';
+import { layout } from './layout.svelte.ts';
+import { prefs } from './prefs.svelte.ts';
 
-export type TabId = 'schedule' | 'log' | 'capture' | 'broadcast' | 'kiosk' | 'progress';
-/** `tool` shows the active workspace tab (capture, broadcast, kiosk, progress). */
+export type TabId =
+  'schedule' | 'log' | 'capture' | 'broadcast' | 'kiosk' | 'progress' | 'timeline';
+/** `tool` shows the active workspace tab (capture, broadcast, kiosk, progress, timeline). */
 export type MobileView = 'now' | 'upnext' | 'schedule' | 'log' | 'tool';
 
 export interface ConfirmRequest {
@@ -34,11 +37,13 @@ class UI {
     return new Promise((resolve) => (this.confirm = { ...req, resolve }));
   }
 
-  /** Opens a workspace tab, switching mobile to where tabs live. */
+  /** Opens a workspace tab, switching phones and tablets to where tabs live. */
   openTab(tab: TabId): void {
     this.tab = tab;
     this.mobileView = tab === 'schedule' || tab === 'log' ? tab : 'tool';
     this.moreOpen = false;
+    // Tools live in the tablet console; the floor view has no tabs.
+    if (layout.kind === 'tablet') prefs.tabletMode = 'console';
   }
 
   reset(): void {

@@ -1,26 +1,14 @@
 <script lang="ts">
-  import {
-    Camera,
-    ChartNoAxesColumn,
-    CircleQuestionMark,
-    Ellipsis,
-    House,
-    LayoutGrid,
-    List,
-    Megaphone,
-    NotebookPen,
-    Play,
-    Search,
-    Square,
-    StepForward,
-    TvMinimalPlay,
-  } from '@lucide/svelte';
+  import { Ellipsis, List, NotebookPen, Play, Square, StepForward } from '@lucide/svelte';
+  import { tick } from 'svelte';
+  import { fly } from 'svelte/transition';
   import { lineTitle } from '../../shared/derive.ts';
   import AnnouncementBanner from '../components/conductor/AnnouncementBanner.svelte';
   import MiniLog from '../components/conductor/MiniLog.svelte';
   import NowCard from '../components/conductor/NowCard.svelte';
   import StatusStrip from '../components/conductor/StatusStrip.svelte';
   import TimerPanel from '../components/conductor/TimerPanel.svelte';
+  import Timeline from '../components/conductor/Timeline.svelte';
   import TopBar from '../components/conductor/TopBar.svelte';
   import UpNext from '../components/conductor/UpNext.svelte';
   import RoomDialogs from '../components/RoomDialogs.svelte';
@@ -30,20 +18,18 @@
   import LogTab from '../components/tabs/LogTab.svelte';
   import ProgressTab from '../components/tabs/ProgressTab.svelte';
   import ScheduleTab from '../components/tabs/ScheduleTab.svelte';
-  import Dialog from '../components/ui/Dialog.svelte';
+  import MoreSheet from '../components/touch/MoreSheet.svelte';
   import { haptic, keepAwake } from '../lib/device.ts';
   import { getLive, getOps } from '../lib/live.svelte.ts';
-  import { prefs, THEMES } from '../lib/prefs.svelte.ts';
   import { getRoom } from '../lib/room.svelte.ts';
-  import { router } from '../lib/router.svelte.ts';
-  import { ui, type MobileView, type TabId } from '../lib/ui.svelte.ts';
+  import { ui, type MobileView } from '../lib/ui.svelte.ts';
 
   const room = getRoom();
   const live = getLive();
   const ops = getOps();
 
   const running = $derived(live.timing?.phase === 'running');
-  const disabled = $derived(!room.canWrite || room.status !== 'open' || live.phase === 'complete');
+  const disabled = $derived(!room.canWrite || live.phase === 'complete');
 
   const NAV: { id: MobileView | 'more'; label: string; icon: typeof Play }[] = [
     { id: 'now', label: 'Now', icon: Play },
@@ -53,32 +39,6 @@
     { id: 'more', label: 'More', icon: Ellipsis },
   ];
   const SWIPE_ORDER: MobileView[] = ['now', 'upnext', 'schedule', 'log'];
-  const TOOLS: { id: TabId; label: string; hint: string; icon: typeof Play }[] = [
-    {
-      id: 'capture',
-      label: 'Stream capture',
-      hint: 'Check our timer against the stream',
-      icon: Camera,
-    },
-    {
-      id: 'broadcast',
-      label: 'Broadcast',
-      hint: 'Announcement banner & message board',
-      icon: Megaphone,
-    },
-    {
-      id: 'kiosk',
-      label: 'Kiosk & overlays',
-      hint: 'Venue screens and the data feed',
-      icon: LayoutGrid,
-    },
-    {
-      id: 'progress',
-      label: 'Progress',
-      hint: 'Completion and estimate accuracy',
-      icon: ChartNoAxesColumn,
-    },
-  ];
 
   // Unseen log entries since the Log view was last open.
   let seenLog = $state(live.state.log[0]?.id ?? 0);
@@ -92,14 +52,35 @@
     return () => document.body.classList.remove('has-bottom-nav');
   });
   $effect(() => keepAwake(() => live.timing?.phase === 'running'));
+  // Landscape keeps Start / Next in a rail on the right while the Now view is open.
+  $effect(() => {
+    document.body.classList.toggle('now-view', ui.mobileView === 'now');
+    return () => document.body.classList.remove('now-view');
+  });
 
-  function go(id: MobileView | 'more') {
+  /** Which way the incoming view slides from: +1 from the right, −1 from the left. */
+  let direction = $state(0);
+  /** Each view keeps its scroll position, like the tabs of a native app. */
+  const scrolled: Partial<Record<MobileView, number>> = {};
+
+  async function go(id: MobileView | 'more') {
     haptic(8);
-    if (id === 'more') ui.moreOpen = true;
-    else {
-      ui.mobileView = id;
-      window.scrollTo({ top: 0 });
+    if (id === 'more') {
+      ui.moreOpen = true;
+      return;
     }
+    if (id === ui.mobileView) {
+      // Tapping the tab you're on goes back to its top.
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    const from = SWIPE_ORDER.indexOf(ui.mobileView);
+    const to = SWIPE_ORDER.indexOf(id);
+    direction = from < 0 || to < 0 ? 0 : Math.sign(to - from);
+    scrolled[ui.mobileView] = window.scrollY;
+    ui.mobileView = id;
+    await tick();
+    window.scrollTo({ top: scrolled[id] ?? 0 });
   }
 
   // Horizontal swipe between the main views.
@@ -115,38 +96,45 @@
     const dx = t.clientX - sx;
     const dy = t.clientY - sy;
     if (Math.abs(dx) < 80 || Math.abs(dy) > 60 || Date.now() - st > 450) return;
-    if ((e.target as HTMLElement).closest('input, textarea, select, table, .seg, iframe')) return;
+    if ((e.target as HTMLElement).closest('input, textarea, select, table, .seg, iframe, .track'))
+      return;
     const i = SWIPE_ORDER.indexOf(ui.mobileView);
     if (i < 0) return;
     const next = SWIPE_ORDER[i + (dx < 0 ? 1 : -1)];
-    if (next) go(next);
+    if (next) void go(next);
   }
 </script>
 
-<TopBar compact />
+<TopBar variant="phone" />
 <AnnouncementBanner />
 <StatusStrip compact />
 
 <main class="view" ontouchstart={touchstart} ontouchend={touchend}>
-  {#if ui.mobileView === 'now'}
-    <NowCard />
-    <TimerPanel compact />
-    <MiniLog />
-  {:else if ui.mobileView === 'upnext'}
-    <UpNext count={12} title={false} />
-  {:else if ui.mobileView === 'schedule'}
-    <ScheduleTab />
-  {:else if ui.mobileView === 'log'}
-    <LogTab />
-  {:else if ui.tab === 'capture'}
-    <CaptureTab />
-  {:else if ui.tab === 'broadcast'}
-    <BroadcastTab />
-  {:else if ui.tab === 'kiosk'}
-    <KioskTab />
-  {:else}
-    <ProgressTab />
-  {/if}
+  {#key ui.mobileView === 'tool' ? `tool-${ui.tab}` : ui.mobileView}
+    <div class="page" in:fly={{ x: direction * 28, duration: 180 }}>
+      {#if ui.mobileView === 'now'}
+        <NowCard />
+        <TimerPanel compact />
+        <MiniLog />
+      {:else if ui.mobileView === 'upnext'}
+        <UpNext count={12} title={false} />
+      {:else if ui.mobileView === 'schedule'}
+        <ScheduleTab />
+      {:else if ui.mobileView === 'log'}
+        <LogTab />
+      {:else if ui.tab === 'capture'}
+        <CaptureTab />
+      {:else if ui.tab === 'broadcast'}
+        <BroadcastTab />
+      {:else if ui.tab === 'kiosk'}
+        <KioskTab />
+      {:else if ui.tab === 'timeline'}
+        <Timeline />
+      {:else}
+        <ProgressTab />
+      {/if}
+    </div>
+  {/key}
 </main>
 
 <div class="dock">
@@ -183,6 +171,7 @@
         class:on={item.id === 'more'
           ? ui.moreOpen || ui.mobileView === 'tool'
           : ui.mobileView === item.id}
+        aria-current={item.id !== 'more' && ui.mobileView === item.id ? 'page' : undefined}
         onclick={() => go(item.id)}
       >
         <Icon size={20} />
@@ -195,59 +184,18 @@
   </nav>
 </div>
 
-<Dialog bind:open={ui.moreOpen} variant="sheet" title="More">
-  <ul class="more">
-    {#each TOOLS as t (t.id)}
-      {@const Icon = t.icon}
-      <li>
-        <button onclick={() => ui.openTab(t.id)}>
-          <Icon size={20} /><span><b>{t.label}</b><small>{t.hint}</small></span>
-        </button>
-      </li>
-    {/each}
-    <li>
-      <button onclick={() => ((ui.moreOpen = false), (ui.palette = true))}>
-        <Search size={20} /><span><b>Search</b><small>Jump to any run or action</small></span>
-      </button>
-    </li>
-    <li>
-      <button onclick={() => window.open(`${location.pathname}?kiosk=1`, '_blank')}>
-        <TvMinimalPlay size={20} /><span
-          ><b>Open kiosk</b><small>Full-screen display on this device</small></span
-        >
-      </button>
-    </li>
-    <li>
-      <button onclick={() => ((ui.moreOpen = false), (ui.help = true))}>
-        <CircleQuestionMark size={20} /><span
-          ><b>Help</b><small>How delta, projections and undo work</small></span
-        >
-      </button>
-    </li>
-    <li>
-      <button onclick={() => router.navigate('/')}>
-        <House size={20} /><span
-          ><b>Change schedule</b><small>{room.schedule?.scheduleName}</small></span
-        >
-      </button>
-    </li>
-  </ul>
-  <label class="field theme">
-    <span class="label">Theme</span>
-    <select class="select" bind:value={prefs.theme}>
-      {#each THEMES as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
-    </select>
-  </label>
-</Dialog>
-
+<MoreSheet />
 <RoomDialogs />
 
 <style>
   .view {
-    display: grid;
-    gap: 12px;
+    container: panel / inline-size;
     padding: 12px 12px calc(160px + env(safe-area-inset-bottom));
     min-height: 60dvh;
+  }
+  .page {
+    display: grid;
+    gap: 12px;
   }
   .dock {
     position: fixed;
@@ -255,10 +203,12 @@
     right: 0;
     bottom: 0;
     z-index: 60;
+    padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
     background: color-mix(in oklab, var(--bg) 92%, transparent);
     backdrop-filter: blur(14px);
     border-top: 1px solid var(--border);
-    padding-bottom: env(safe-area-inset-bottom);
+    user-select: none;
+    -webkit-user-select: none;
   }
   .actions {
     display: grid;
@@ -267,7 +217,7 @@
     padding: 10px 12px 4px;
   }
   .actions .btn {
-    min-height: 54px;
+    min-height: 56px;
   }
   nav {
     display: grid;
@@ -278,6 +228,7 @@
     display: grid;
     justify-items: center;
     gap: 3px;
+    min-height: 54px;
     padding: 8px 0 10px;
     border: 0;
     background: none;
@@ -285,9 +236,13 @@
     font-size: 11px;
     font-weight: 600;
     cursor: pointer;
+    -webkit-touch-callout: none;
   }
   nav button.on {
     color: var(--accent);
+  }
+  nav button:active {
+    color: var(--text);
   }
   .badge {
     position: absolute;
@@ -302,40 +257,60 @@
     font-size: 10.5px;
     line-height: 18px;
   }
-  .more {
-    list-style: none;
-    margin: 0 0 16px;
-    padding: 0;
-    display: grid;
-    gap: 2px;
-  }
-  .more button {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 12px 8px;
-    border: 0;
-    border-radius: var(--radius-sm);
-    background: none;
-    text-align: left;
-    cursor: pointer;
-  }
-  .more button:hover {
-    background: var(--surface-2);
-  }
-  .more :global(svg) {
-    color: var(--accent);
-    flex: none;
-  }
-  .more span {
-    display: grid;
-  }
-  .more small {
-    color: var(--muted);
-    font-size: 12.5px;
-  }
-  .theme {
-    padding: 0 8px;
+
+  /* ── Landscape phone: a side rail, Start / Next under the right thumb ─ */
+  @media (orientation: landscape) and (max-height: 500px) {
+    :global(body.has-bottom-nav) {
+      --rail-w: 84px;
+      --actions-w: 200px;
+      --dock-space: 0px;
+      --dock-right: calc(var(--actions-w) + env(safe-area-inset-right));
+      padding-left: calc(var(--rail-w) + env(safe-area-inset-left));
+    }
+    .view {
+      padding-bottom: calc(24px + env(safe-area-inset-bottom));
+    }
+    :global(body.has-bottom-nav.now-view) {
+      padding-right: calc(var(--actions-w) + env(safe-area-inset-right));
+    }
+    .dock {
+      display: contents;
+    }
+    nav {
+      position: fixed;
+      z-index: 60;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: calc(var(--rail-w) + env(safe-area-inset-left));
+      padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left);
+      grid-template-columns: 1fr;
+      grid-auto-rows: min-content;
+      align-content: center;
+      gap: 4px;
+      border-right: 1px solid var(--border);
+      background: color-mix(in oklab, var(--bg) 92%, transparent);
+      backdrop-filter: blur(14px);
+    }
+    .actions {
+      position: fixed;
+      z-index: 60;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: calc(var(--actions-w) + env(safe-area-inset-right));
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: calc(12px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right))
+        calc(12px + env(safe-area-inset-bottom)) 12px;
+      border-left: 1px solid var(--border);
+      background: color-mix(in oklab, var(--bg) 92%, transparent);
+      backdrop-filter: blur(14px);
+    }
+    .actions .btn {
+      flex: 1;
+      max-height: 120px;
+    }
   }
 </style>

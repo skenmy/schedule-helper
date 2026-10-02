@@ -405,7 +405,7 @@
     height: 100%;
     border: 0;
   }
-  @media (max-width: 1000px) {
+  @container panel (max-width: 950px) {
     .grid {
       grid-template-columns: 1fr;
     }
