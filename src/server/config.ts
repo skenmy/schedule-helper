@@ -35,6 +35,11 @@ export const config = {
   twitchClientSecret: env.TWITCH_CLIENT_SECRET || '',
   /** Dev/testing: read channel info from this JSON file instead of Twitch. */
   streamInfoFile: env.STREAM_INFO_FILE || '',
+  /** Push notification keys. Empty: generated once and kept in DATA_DIR. */
+  vapidPublicKey: env.VAPID_PUBLIC_KEY || '',
+  vapidPrivateKey: env.VAPID_PRIVATE_KEY || '',
+  /** Contact for push services (a mailto: or https URL). */
+  vapidSubject: env.VAPID_SUBJECT || env.PUBLIC_URL || 'https://schedule.skenmy.com',
   /** Signs runner check-in links. Empty: generated once and kept in DATA_DIR. */
   checkinSecret: env.CHECKIN_SECRET || '',
   /** How often auto-tracking polls Twitch. */

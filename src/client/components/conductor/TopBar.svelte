@@ -1,5 +1,13 @@
 <script lang="ts">
-  import { CircleQuestionMark, Ellipsis, House, LogIn, MonitorPlay, Search } from '@lucide/svelte';
+  import {
+    Bell,
+    CircleQuestionMark,
+    Ellipsis,
+    House,
+    LogIn,
+    MonitorPlay,
+    Search,
+  } from '@lucide/svelte';
   import { detectBrand, roomPath } from '../../../shared/sources.ts';
   import { clock } from '../../lib/clock.svelte.ts';
   import { fmtClock } from '../../lib/format.ts';
@@ -101,6 +109,16 @@
       >
         <MonitorPlay size={16} /> Kiosk
       </button>
+      {#if room.isOperator}
+        <button
+          class="btn ghost icon sm"
+          aria-label="Alerts on this device"
+          title="Alerts on this device"
+          onclick={() => (ui.alerts = true)}
+        >
+          <Bell size={17} />
+        </button>
+      {/if}
       <button
         class="btn ghost icon sm"
         aria-label="Help and shortcuts"

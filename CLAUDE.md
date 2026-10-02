@@ -24,6 +24,9 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
     `detect.ts` (signals → `state.detection`, pure), `service.ts` (polling, vision hook, auto-apply)
   - `checkin.ts` runner self check-in links (HMAC per room + run, secret in `DATA_DIR`); the runner's
     page posts to `http.ts`, which dispatches `runner:checkin` / `runner:late` with `{ runner: true }`
+  - `push/` operator alerts: `alerts.ts` (pure: log warnings, detections, overruns, runners not
+    checked in), `service.ts` (watches followed rooms, web-push delivery), `keys.ts` (VAPID),
+    `store.ts` (subscriptions in `DATA_DIR`). `sw.ts` shows them and opens the room on tap.
   - `ws.ts` sessions (ordered queue, auth gate, heartbeat) · `http.ts` routes · `feed.ts` overlay feed
 - `src/client/` — Svelte 5 runes, Vite root:
   - `lib/room.svelte.ts` WebSocket connection (`RoomConnection`), reconnect, clock sync, offline
@@ -70,7 +73,7 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
   and the clock ticks every 250 ms. Effects that seed form fields must read state via `untrack`
   or key off a primitive `$derived` (see `CaptureTab.svelte`, `EditTimesDialog.svelte`).
 - Mutating actions are auth-gated in `ws.ts`; `join`/`ping` and all HTTP reads are public, except
-  `checkin-links` (operators only). The one HTTP write is a runner's check-in, authorised by its
+  `checkin-links` and the `push` routes (operators only). The one HTTP write is a runner's check-in, authorised by its
   link's token for that run alone (throttled per link), and runs through the reducer with
   `{ runner: true }`: refusals for started/skipped runs live there, and it never goes on the undo
   stack (`Room.undo` carries forward runs whose `selfAt` is newer). **A runner's late note is free
@@ -91,6 +94,9 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
   an iPad pane and a desktop column, so their breakpoints are `@container panel` / `nowcard` /
   `timer` queries. Touch sizing hangs off `[data-touch]`; hover-only affordances need a
   `@media (hover: hover)` guard (hover sticks after a tap on iPad).
+- **Push alerts are for operators and carry what operators see.** Add a kind in `push/alerts.ts`
+  (with a test), not in the service; keep its text free of clock times (the server's time zone
+  isn't the operator's). Never post to an endpoint outside `PUSH_HOSTS` (`protocol.ts`).
 - **The service worker never touches `/api` or `/ws`**, navigations are network-first, and the
   precache list comes from the build. Non-hashed static files are served `no-cache` so deploys
   reach installed apps. The client is built with `__BUILD__` (`BUILD_SHA`), so a page served from

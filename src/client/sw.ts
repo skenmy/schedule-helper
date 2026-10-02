@@ -88,3 +88,50 @@ async function runtime(event: FetchEvent, request: Request): Promise<Response> {
   }
   return update;
 }
+
+// ── Push notifications (operators' alerts; server: src/server/push/) ──────────
+
+interface PushPayload {
+  title: string;
+  body: string;
+  tag: string;
+  /** A path in this app to open when tapped. */
+  url: string;
+}
+
+self.addEventListener('push', (event) => {
+  let data: PushPayload | null = null;
+  try {
+    data = (event.data?.json() as PushPayload | undefined) ?? null;
+  } catch {
+    // Not ours.
+  }
+  if (!data?.title) return;
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      tag: data.tag,
+      data: { url: data.url },
+      icon: '/icons/icon-192.png',
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const raw = (event.notification.data as { url?: unknown } | null)?.url;
+  const target = new URL(typeof raw === 'string' ? raw : '/', self.location.origin);
+  // Only ever open this app.
+  const url = target.origin === self.location.origin ? target.href : self.location.origin;
+  event.waitUntil(
+    (async () => {
+      const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const open = windows.find((w) => new URL(w.url).pathname === new URL(url).pathname);
+      if (open) return void (await open.focus());
+      // navigate() only works on a window this worker controls; otherwise open a new one.
+      const navigated = await windows[0]?.navigate(url).catch(() => null);
+      if (navigated) return void (await navigated.focus());
+      await self.clients.openWindow(url);
+    })(),
+  );
+});

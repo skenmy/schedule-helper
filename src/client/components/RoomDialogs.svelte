@@ -1,4 +1,5 @@
 <script lang="ts">
+  import AlertsDialog from './dialogs/AlertsDialog.svelte';
   import CommandPalette from './dialogs/CommandPalette.svelte';
   import EditTimesDialog from './dialogs/EditTimesDialog.svelte';
   import HelpDialog from './dialogs/HelpDialog.svelte';
@@ -14,6 +15,7 @@
 <SetElapsedDialog />
 <CommandPalette />
 <HelpDialog />
+<AlertsDialog />
 <ConfirmDialog />
 <NewVersionPill />
 <OfflineBanner />

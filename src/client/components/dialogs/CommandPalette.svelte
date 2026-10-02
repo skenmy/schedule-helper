@@ -209,6 +209,13 @@
     }
     if (room.isOperator) {
       items.push({
+        id: 'alerts',
+        group: 'Go to',
+        label: 'Alerts on this device…',
+        hint: 'Push notifications, even with the app closed',
+        run: () => (ui.alerts = true),
+      });
+      items.push({
         id: 'checkin-links',
         group: 'Actions',
         label: 'Copy runner check-in links',

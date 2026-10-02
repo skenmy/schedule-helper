@@ -145,6 +145,47 @@ test('a runner checks in from their own link', async ({ browser }) => {
   await expect(runner.getByText('This link isn’t valid')).toBeVisible();
 });
 
+test('an operator turns alerts on for this device', async ({ browser }) => {
+  const context = await browser.newContext();
+  await context.grantPermissions(['notifications']);
+  // Headless Chromium has no push service, and its headless shell (what CI runs) denies
+  // notifications whatever is granted: stand in for the permission and the subscription.
+  await context.addInitScript(() => {
+    Object.defineProperty(Notification, 'permission', { get: () => 'granted' });
+    Notification.requestPermission = async () => 'granted';
+    const sub = {
+      endpoint: 'https://fcm.googleapis.com/fcm/send/e2e-device',
+      options: { applicationServerKey: null },
+      unsubscribe: async () => true,
+      toJSON: () => ({
+        endpoint: sub.endpoint,
+        keys: {
+          p256dh:
+            'BAHOVcjqx4_GNUbipw3-FMTahov29ELSZgnu18DKRYfmt07CJQXelsz6BIPWdkry5AHOVcjqx4_GNUbipw3-FMT',
+          auth: 'ALWhs3CNYju5EPalw7GRcn',
+        },
+      }),
+    };
+    let current: typeof sub | null = null;
+    PushManager.prototype.subscribe = async () => (current = sub) as unknown as PushSubscription;
+    PushManager.prototype.getSubscription = async () => current as unknown as PushSubscription;
+  });
+  const page = await context.newPage();
+  await openDemo(page);
+  await page.evaluate(() => navigator.serviceWorker.ready);
+
+  await page.getByRole('button', { name: 'Alerts on this device' }).click();
+  const toggle = page.getByRole('switch', { name: 'Alerts on this device' });
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('button', { name: 'Send a test' })).toBeVisible();
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await context.close();
+});
+
 // Keep last: it wipes the shared demo room.
 test('the whole marathon can be reset after typing to confirm', async ({ page }) => {
   await openDemo(page);
