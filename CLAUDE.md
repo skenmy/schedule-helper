@@ -119,9 +119,9 @@ ordinary undoable action that back-dates the start from a timer reading) or dism
   suggested; a live run that's gone from the schedule stops detection. A detection is dropped as
   soon as the live run changes (`reconcile()` runs on every commit) or after 20 minutes unbacked.
 - **What's dealt with stays dealt with.** Accepting or dismissing records `state.settled`
-  (`{ runKey, kind, currentKey }`): the same suggestion isn't raised again while the live run is the
-  same (30 minutes at most), so an undo or a dismissal sticks however often the stream repeats
-  itself. Vision readings are level-triggered against that; Twitch only signals when the run its
+  (`{ runKey, kind, currentKey }`): the same suggestion isn't raised again while the room is on the
+  run where it was dealt with or the run it pointed at (30 minutes at most), so an undo (which lands
+  back where it was dealt with) or a dismissal sticks however often the stream repeats itself. Vision readings are level-triggered against that; Twitch only signals when the run its
   category/title points at changes. A source that now sees the live run withdraws only its own
   signals. A back-dated start before the live run's start (or the previous run's end) is treated as
   a misread timer.
