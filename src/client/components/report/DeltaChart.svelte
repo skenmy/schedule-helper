@@ -1,6 +1,7 @@
 <script lang="ts">
   import { ON_SCHEDULE_WINDOW_SEC as W, scheduleStatus } from '../../../shared/derive.ts';
   import type { ReportRow } from '../../../shared/report.ts';
+  import { timeTicks } from '../../lib/chart.ts';
   import { fmtAhead, fmtClock, fmtDay, fmtWhen } from '../../lib/format.ts';
 
   /**
@@ -67,20 +68,7 @@
   const y = (v: number) => M.top + ((yAxis.top - v) / (yAxis.top - yAxis.bottom)) * ih;
 
   /** Time ticks on local clock boundaries, about one per 84px; midnight shows the day. */
-  const xTicks = $derived.by(() => {
-    const [a, b] = xDomain;
-    const most = Math.max(2, Math.floor(iw / 84));
-    const step =
-      [15, 30, 60, 120, 180, 360, 720, 1440]
-        .map((m) => m * 60_000)
-        .find((s) => (b - a) / s <= most) ?? 86_400_000;
-    const day = new Date(a);
-    let t = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
-    while (t < a) t += step;
-    const out: number[] = [];
-    for (; t <= b; t += step) out.push(t);
-    return out;
-  });
+  const xTicks = $derived(timeTicks(xDomain[0], xDomain[1], Math.floor(iw / 84)));
   const xLabel = (t: number) => {
     const d = new Date(t);
     return d.getHours() === 0 && d.getMinutes() === 0 ? fmtDay(t) : fmtClock(t);
@@ -188,18 +176,20 @@
     aria-valuemax={pts.length}
     aria-valuenow={(active ?? pts.length - 1) + 1}
     aria-valuetext={describe(shown ?? pts.at(-1))}
-    style:height="{height}px"
+    style:min-height={width ? null : `${height}px`}
     onpointermove={pick}
     onpointerdown={pick}
     onpointerleave={(e) => {
       if (e.pointerType !== 'touch') active = null;
     }}
+    onpointercancel={() => (active = null)}
     onfocus={() => (active ??= pts.length - 1)}
     onblur={() => (active = null)}
     {onkeydown}
   >
     {#if width > 0}
-      <svg {width} {height} aria-hidden="true">
+      <!-- Drawn in on-screen pixels, but scales to whatever width it's given (print). -->
+      <svg viewBox="0 0 {width} {height}" aria-hidden="true">
         <defs>
           <clipPath id="{id}-ahead">
             <rect x="0" y="0" {width} height={Math.max(0, y(W))} />
@@ -320,6 +310,8 @@
   }
   svg {
     display: block;
+    width: 100%;
+    height: auto;
     overflow: visible;
   }
   .wash {
@@ -395,6 +387,7 @@
     z-index: 2;
     display: grid;
     gap: 2px;
+    width: max-content;
     max-width: min(280px, 80%);
     padding: 8px 10px;
     border-radius: var(--radius-sm);

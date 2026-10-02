@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   catchUpPlan,
+  changeovers,
   checkInSummary,
   computeDelta,
   eventPace,
@@ -212,6 +213,47 @@ describe('marathon summaries', () => {
     const next = upcomingIndexes(LINES, s, 5);
     expect(next).toEqual([1, 3]);
     expect(checkInSummary(LINES, s.runs, next)).toEqual({ ready: 1, missing: 0, unchecked: 1 });
+  });
+});
+
+describe('changeovers', () => {
+  it('measures each changeover against the setup and interludes planned for it', () => {
+    const s = state({
+      runs: {
+        a: { startedAt: T0, endedAt: T0 + 30 * MIN },
+        b: { startedAt: T0 + 42 * MIN, endedAt: T0 + 100 * MIN },
+        c: { startedAt: T0 + 135 * MIN },
+      },
+    });
+    expect(changeovers(LINES, s)).toEqual([
+      { from: 'a', to: 'b', actualSec: 12 * 60, plannedSec: 10 * 60, isBreak: false },
+      // b's setup, then the interlude and its own setup.
+      { from: 'b', to: 'c', actualSec: 35 * 60, plannedSec: 30 * 60, isBreak: false },
+    ]);
+  });
+
+  it('follows the order runs were played in, with no plan for a swap', () => {
+    const s = state({
+      runs: {
+        a: { startedAt: T0, endedAt: T0 + 30 * MIN },
+        c: { startedAt: T0 + 40 * MIN, endedAt: T0 + 60 * MIN },
+        b: { startedAt: T0 + 70 * MIN },
+      },
+    });
+    expect(changeovers(LINES, s).map((c) => [c.from, c.to, c.actualSec, c.plannedSec])).toEqual([
+      ['a', 'c', 600, null],
+      ['c', 'b', 600, null],
+    ]);
+  });
+
+  it('marks a long gap as a break', () => {
+    const s = state({
+      runs: {
+        a: { startedAt: T0, endedAt: T0 + 30 * MIN },
+        b: { startedAt: T0 + 300 * MIN },
+      },
+    });
+    expect(changeovers(LINES, s)[0]).toMatchObject({ isBreak: true });
   });
 });
 
