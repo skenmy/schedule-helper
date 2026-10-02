@@ -467,6 +467,43 @@ describe('stream PC (NodeCG speedcontrol)', () => {
     expect((await report({ t: links.tokens.d3, via: 'bundle', run, timer: null })).status).toBe(
       403,
     );
+    const { token } = (await (await fetch(`${base()}/source-token`)).json()) as { token: string };
+    const asCheckIn = await fetch(`${base()}/checkin/d3`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ t: token, status: 'ready' }),
+    });
+    expect(asCheckIn.status).toBe(403);
+  });
+
+  it('lets the sandboxed bridge page report cross-origin, without credentials', async () => {
+    const pre = await fetch(`${base()}/nodecg`, {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'null',
+        'access-control-request-method': 'POST',
+        'access-control-request-headers': 'content-type',
+      },
+    });
+    expect(pre.status).toBe(204);
+    expect(pre.headers.get('access-control-allow-origin')).toBe('*');
+    expect(pre.headers.get('access-control-allow-headers')).toBe('content-type');
+    expect(pre.headers.get('access-control-allow-credentials')).toBeNull();
+    // Nothing else operators use is opened up.
+    const other = await fetch(`${base()}/source-token`, { headers: { origin: 'null' } });
+    expect(other.headers.get('access-control-allow-origin')).toBeNull();
+  });
+
+  it('replaces the stream PC token on request: the old one stops working', async () => {
+    const { token: old } = (await (await fetch(`${base()}/source-token`)).json()) as {
+      token: string;
+    };
+    const res = await fetch(`${base()}/source-token`, { method: 'POST' });
+    const { token: fresh } = (await res.json()) as { token: string };
+    expect(fresh).not.toBe(old);
+    const run = { game: 'Celeste', players: [] };
+    expect((await report({ t: old, via: 'bundle', run, timer: null })).status).toBe(403);
+    expect((await report({ t: fresh, via: 'bundle', run, timer: null })).status).toBe(200);
   });
 });
 

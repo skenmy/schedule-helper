@@ -1,15 +1,23 @@
 // The NodeCG bridge (bridge.html): for when the nodecg-schedule-helper bundle
 // can't be installed. A browser on the stream PC, or an OBS browser source,
 // loads NodeCG's own socket.io client, reads speedcontrol's replicants and
-// reports them to Schedule Helper exactly as the bundle would.
+// reports them to Schedule Helper as the bundle would.
 //
-//   /bridge.html?room=oengus/event/slug&nodecg=http://localhost:9090[&key=…]#t=TOKEN
+//   /bridge.html?room=oengus/event/slug&nodecg=http://localhost:9090#t=TOKEN[&key=NODECG_KEY]
 //
-// Best effort: browsers can refuse a page on https from talking to NodeCG over
-// plain http on another machine. NodeCG on the same PC (localhost) usually
-// works; the bundle always does.
+// The page is served sandboxed (http.ts): it runs a script from whatever NodeCG
+// address it's given, so it gets no origin, no cookies and no storage here.
+// Best effort: a browser may block an https page from reaching NodeCG over
+// plain http on another machine; NodeCG on the same PC usually works; the
+// bundle always does.
 
-import type { NodecgReport } from '../shared/protocol.ts';
+import {
+  ackValue,
+  buildReport,
+  parseBridgeParams,
+  type RunData,
+  type Timer,
+} from './lib/nodecg-report.ts';
 
 interface Socket {
   connected: boolean;
@@ -18,27 +26,10 @@ interface Socket {
 }
 type Io = (url: string, opts?: Record<string, unknown>) => Socket;
 
-interface RunData {
-  externalID?: string | number;
-  game?: string;
-  category?: string;
-  teams?: { players?: { name?: string }[] }[];
-}
-interface Timer {
-  state?: 'stopped' | 'running' | 'paused' | 'finished';
-  milliseconds?: number;
-  timestamp?: number;
-}
-
 const POLL_MS = 1_000;
 const HEARTBEAT_MS = 15_000;
+const MAX_BACKOFF_MS = 30_000;
 const NAMESPACE = 'nodecg-speedcontrol';
-
-const params = new URLSearchParams(location.search);
-const room = (params.get('room') ?? '').replace(/^\/+|\/+$/g, '');
-const nodecgUrl = (params.get('nodecg') || 'http://localhost:9090').replace(/\/+$/, '');
-const key = params.get('key');
-const token = new URLSearchParams(location.hash.slice(1)).get('t') ?? '';
 
 function show(id: string, text: string, tone: 'ok' | 'warn' | 'bad' | '' = '') {
   const el = document.getElementById(id);
@@ -57,106 +48,85 @@ function loadScript(src: string): Promise<void> {
   });
 }
 
-/** Reads a replicant's current value; NodeCG 1 acks `(data)`, NodeCG 2 `(error, data)`. */
 function read<T>(socket: Socket, name: string): Promise<T | undefined> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(undefined), 3_000);
     socket.emit('replicant:declare', { name, namespace: NAMESPACE, opts: {} }, (...args) => {
       clearTimeout(timer);
-      const [error, data] = args.length > 1 ? args : [null, args[0]];
-      resolve(error ? undefined : (data as { value?: T } | undefined)?.value);
+      resolve(ackValue<T>(args));
     });
   });
 }
 
-export function buildReport(
-  run: RunData | undefined,
-  timer: Timer | undefined,
-  now = Date.now(),
-): Omit<NodecgReport, 't'> {
-  const elapsedMs = timer
-    ? Math.max(
-        0,
-        (timer.milliseconds ?? 0) +
-          (timer.state === 'running' && timer.timestamp ? now - timer.timestamp : 0),
-      )
-    : 0;
-  return {
-    via: 'bridge',
-    run: run
-      ? {
-          externalID: run.externalID != null ? String(run.externalID) : null,
-          game: run.game ?? null,
-          category: run.category ?? null,
-          players: (run.teams ?? [])
-            .flatMap((t) => (t.players ?? []).map((p) => p.name ?? ''))
-            .filter(Boolean)
-            .slice(0, 32),
-        }
-      : null,
-    timer: timer?.state ? { state: timer.state, elapsedMs: Math.round(elapsedMs) } : null,
-  };
-}
-
 async function main() {
-  if (!room || !token) {
-    show(
-      'room',
-      'Missing: open the address Schedule Helper gave you (it has ?room= and #t=).',
-      'bad',
-    );
+  const params = parseBridgeParams(location.search, location.hash);
+  if (typeof params === 'string') {
+    show('room', params, 'bad');
     show('nodecg', '—');
     return;
   }
-  show('room', room);
+  const { room, nodecg, token, key } = params;
+  const roomPath = `${room.source}/${room.event}/${room.slug}`;
+  show('room', roomPath);
+
   try {
-    await loadScript(`${nodecgUrl}/socket.io/socket.io.js`);
+    await loadScript(`${nodecg}/socket.io/socket.io.js`);
   } catch {
     show(
       'nodecg',
-      `Can’t reach NodeCG at ${nodecgUrl}. Is it running, and is that its address? (Set ?nodecg=…)`,
+      `Can’t reach NodeCG at ${nodecg}. Is it running, and is that its address as this PC sees it? ` +
+        'A browser may also refuse to reach NodeCG on another machine over plain http: open this ' +
+        'on the NodeCG PC with nodecg=http://localhost:9090, or use the NodeCG bundle instead.',
       'bad',
     );
     return;
   }
   const io = (window as unknown as { io?: Io }).io;
   if (!io) {
-    show('nodecg', `${nodecgUrl} didn’t provide a socket.io client.`, 'bad');
+    show('nodecg', `${nodecg} didn’t provide a socket.io client.`, 'bad');
     return;
   }
-  const socket = io(nodecgUrl, {
+  // NodeCG reads a login key from the `token` query, in NodeCG 1 and 2 alike.
+  const socket = io(nodecg, {
     transports: ['websocket', 'polling'],
-    ...(key ? { query: { key } } : {}),
+    ...(key ? { query: { token: key } } : {}),
   });
-  socket.on('connect', () => show('nodecg', `Connected to ${nodecgUrl}`, 'ok'));
-  socket.on('disconnect', () =>
-    show('nodecg', `Disconnected from ${nodecgUrl}, retrying…`, 'warn'),
-  );
+  socket.on('connect', () => show('nodecg', `Connected to ${nodecg}`, 'ok'));
+  socket.on('disconnect', () => show('nodecg', `Disconnected from ${nodecg}, retrying…`, 'warn'));
   socket.on('connect_error', () =>
-    show('nodecg', `Can’t connect to ${nodecgUrl}. If NodeCG needs a login, add &key=…`, 'bad'),
+    show(
+      'nodecg',
+      `Can’t connect to ${nodecg}. If NodeCG has a login, add &key=YOUR_KEY to the end of this page’s address.`,
+      'bad',
+    ),
   );
 
+  const endpoint = `/api/rooms/${roomPath}/nodecg`;
   let lastKey = '';
   let lastSent = 0;
-  const endpoint = `/api/rooms/${room}/nodecg`;
+  let busy = false;
+  let retryAt = 0;
+  let backoff = POLL_MS;
 
   async function tick() {
-    if (!socket.connected) return;
-    const [run, timer] = await Promise.all([
-      read<RunData>(socket, 'runDataActiveRun'),
-      read<Timer>(socket, 'timer'),
-    ]);
-    const report = buildReport(run, timer);
-    show(
-      'speedcontrol',
-      run
-        ? `${run.game ?? 'Untitled run'}${run.category ? ` (${run.category})` : ''} · timer ${timer?.state ?? 'unknown'}`
-        : 'No active run (is nodecg-speedcontrol installed?)',
-      run ? '' : 'warn',
-    );
-    const changeKey = JSON.stringify([report.run, report.timer?.state]);
-    if (changeKey === lastKey && Date.now() - lastSent < HEARTBEAT_MS) return;
+    // One at a time: a slow NodeCG or server mustn't pile requests up.
+    if (busy || !socket.connected || Date.now() < retryAt) return;
+    busy = true;
     try {
+      const [run, timer] = await Promise.all([
+        read<RunData>(socket, 'runDataActiveRun'),
+        read<Timer>(socket, 'timer'),
+      ]);
+      const report = buildReport(run, timer);
+      show(
+        'speedcontrol',
+        run
+          ? `${run.game || 'Untitled run'}${run.category ? ` (${run.category})` : ''} · timer ${timer?.state ?? 'unknown'}`
+          : 'No active run (is nodecg-speedcontrol installed?)',
+        run ? '' : 'warn',
+      );
+      const changeKey = JSON.stringify([report.run, report.timer?.state]);
+      if (changeKey === lastKey && Date.now() - lastSent < HEARTBEAT_MS) return;
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -167,12 +137,10 @@ async function main() {
         matched?: string | null;
         listening?: boolean;
       } | null;
-      if (!res.ok) {
-        show('report', body?.error ?? `Refused (${res.status})`, 'bad');
-        return;
-      }
+      if (!res.ok) throw new Error(body?.error ?? `Refused (${res.status})`);
       lastKey = changeKey;
       lastSent = Date.now();
+      backoff = POLL_MS;
       const time = new Date().toLocaleTimeString();
       if (body?.listening === false) {
         show(
@@ -181,12 +149,19 @@ async function main() {
           'warn',
         );
       } else if (report.run && !body?.matched) {
-        show('report', `Reported at ${time}; that run isn’t the live one or next few`, 'warn');
+        show('report', `Reported at ${time}; that run isn’t the live one or the next few`, 'warn');
       } else {
         show('report', `Reported at ${time}`, 'ok');
       }
-    } catch {
-      show('report', 'Can’t reach Schedule Helper, retrying…', 'bad');
+    } catch (err) {
+      // Back off on failures (a wrong token, the server away) instead of hammering.
+      backoff = Math.min(MAX_BACKOFF_MS, backoff * 2);
+      retryAt = Date.now() + backoff;
+      const reason =
+        err instanceof TypeError ? 'Can’t reach Schedule Helper' : (err as Error).message;
+      show('report', `${reason}. Retrying in ${Math.round(backoff / 1000)} s…`, 'bad');
+    } finally {
+      busy = false;
     }
   }
 

@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { Copy, MonitorCog } from '@lucide/svelte';
+  import { Copy, MonitorCog, RefreshCw } from '@lucide/svelte';
   import { roomKey } from '../../shared/sources.ts';
   import { getRoom } from '../lib/room.svelte.ts';
   import { toasts } from '../lib/toasts.svelte.ts';
+  import { ui } from '../lib/ui.svelte.ts';
 
   /**
    * How to connect the stream PC's NodeCG speedcontrol (operators only): the
@@ -14,10 +15,11 @@
   let error = $state<string | null>(null);
   let nodecgUrl = $state('http://localhost:9090');
 
-  async function load() {
+  async function load(method: 'GET' | 'POST' = 'GET') {
     error = null;
     try {
       const res = await fetch(`/api/rooms/${roomKey(room.ref)}/source-token`, {
+        method,
         credentials: 'same-origin',
       });
       const body = (await res.json()) as { token?: string; error?: string };
@@ -39,6 +41,19 @@
       })}#t=${token}`,
   );
 
+  /** For a token that got out, or a stream PC that's retired. */
+  async function replace() {
+    const yes = await ui.ask({
+      title: 'Replace the stream PC token?',
+      body: 'The stream PC stops reporting until its bundle config (or bridge address) has the new one.',
+      confirmLabel: 'Replace token',
+      danger: true,
+    });
+    if (!yes) return;
+    await load('POST');
+    if (!error) toasts.push({ kind: 'success', title: 'New stream PC token made' });
+  }
+
   async function copy(text: string, what: string) {
     try {
       await navigator.clipboard.writeText(text);
@@ -50,7 +65,9 @@
 </script>
 
 {#if !token}
-  <button class="btn sm" onclick={load}><MonitorCog size={15} /> Set up the stream PC</button>
+  <button class="btn sm" onclick={() => load()}
+    ><MonitorCog size={15} /> Set up the stream PC</button
+  >
   {#if error}<p class="error" role="alert">{error}</p>{/if}
 {:else}
   <div class="setup">
@@ -70,7 +87,8 @@
       <h4>Bridge page <small>no install</small></h4>
       <p class="hint">
         Open this on the stream PC (a browser tab, or an OBS browser source) while NodeCG runs.
-        Works best with NodeCG on the same PC.
+        Works best with NodeCG on the same PC. If NodeCG has a login, add
+        <code>&key=YOUR_KEY</code> to the end.
       </p>
       <label class="field">
         <span class="label">NodeCG address, as the stream PC sees it</span>
@@ -85,6 +103,9 @@
       Both carry this schedule’s stream PC token: it can only report what’s on stream. Keep it to
       the stream PC.
     </p>
+    <button class="btn sm ghost replace" onclick={replace}
+      ><RefreshCw size={15} /> Replace the token</button
+    >
   </div>
 {/if}
 
@@ -119,7 +140,8 @@
     user-select: all;
     -webkit-user-select: all;
   }
-  section .btn {
+  section .btn,
+  .replace {
     justify-self: start;
   }
   .error {

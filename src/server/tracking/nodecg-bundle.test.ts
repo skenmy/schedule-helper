@@ -62,6 +62,8 @@ describe('the NodeCG bundle', () => {
       teams: [{ players: [{ name: 'cerulean' }, { name: 'second' }] }],
     };
     const timer = { state: 'running', milliseconds: 60_000, timestamp: 1_000 };
+    // Since the last tick, but never more than a second of it.
+    expect(bundle.buildReport(run, timer, 1_400)).toMatchObject({ timer: { elapsedMs: 60_400 } });
     expect(bundle.buildReport(run, timer, 3_000)).toEqual({
       via: 'bundle',
       run: {
@@ -70,7 +72,7 @@ describe('the NodeCG bundle', () => {
         category: 'Any%',
         players: ['cerulean', 'second'],
       },
-      timer: { state: 'running', elapsedMs: 62_000 },
+      timer: { state: 'running', elapsedMs: 61_000 },
     });
     expect(bundle.buildReport(undefined, undefined)).toEqual({
       via: 'bundle',
@@ -110,6 +112,44 @@ describe('the NodeCG bundle', () => {
       expect(room.state.detection).toMatchObject({ runKey: next.key, kind: 'advance' });
       expect(warnings).toEqual([]);
     } finally {
+      handle.stop();
+    }
+  });
+
+  it('reports a timer start at once, though speedcontrol rewrites the timer every 100 ms', async () => {
+    const base = `http://localhost:${server.port}`;
+    const { token } = (await (
+      await fetch(`${base}/api/rooms/oengus/bundled/main/source-token`)
+    ).json()) as { token: string };
+    const room = await server.registry.open(REF);
+    const live = room.schedule.lines[0]!;
+    const replicants = {
+      runDataActiveRun: new Replicant({ game: live.game, teams: [] }),
+      timer: new Replicant({ state: 'stopped', milliseconds: 0, timestamp: Date.now() }),
+    };
+    const handle = bundle.start(
+      {
+        bundleConfig: { url: base, room: 'oengus/bundled/main', token },
+        log: { info: () => {}, warn: () => {} },
+        Replicant: (name: keyof typeof replicants) => replicants[name],
+      },
+      { heartbeatMs: 60_000 },
+    )!;
+    // Speedcontrol's tick(): a new value every 100 ms while running.
+    const started = Date.now();
+    const ticking = setInterval(
+      () =>
+        replicants.timer.set({
+          state: 'running',
+          milliseconds: Date.now() - started,
+          timestamp: Date.now(),
+        }),
+      100,
+    );
+    try {
+      await expect.poll(() => room.state.nodecg?.timer, { timeout: 1_500 }).toBe('running');
+    } finally {
+      clearInterval(ticking);
       handle.stop();
     }
   });

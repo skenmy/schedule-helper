@@ -50,6 +50,16 @@ describe('matchRunData', () => {
     expect(matchRunData(LINES, s, { game: 'Tetris' })).toBeNull();
   });
 
+  it('never guesses past a run ID it knows: speedcontrol lagging behind matches nothing', () => {
+    // Operators moved on to o102; speedcontrol still shows o101, a run of a game that
+    // also appears later. The ID names o101, which can't be live: no match at all.
+    const lines = [...LINES, mk('o105', 4, { game: 'Celeste', category: 'Any% B-sides' })];
+    const s = live({ currentKey: 'o102', runs: { o102: { startedAt: T0 } } });
+    expect(matchRunData(lines, s, { externalID: 101, game: 'Celeste' })).toBeNull();
+    // An ID we don't know (a run added in speedcontrol only) falls back to the game.
+    expect(matchRunData(lines, s, { externalID: 999, game: 'Celeste' })?.key).toBe('o105');
+  });
+
   it('only looks at the live run and the next few', () => {
     const s = live({ currentKey: 'o104', runs: { o104: { startedAt: T0 } } });
     expect(matchRunData(LINES, s, { externalID: 101, game: 'Celeste' })).toBeNull();
@@ -124,9 +134,14 @@ describe('nodecgReport', () => {
     timer: { state: 'running' as const, elapsedMs: 30_000 },
   };
 
-  it('acts on its own word when auto-apply is on: speedcontrol runs the real timer', () => {
+  it('acts on its own word once it has held for a few seconds, when auto-apply is on', () => {
     const r = room(true);
-    nodecgReport(r, next);
+    const now = Date.now();
+    nodecgReport(r, next, now);
+    // One report could be a misclick on the stream PC: it waits for the next.
+    expect(r.state.currentKey).toBe('o101');
+    expect(r.state.detection).toMatchObject({ runKey: 'o102' });
+    nodecgReport(r, next, now + 15_000);
     expect(r.state.currentKey).toBe('o102');
     expect(r.state.runs.o102?.startedAt).toBeGreaterThan(Date.now() - 31_000);
     expect(r.state.log[0]?.text).toContain('Followed the stream (nodecg)');
@@ -143,6 +158,18 @@ describe('nodecgReport', () => {
     nodecgReport(off, next);
     expect(off.state.detection).toBeNull();
     expect(off.state.nodecg).toMatchObject({ runKey: 'o102' }); // still shown
+  });
+
+  it('settles a misclick (next, next, back) before moving anything', () => {
+    const r = room(true);
+    const now = Date.now();
+    const at = (id: string) => ({ ...next, run: { externalID: id, game: '', players: [] } });
+    nodecgReport(r, at('102'), now);
+    nodecgReport(r, at('103'), now + 2_000);
+    nodecgReport(r, at('102'), now + 4_000);
+    expect(r.state.currentKey).toBe('o101');
+    nodecgReport(r, at('102'), now + 19_000);
+    expect(r.state.currentKey).toBe('o102');
   });
 
   it('doesn’t commit every heartbeat', () => {

@@ -43,21 +43,32 @@ function same(expected: string, token: unknown): boolean {
   return timingSafeEqual(Buffer.from(expected), Buffer.from(token));
 }
 
+const EPOCHS_FILE = 'source-token-epochs.json';
+
 export class CheckInTokens {
   readonly #secret: string;
+  /** Per room, how many times its stream PC token has been replaced (persisted when `#epochsFile`). */
+  readonly #epochs = new Map<string, number>();
+  readonly #epochsFile: string | null;
 
-  constructor(secret: string) {
+  constructor(secret: string, epochsFile: string | null = null) {
     if (secret.length < MIN_SECRET_LENGTH) {
       throw new Error(`The check-in secret must be at least ${MIN_SECRET_LENGTH} characters.`);
     }
     this.#secret = secret;
+    this.#epochsFile = epochsFile;
+    if (epochsFile && fs.existsSync(epochsFile)) {
+      const saved = JSON.parse(fs.readFileSync(epochsFile, 'utf8')) as Record<string, number>;
+      for (const [room, n] of Object.entries(saved)) this.#epochs.set(room, n);
+    }
   }
 
   /** Reads the secret from `dataDir`, creating it on first use. Throws rather than guess. */
   static load(dataDir: string, pinned = ''): CheckInTokens {
-    if (pinned) return new CheckInTokens(pinned);
-    const file = path.join(dataDir, FILE);
     fs.mkdirSync(dataDir, { recursive: true });
+    const epochs = path.join(dataDir, EPOCHS_FILE);
+    if (pinned) return new CheckInTokens(pinned, epochs);
+    const file = path.join(dataDir, FILE);
     if (createAtomically(file, randomBytes(32).toString('base64url'))) {
       log.info(`created a check-in secret at ${file}`);
     }
@@ -65,7 +76,7 @@ export class CheckInTokens {
     if (!secret) {
       throw new Error(`${file} is empty. Delete it to make a new one (old links stop working).`);
     }
-    return new CheckInTokens(secret);
+    return new CheckInTokens(secret, epochs);
   }
 
   token(ref: RoomRef, key: RunKey): string {
@@ -81,17 +92,32 @@ export class CheckInTokens {
 
   /**
    * The stream PC's token for a room: lets NodeCG speedcontrol report what's on
-   * stream (tracking/nodecg.ts), and nothing else. Same secret, its own purpose.
+   * stream (tracking/nodecg.ts), and nothing else. Same secret, its own purpose,
+   * and its own counter so one room's token can be replaced (rotateSource) without
+   * touching any other room or a single runner link.
    */
   sourceToken(ref: RoomRef): string {
+    const epoch = this.#epochs.get(roomKey(ref)) ?? 0;
     return createHmac('sha256', this.#secret)
-      .update(`source:v1\n${roomKey(ref)}`)
+      .update(`source:v1\n${roomKey(ref)}\n${epoch}`)
       .digest('base64url')
       .slice(0, TOKEN_LENGTH);
   }
 
   verifySource(ref: RoomRef, token: unknown): boolean {
     return same(this.sourceToken(ref), token);
+  }
+
+  /** Replaces a room's stream PC token: the old one stops working at once. */
+  rotateSource(ref: RoomRef): string {
+    const key = roomKey(ref);
+    this.#epochs.set(key, (this.#epochs.get(key) ?? 0) + 1);
+    if (this.#epochsFile) {
+      const tmp = `${this.#epochsFile}.${process.pid}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify(Object.fromEntries(this.#epochs)), { mode: 0o600 });
+      fs.renameSync(tmp, this.#epochsFile);
+    }
+    return this.sourceToken(ref);
   }
 }
 

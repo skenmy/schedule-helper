@@ -72,7 +72,7 @@ test('follows NodeCG speedcontrol through the bridge page', async ({ page, conte
   await page.getByRole('button', { name: 'Set up the stream PC' }).click();
   const address = await page
     .getByRole('region', { name: 'Bridge page' })
-    .locator('code')
+    .locator('code.url')
     .innerText();
   expect(address).toMatch(/\/bridge\.html\?room=demo%2Fdemo%2Fmain&nodecg=.+#t=[\w-]{22}$/);
 
@@ -80,7 +80,9 @@ test('follows NodeCG speedcontrol through the bridge page', async ({ page, conte
   await bridge.route('http://localhost:9090/socket.io/socket.io.js', (route) =>
     route.fulfill({ contentType: 'application/javascript', body: fakeNodecg(nextTitle) }),
   );
-  await bridge.goto(address);
+  const response = await bridge.goto(address);
+  // Sandboxed: whatever NodeCG's script does, it runs with no origin and no cookies here.
+  expect(response?.headers()['content-security-policy']).toBe('sandbox allow-scripts');
   await expect(bridge.locator('#nodecg')).toHaveText(/Connected/);
   await expect(bridge.locator('#report')).toHaveText(/Reported at/);
 
@@ -89,4 +91,35 @@ test('follows NodeCG speedcontrol through the bridge page', async ({ page, conte
   await expect(page.getByText(/Speedcontrol \(bridge\)/)).toBeVisible();
   await banner.getByRole('button', { name: 'Not now' }).click();
   await expect(banner).toHaveCount(0);
+});
+
+test('a bridge address pointing at a hostile "NodeCG" gets nothing of the app’s', async ({
+  context,
+}) => {
+  const page = await context.newPage();
+  // Whatever answers as NodeCG runs in the bridge page. Here it tries to act as an operator.
+  await page.route('http://localhost:9091/socket.io/socket.io.js', (route) =>
+    route.fulfill({
+      contentType: 'application/javascript',
+      body: `
+        window.stolen = {};
+        try { localStorage.setItem('x', '1'); window.stolen.storage = true; }
+        catch { window.stolen.storage = false; }
+        window.stolen.origin = self.origin;
+        fetch('/api/rooms/demo/demo/main/checkin-links')
+          .then((r) => r.json()).then(() => (window.stolen.links = true))
+          .catch(() => (window.stolen.links = false));`,
+    }),
+  );
+  await page.goto(
+    `/bridge.html?room=demo/demo/main&nodecg=http://localhost:9091#t=${'A'.repeat(22)}`,
+  );
+  type Stolen = { stolen?: { storage?: boolean; origin?: string; links?: boolean } };
+  const stolen = () => page.evaluate(() => (window as unknown as Stolen).stolen);
+  await expect.poll(async () => (await stolen())?.links).toBe(false);
+  expect(await stolen()).toEqual({
+    storage: false,
+    origin: 'null',
+    links: false,
+  });
 });

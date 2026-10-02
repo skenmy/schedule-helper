@@ -16,17 +16,23 @@ const HEARTBEAT_MS = 15_000;
 const TIMEOUT_MS = 10_000;
 /** Speedcontrol changes several replicants at once (reset the timer, change run): send once. */
 const SETTLE_MS = 250;
+
+/** What's news: the run, and the timer's state (not its ticking). */
+const newsOf = (report) => JSON.stringify([report.run, report.timer && report.timer.state]);
 const RETRY_MS = 5_000;
 
-/** What speedcontrol's replicants say, as Schedule Helper's report (without the token). */
+/**
+ * What speedcontrol's replicants say, as Schedule Helper's report (without the
+ * token). Kept in step with src/client/lib/nodecg-report.ts (the bridge page).
+ */
 function buildReport(run, timer, now = Date.now()) {
-  const elapsedMs = timer
-    ? Math.max(
-        0,
-        (timer.milliseconds || 0) +
-          (timer.state === 'running' && timer.timestamp ? now - timer.timestamp : 0),
-      )
-    : 0;
+  // Speedcontrol ticks every 100 ms; add the time since its last tick, but never
+  // more than a second of it (right after a resume, `timestamp` is from before).
+  const sinceTick =
+    timer && timer.state === 'running' && timer.timestamp
+      ? Math.min(1_000, Math.max(0, now - timer.timestamp))
+      : 0;
+  const elapsedMs = timer ? Math.max(0, (timer.milliseconds || 0) + sinceTick) : 0;
   return {
     via: 'bundle',
     run: run
@@ -95,8 +101,14 @@ function start(nodecg, { heartbeatMs = HEARTBEAT_MS } = {}) {
   let problem = '';
   let settle = null;
   let retry = null;
+  let seen = '';
 
-  function soon() {
+  // The timer replicant changes every 100 ms while running. Only real news
+  // (a run change, a start, a stop) is worth sending, and settling for, at once.
+  function changed() {
+    const news = newsOf(buildReport(activeRun.value, timer.value));
+    if (news === seen) return;
+    seen = news;
     clearTimeout(settle);
     settle = setTimeout(() => send(false), SETTLE_MS);
   }
@@ -111,8 +123,7 @@ function start(nodecg, { heartbeatMs = HEARTBEAT_MS } = {}) {
 
   function send(force) {
     const report = buildReport(activeRun.value, timer.value);
-    // The timer ticks constantly; only the run or the timer's state is news.
-    const key = JSON.stringify([report.run, report.timer && report.timer.state]);
+    const key = newsOf(report);
     if (!force && key === lastKey) return;
     if (inFlight) {
       again = true;
@@ -139,8 +150,8 @@ function start(nodecg, { heartbeatMs = HEARTBEAT_MS } = {}) {
       });
   }
 
-  activeRun.on('change', soon);
-  timer.on('change', soon);
+  activeRun.on('change', changed);
+  timer.on('change', changed);
   const heartbeat = setInterval(() => send(true), heartbeatMs);
   if (heartbeat.unref) heartbeat.unref();
   log.info(`Reporting speedcontrol to ${endpoint.origin} for ${room}.`);

@@ -428,14 +428,23 @@ function apply(s: RoomState, action: ReducibleAction, ctx: ReduceContext): strin
         throw new NoChange();
       }
       s.tracking = { twitch, vision, autoApply, nodecg };
-      if (!twitch && !vision && !nodecg) s.detection = null;
-      const on = [twitch && 'Twitch', vision && 'stream reading', nodecg && 'NodeCG']
+      // A source switched off withdraws what it said; a suggestion nothing backs goes.
+      const enabled = { twitch, vision, nodecg, push: true };
+      const d = s.detection;
+      if (d) {
+        const left = d.signals.filter((x) => enabled[x.source]);
+        s.detection = left.length ? { ...d, signals: left } : null;
+      }
+      // NodeCG is on unless switched off, but only worth naming once a stream PC reports in.
+      const stationed = nodecg && s.nodecg != null;
+      const on = [twitch && 'Twitch', vision && 'stream reading', stationed && 'NodeCG']
         .filter(Boolean)
         .join(' + ');
+      const acts = stationed
+        ? 'acts when two signals agree, or when NodeCG holds for a few seconds'
+        : 'acts when two signals agree';
       log(
-        on
-          ? `Auto-tracking on (${on}): ${autoApply ? 'acts when two signals agree' : 'asks first'}`
-          : 'Auto-tracking off',
+        on ? `Auto-tracking on (${on}): ${autoApply ? acts : 'asks first'}` : 'Auto-tracking off',
       );
       return null;
     }

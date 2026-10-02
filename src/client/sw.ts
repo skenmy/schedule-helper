@@ -43,8 +43,10 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
-  // Live data and the overlay feed always go to the server.
+  // Live data and the overlay feed always go to the server. So does the NodeCG
+  // bridge: it must arrive with its sandboxing header, never as the cached app.
   if (url.pathname.startsWith('/api/') || url.pathname === '/ws') return;
+  if (url.pathname === '/bridge.html') return;
 
   if (request.mode === 'navigate') event.respondWith(navigate(request));
   else if (url.pathname.startsWith('/brand/')) event.respondWith(runtime(event, request));

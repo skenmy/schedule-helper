@@ -131,9 +131,11 @@ export function matchRunData(
 ): StreamMatch | null {
   const candidates = candidateIndexes(lines, state).map((i) => lines[i]!);
   const id = run.externalID == null ? '' : String(run.externalID).trim();
-  if (id) {
+  if (id && lines.some((l) => l.key === `o${id}`)) {
+    // It names one of our runs exactly. If that isn't the live run or the next few
+    // (speedcontrol lagging behind, say), it's no other run either: never guess.
     const byId = candidates.find((l) => l.key === `o${id}`);
-    if (byId) return { key: byId.key, detail: 'speedcontrol run ID' };
+    return byId ? { key: byId.key, detail: 'speedcontrol run ID' } : null;
   }
   const game = squash(run.game ?? '');
   if (!game) return null;

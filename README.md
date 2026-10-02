@@ -190,21 +190,28 @@ The stream PC reports to `POST /api/rooms/{ref}/nodecg` with
 `{ t, via: 'bundle' | 'bridge', run: { externalID, game, category, players }, timer: { state,
 elapsedMs } }`. `t` is the room's stream PC token (`GET /api/rooms/{ref}/source-token`, operators
 only), an HMAC like the check-in links' with its own purpose: it can report what's on stream and
-nothing else. The elapsed time is a duration, so the stream PC's clock doesn't matter.
+nothing else. Operators can replace it (`POST …/source-token`, "Replace the token" in the app) for
+one room without touching any other or any runner link. The elapsed time is a duration, so the
+stream PC's clock doesn't matter.
 
 - **The bundle** (`integrations/nodecg-schedule-helper`) reads speedcontrol's `runDataActiveRun`
   and `timer` replicants and reports on every change of run or timer state, and every 15 s. Copy it
   into NodeCG's `bundles/` and put the config Schedule Helper shows into
   `cfg/nodecg-schedule-helper.json`. Its README has the details.
-- **The bridge page** (`/bridge.html?room=…&nodecg=http://localhost:9090#t=…`) does the same from a
-  browser on the stream PC, using NodeCG's own socket.io client. Browsers may refuse an `https`
+- **The bridge page** (`/bridge.html?room=…&nodecg=http://localhost:9090#t=…[&key=…]`) does the
+  same from a browser on the stream PC, using NodeCG's own socket.io client (`key` is NodeCG's login
+  key, if it has one). It runs a script from whatever NodeCG address it's given, so it's served
+  sandboxed (`Content-Security-Policy: sandbox allow-scripts`): no origin, no cookies, no storage,
+  and only the report endpoint accepts its cross-origin requests. Browsers may refuse an `https`
   page talking to NodeCG over plain `http` on another machine; NodeCG on the same PC usually works.
 
 Runs imported into speedcontrol from Oengus keep their line ID (`externalID`), which names our run
-exactly; otherwise the game, category and runners are matched against the live run and the next
-three. Reports become `nodecg` signals (`src/server/tracking/nodecg.ts`); speedcontrol is a
-trusted source, so one is enough for auto-apply. Operators can switch it off (Stream capture), and
-the last report is shown there either way.
+exactly. If that run isn't the live one or the next three (speedcontrol lagging behind), the report
+matches nothing rather than guess. Without a known ID, the game, category and runners are matched
+against the same runs. Reports become `nodecg` signals (`src/server/tracking/nodecg.ts`).
+Speedcontrol is a trusted source: with auto-apply on, it acts on its own word once the same report
+has held for 10 seconds (two reports), so a misclick on the stream PC settles first. Operators can
+switch it off (Stream capture), and the last report is shown there either way.
 
 ## Push alerts
 

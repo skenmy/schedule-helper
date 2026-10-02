@@ -275,11 +275,38 @@ export function createApp(
     res.json({ token: checkins.sourceToken(ref) });
   });
 
+  // A new token for the stream PC (the old one leaked, or a PC is retired).
+  app.post('/api/rooms/:source/:event/:slug/source-token', async (req, res) => {
+    const ref = refFrom(req);
+    res.setHeader('cache-control', 'no-store');
+    if (!ref) {
+      res.status(400).json({ error: 'Invalid room' });
+      return;
+    }
+    if (!(await requireOperator(req, res, 'replace the stream PC token'))) return;
+    res.json({ token: checkins.rotateSource(ref) });
+  });
+
+  // The bridge page runs sandboxed (no origin, no cookies; see the static
+  // headers below), so its reports are cross-origin: allow exactly that, without
+  // credentials, here and nowhere else.
+  const reportCors = (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('access-control-allow-origin', '*');
+    res.setHeader('access-control-allow-methods', 'POST');
+    res.setHeader('access-control-allow-headers', 'content-type');
+    res.setHeader('access-control-max-age', '600');
+    next();
+  };
+  app.options('/api/rooms/:source/:event/:slug/nodecg', reportCors, (_req, res) => {
+    res.status(204).end();
+  });
+
   // Speedcontrol reports on every run or timer change and every 15 s (a burst
   // of changes is normal). Plenty of room for that, not for a flood.
   const sourceThrottle = new LinkThrottle({ gapMs: 0, perHour: 3_600 });
   app.post(
     '/api/rooms/:source/:event/:slug/nodecg',
+    reportCors,
     express.json({ limit: '8kb' }),
     async (req, res) => {
       const ref = refFrom(req);
@@ -424,8 +451,16 @@ export function createApp(
       setHeaders(res, file) {
         if (file.includes(`${path.sep}assets${path.sep}`)) {
           res.setHeader('cache-control', 'public, max-age=31536000, immutable');
+          // The sandboxed bridge page has no origin: its module script is a CORS fetch.
+          res.setHeader('access-control-allow-origin', '*');
         } else {
           res.setHeader('cache-control', 'no-cache');
+        }
+        // The NodeCG bridge loads a script from whatever NodeCG address it's given.
+        // Sandboxed, that script gets an opaque origin: no cookies, no storage, no
+        // operator rights here, whatever it does.
+        if (path.basename(file) === 'bridge.html') {
+          res.setHeader('content-security-policy', 'sandbox allow-scripts');
         }
       },
     }),

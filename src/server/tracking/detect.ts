@@ -42,6 +42,12 @@ const READINGS_APART_MS = 20_000;
  * timer itself, not a reading of a picture of it: one of them is enough.
  */
 export const TRUSTED_SOURCES: ReadonlySet<SignalSource> = new Set(['nodecg', 'push']);
+/**
+ * On its own word, a trusted source has to say the same thing for this long
+ * (two reports, with its 15 s heartbeat): a misclick on the stream PC (next,
+ * next, back) settles before anything moves. The start is back-dated anyway.
+ */
+export const TRUSTED_SETTLE_MS = 10_000;
 const MAX_SIGNALS = 8;
 
 const median = (xs: number[]) => {
@@ -195,12 +201,13 @@ export function reconcile(s: RoomState, lines: readonly ScheduleLine[], now: num
 
 /**
  * Whether a detection is solid enough to act on without asking: a trusted
- * stream-PC source reported it, two different sources agree, or two timer
- * readings taken a while apart put the start at the same moment.
+ * stream-PC source has held it for a few seconds, two different sources agree,
+ * or two timer readings taken a while apart put the start at the same moment.
  */
 export function corroborated(d: Detection, now: number): boolean {
   const recent = d.signals.filter((x) => now - x.at <= AGREE_WINDOW_MS);
-  if (recent.some((x) => TRUSTED_SOURCES.has(x.source))) return true;
+  const trusted = recent.filter((x) => TRUSTED_SOURCES.has(x.source));
+  if (trusted.some((x) => x.at - d.firstAt >= TRUSTED_SETTLE_MS)) return true;
   if (new Set(recent.map((x) => x.source)).size >= 2) return true;
   const timed = recent.filter((x) => x.startedAt != null);
   return timed.some((a, i) =>

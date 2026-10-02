@@ -70,6 +70,25 @@ describe('CheckInTokens', () => {
   });
 });
 
+describe('stream PC tokens', () => {
+  it('are their own thing, one per room, and can be replaced one room at a time', () => {
+    const dir = tmp();
+    const t = CheckInTokens.load(dir, SECRET);
+    const old = t.sourceToken(REF);
+    const other = t.sourceToken({ ...REF, slug: 'side' });
+    expect(old).not.toBe(t.token(REF, 'o1'));
+    expect(t.verify(REF, 'o1', old)).toBe(false);
+
+    const fresh = t.rotateSource(REF);
+    expect(fresh).not.toBe(old);
+    expect(t.verifySource(REF, old)).toBe(false);
+    expect(t.verifySource(REF, fresh)).toBe(true);
+    expect(t.sourceToken({ ...REF, slug: 'side' })).toBe(other);
+    // Survives a restart.
+    expect(CheckInTokens.load(dir, SECRET).sourceToken(REF)).toBe(fresh);
+  });
+});
+
 describe('LinkThrottle', () => {
   it('spaces uses out and caps them per hour', () => {
     const t = new LinkThrottle({ gapMs: 5_000, perHour: 3 });

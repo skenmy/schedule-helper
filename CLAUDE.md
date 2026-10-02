@@ -150,8 +150,12 @@ ordinary undoable action that back-dates the start from a timer reading) or dism
   (`tracking/nodecg.ts`): the bundle in `integrations/nodecg-schedule-helper` (plain CommonJS, no
   dependencies, tested from `nodecg-bundle.test.ts`) or the bridge page (`src/client/bridge.ts`, a
   second Vite entry) POST reports authorised by the room's stream PC token
-  (`CheckInTokens.sourceToken`). It's trusted (`TRUSTED_SOURCES`) and `tracking.nodecg` switches
-  it off (undefined counts as on for rooms saved before it existed).
+  (`CheckInTokens.sourceToken`, replaceable per room). It's trusted (`TRUSTED_SOURCES`, but alone
+  only once it has held for `TRUSTED_SETTLE_MS`) and `tracking.nodecg` switches it off (undefined
+  counts as on for rooms saved before it existed). **The bridge page is served sandboxed**
+  (`http.ts` static headers) because it loads a script from a URL in its own query string: never
+  give it cookies, storage or an origin, and open only `POST …/nodecg` to it (CORS, no
+  credentials). The service worker leaves `/bridge.html` alone so that header always applies.
 - Vision reading reuses stream capture; `captureInterval()` decides the cadence: every minute while
   a suggestion is pending or a change is due (near a run's estimated end, between runs), backing
   off to every 10 after 30 minutes due, none while Twitch says offline, and only while an operator
