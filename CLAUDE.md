@@ -8,8 +8,8 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
 - `src/shared/` — isomorphic, dependency-free except zod in `protocol.ts`:
   - `types.ts` domain types (`ScheduleLine`, `RoomState`, `RunRecord`, …)
   - `protocol.ts` zod schemas for client actions + `ServerMessage` union
-  - `derive.ts` ALL schedule maths: run timing, delta, projections, stats. Never duplicate this
-    logic in a component or on the server — import it.
+  - `derive.ts` ALL schedule maths: run timing, delta, projections (plain, or at the event's own
+    `eventPace()`), stats. Never duplicate this logic in a component or on the server — import it.
   - `time.ts` duration parsing/formatting · `sources.ts` URL parsing, room paths, brand detection
 - `src/server/` — run directly by Node (type stripping, no build):
   - `rooms/reducer.ts` pure `reduce(state, action, ctx)`; every user-visible state rule lives here

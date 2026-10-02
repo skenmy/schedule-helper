@@ -4,6 +4,7 @@
 import {
   computeDelta,
   currentIndex,
+  eventPace,
   lineTitle,
   marathonPhase,
   marathonStats,
@@ -39,6 +40,7 @@ export function buildFeed(room: Room, now = Date.now()) {
   const delta = computeDelta(lines, s, now);
   const projection = project(lines, s, now);
   const stats = marathonStats(lines, s, now);
+  const pace = eventPace(lines, s);
 
   return {
     rev: s.rev,
@@ -67,6 +69,12 @@ export function buildFeed(room: Room, now = Date.now()) {
     delta: delta == null ? null : { seconds: delta, status: scheduleStatus(delta) },
     scheduledEnd: stats.scheduledEnd,
     projectedEnd: projectedEnd(projection),
+    /** The end if the rest goes at this event's pace so far (null until a few runs finish). */
+    likelyEnd: pace ? projectedEnd(project(lines, s, now, pace)) : null,
+    pace: pace && {
+      runRatio: Math.round(pace.runRatio * 1000) / 1000,
+      setupDeltaSec: pace.setupDeltaSec,
+    },
     progress: {
       runsDone: stats.runsDone,
       runsTotal: stats.runsTotal,

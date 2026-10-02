@@ -49,6 +49,10 @@
   const finishOffset = $derived(
     live.projectedEnd && s.scheduledEnd ? (live.projectedEnd - s.scheduledEnd) / 1000 : null,
   );
+  const pace = $derived(live.pace);
+  const likelyOffset = $derived(
+    live.likelyEnd && s.scheduledEnd ? (live.likelyEnd - s.scheduledEnd) / 1000 : null,
+  );
 </script>
 
 <div class="cards">
@@ -76,6 +80,23 @@
         ? `${overCount} of ${finished.length} ran over`
         : 'No finished runs yet'}</span
     >
+  </div>
+  <div class="card stat">
+    <span class="label">Likely end</span>
+    {#if pace && live.phase !== 'complete'}
+      <b class="num">{fmtWhen(live.likelyEnd, live.now)}</b>
+      <span
+        >{likelyOffset != null ? `${fmtOffsetShort(likelyOffset)} vs schedule · ` : ''}runs at
+        {Math.round(pace.runRatio * 100)}% of estimate, changeovers {fmtOffsetShort(
+          pace.setupDeltaSec,
+        )}</span
+      >
+    {:else}
+      <b class="num">—</b>
+      <span
+        >{live.phase === 'complete' ? 'Marathon complete' : 'After a few runs have finished'}</span
+      >
+    {/if}
   </div>
   <div class="card stat">
     <span class="label">Total estimate</span>

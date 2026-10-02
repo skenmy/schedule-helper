@@ -13,7 +13,11 @@ Horaro schedule. Try it offline with the built-in demo marathon (`/demo/demo/mai
   connected browser. Anyone signed in as an operator can drive it; everyone else watches live.
 - **Delta and projections.** Ahead / behind is measured against the live run's slot (±15 min
   counts as on schedule). Upcoming start times and the projected finish chain every remaining
-  estimate and setup from where the live run will realistically end.
+  estimate and setup from where the live run will realistically end. Once a few runs have
+  finished, a **likely end** sits beside it: the same chain at this event's own pace (the median
+  run against its estimate, the median changeover against its setup, eased towards plan while
+  there's little data). It's in the status strip, the Progress tab and the overlay feed
+  (`likelyEnd`, `pace`).
 - **Timeline.** A plan lane (scheduled) over a live lane (actual and projected), so drift is
   visible at a glance. 3h / 6h / 12h / all zoom.
 - **Run control.** Start, stop, resume, advance, back, skip / restore, set the timer after a late
