@@ -1,6 +1,8 @@
 // Minimal history-API router: the room lives in the path (/oengus/event/slug).
 
 import { parseLegacyHash, roomPath } from '../../shared/sources.ts';
+import { isStandalone } from './device.ts';
+import { prefs } from './prefs.svelte.ts';
 
 const RETURN_KEY = 'sh.returnTo';
 
@@ -23,6 +25,13 @@ class Router {
     if (back) {
       sessionStorage.removeItem(RETURN_KEY);
       if (location.pathname === '/' && back.startsWith('/')) this.navigate(back, { replace: true });
+      return;
+    }
+    // The installed app always launches at "/": reopen the schedule it was on,
+    // as a native app would. "Change schedule" still reaches the landing page.
+    const last = prefs.recent[0];
+    if (last && location.pathname === '/' && !location.search && isStandalone()) {
+      this.navigate(roomPath(last.ref), { replace: true });
     }
   }
 

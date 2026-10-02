@@ -4,10 +4,24 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0a0c10" />
+    <meta name="color-scheme" content="dark" />
     <meta name="description" content="Real-time operator console for speedrunning marathons." />
+    <!-- Installed to the Home Screen: full screen, drawn under a translucent status bar. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Schedule" />
+    <meta name="format-detection" content="telephone=no" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <title>Schedule Helper</title>
+    <!-- No white flash before the stylesheet arrives. -->
+    <style>
+      html {
+        background: #0a0c10;
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>

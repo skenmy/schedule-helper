@@ -1,0 +1,13 @@
+{
+  // The service worker runs in its own global scope (no DOM), so it is
+  // checked separately with the WebWorker library.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "lib": ["ES2023", "WebWorker"],
+    "types": []
+  },
+  "include": ["src/client/sw.ts"]
+}

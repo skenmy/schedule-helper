@@ -126,7 +126,8 @@ export function createApp(registry: RoomRegistry): express.Express {
     res.status(404).json({ error: 'Not found' });
   });
 
-  // Built client. Hashed assets are immutable; everything else revalidates.
+  // Built client. Hashed assets are immutable; everything else revalidates —
+  // above all the service worker and manifest, so a deploy reaches installed apps.
   const index = path.join(config.clientDir, 'index.html');
   app.use(
     express.static(config.clientDir, {
@@ -134,6 +135,8 @@ export function createApp(registry: RoomRegistry): express.Express {
       setHeaders(res, file) {
         if (file.includes(`${path.sep}assets${path.sep}`)) {
           res.setHeader('cache-control', 'public, max-age=31536000, immutable');
+        } else {
+          res.setHeader('cache-control', 'no-cache');
         }
       },
     }),
