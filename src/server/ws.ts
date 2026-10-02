@@ -65,6 +65,10 @@ class Session implements RoomClient {
     if (this.ws.readyState === this.ws.OPEN) this.ws.send(JSON.stringify(msg));
   }
 
+  get operator(): boolean {
+    return this.auth?.canWrite ?? false;
+  }
+
   private async refreshAuth(): Promise<void> {
     const next = await resolveIdentity(this.cookie);
     clearTimeout(this.authRetry);

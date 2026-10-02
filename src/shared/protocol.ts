@@ -71,7 +71,8 @@ export const ClientActionSchema = z.discriminatedUnion('action', [
     thresholdSec: z.number().int().min(2).max(600),
   }),
   z.object({ action: z.literal('capture:run') }),
-  z.object({ action: z.literal('capture:apply') }),
+  /** `id` names the reading the operator saw; a newer one isn't applied blind. */
+  z.object({ action: z.literal('capture:apply'), id: z.string().max(64).optional() }),
 
   z.object({
     action: z.literal('tracking:configure'),

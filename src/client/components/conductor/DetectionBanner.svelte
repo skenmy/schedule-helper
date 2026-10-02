@@ -27,17 +27,20 @@
 </script>
 
 {#if d}
-  <div class="detected" role="status" aria-live="polite" aria-label="Run change detected">
+  <div class="detected" role="region" aria-label="Run change detected">
     <Radar size={20} />
     <div class="text">
-      <strong>
+      <!-- Only the headline is announced: the "12s ago" text below changes every second. -->
+      <strong role="status" aria-live="polite">
         {d.kind === 'start' ? `${title} has started on stream` : `${title} is on stream`}
         {#if d.startedAt}<span class="num">· since {fmtClock(d.startedAt, true)}</span>{/if}
       </strong>
       <span class="why">
         {#each signals as s, i (s.source)}{i ? ' · ' : ''}{s.detail.replace(/^Twitch /, '')}
           <em>({SOURCE[s.source]}, {relTime(s.at, live.now)})</em>{/each}
-        {#if waitingForSecond}· applies by itself if a second source agrees{/if}
+        {#if waitingForSecond}· {d.kind === 'start'
+            ? 'applies by itself when a second stream reading agrees'
+            : 'applies by itself if a second source agrees'}{/if}
       </span>
     </div>
     <div class="actions">

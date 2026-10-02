@@ -176,7 +176,7 @@
           <button
             class="btn {mismatch || drifting ? 'primary' : ''}"
             disabled={!room.canWrite}
-            onclick={() => ops.applyCapture()}
+            onclick={() => c && ops.applyCapture(c.id)}
           >
             <Download size={16} /> Apply stream timer{c.runKey && c.runKey !== live.current?.key
               ? ` to ${live.titleOf(c.runKey)}`

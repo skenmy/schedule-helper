@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { RoomState, ScheduleLine } from '../../shared/types.ts';
 import { reduce } from '../rooms/reducer.ts';
 import { initialState } from '../rooms/state.ts';
-import { corroborated, observe, reconcile, STALE_MS, type Signal } from './detect.ts';
+import { corroborated, observe, reconcile, SETTLED_MS, STALE_MS, type Signal } from './detect.ts';
 import { matchStream } from './match.ts';
 
 const T0 = Date.UTC(2026, 4, 24, 10, 0, 0);
@@ -166,14 +166,14 @@ describe('reconcile', () => {
   it('drops a detection once the live run changes or it goes stale', () => {
     const s = live();
     observe(s, LINES, twitch('s1'));
-    expect(reconcile(s, T0 + 31 * MIN)).toBe(false);
+    expect(reconcile(s, LINES, T0 + 31 * MIN)).toBe(false);
     s.currentKey = 's1';
-    expect(reconcile(s, T0 + 31 * MIN)).toBe(true);
+    expect(reconcile(s, LINES, T0 + 31 * MIN)).toBe(true);
     expect(s.detection).toBeNull();
 
     const t = live();
     observe(t, LINES, twitch('s1'));
-    expect(reconcile(t, T0 + 30 * MIN + STALE_MS + 1)).toBe(true);
+    expect(reconcile(t, LINES, T0 + 30 * MIN + STALE_MS + 1)).toBe(true);
   });
 });
 
@@ -232,5 +232,90 @@ describe('reducer: detections', () => {
     if (!off.ok) throw new Error(off.message);
     expect(off.state.detection).toBeNull();
     expect(off.undo).toBeNull();
+  });
+});
+
+describe('review fixes', () => {
+  const ctx = (now: number) => ({ lines: LINES, now, actor: 'op' });
+
+  it('does not raise a dismissed suggestion again while the live run is the same', () => {
+    const s = live();
+    observe(s, LINES, twitch('s1'));
+    const res = reduce(s, { action: 'detection:dismiss', id: s.detection!.id }, ctx(T0 + 31 * MIN));
+    if (!res.ok) throw new Error(res.message);
+    const after = res.state;
+    // The stream keeps showing it, from any source: nothing comes back.
+    expect(observe(after, LINES, vision('s1', T0 + 32 * MIN, T0 + 31 * MIN))).toBe(false);
+    expect(observe(after, LINES, twitch('s1', T0 + 33 * MIN))).toBe(false);
+    expect(after.detection).toBeNull();
+    // Half an hour on, it may be raised again.
+    expect(observe(after, LINES, twitch('s1', T0 + 31 * MIN + SETTLED_MS))).toBe(true);
+  });
+
+  it('does not re-raise an accepted suggestion after it is undone', () => {
+    const s = live();
+    observe(s, LINES, twitch('s1'));
+    const res = reduce(s, { action: 'detection:accept', id: s.detection!.id }, ctx(T0 + 31 * MIN));
+    if (!res.ok) throw new Error(res.message);
+    // Undo restores the live run (UNDO_FIELDS) but not `settled`.
+    const undone = { ...res.state, currentKey: 'z', runs: s.runs };
+    expect(observe(undone, LINES, twitch('s1', T0 + 32 * MIN))).toBe(false);
+    // On the new run the old record lapses, and a different suggestion gets through.
+    const moved = { ...res.state };
+    expect(reconcile(moved, LINES, T0 + 32 * MIN)).toBe(true);
+    expect(moved.settled).toBeNull();
+    expect(observe(moved, LINES, vision('s1', T0 + 33 * MIN, T0 + 32 * MIN))).toBe(true);
+    expect(moved.detection?.kind).toBe('start');
+  });
+
+  it('treats a timer implying a start before the live run as a misread', () => {
+    const s = live();
+    // "Spyro is on stream at 2:10:00" while Zelda only started 30 minutes ago.
+    observe(s, LINES, vision('s1', T0 + 30 * MIN, T0 - 100 * MIN));
+    expect(s.detection).toMatchObject({ runKey: 's1', startedAt: null });
+    // And a start for the live run before the previous run ended is no start at all.
+    const t = initialState();
+    t.currentKey = 's1';
+    t.runs.z = { startedAt: T0, endedAt: T0 + 30 * MIN };
+    expect(observe(t, LINES, vision('s1', T0 + 41 * MIN, T0 + 20 * MIN))).toBe(false);
+  });
+
+  it('keeps the earliest sighting and a fresh id once a start time appears', () => {
+    const s = live();
+    observe(s, LINES, twitch('s1', T0 + 35 * MIN));
+    const first = s.detection!.id;
+    // A frame taken earlier lands later.
+    observe(s, LINES, vision('s1', T0 + 33 * MIN, T0 + 32 * MIN));
+    expect(s.detection?.firstAt).toBe(T0 + 33 * MIN);
+    expect(s.detection?.id).not.toBe(first);
+  });
+
+  it('ends the old run no later than the new one started, and refuses unreachable targets', () => {
+    const s = live();
+    // Vision first: the frame is a minute after Spyro's timer started.
+    observe(s, LINES, vision('s1', T0 + 36 * MIN, T0 + 35 * MIN));
+    const res = reduce(s, { action: 'detection:accept', id: s.detection!.id }, ctx(T0 + 37 * MIN));
+    if (!res.ok) throw new Error(res.message);
+    expect(res.state.runs.z?.endedAt).toBe(T0 + 35 * MIN);
+    expect(res.state.runs.s1?.startedAt).toBe(T0 + 35 * MIN);
+
+    const skipped = live();
+    observe(skipped, LINES, twitch('s1'));
+    skipped.runs.s1 = { skipped: true };
+    const refused = reduce(
+      skipped,
+      { action: 'detection:accept', id: skipped.detection!.id },
+      ctx(T0),
+    );
+    expect(refused.ok).toBe(false);
+    expect(reconcile(skipped, LINES, T0)).toBe(true);
+  });
+
+  it('lets an exact category outrank a title naming the next run', () => {
+    const m = matchStream(LINES, live(), {
+      game: 'The Legend of Zelda: Ocarina of Time',
+      title: 'UKSG | Up next: Spyro the Dragon with gnasty',
+    });
+    expect(m?.key).toBe('z');
   });
 });

@@ -133,4 +133,32 @@ describe('captureInterval', () => {
     expect(captureInterval(st({ tracking: vision, finishedAt: T0 }), timed, T0)).toBeNull();
     expect(captureInterval(st({ tracking: vision, currentKey: 'gone' }), timed, T0)).toBeNull();
   });
+
+  it('backs off when a change has been due for half an hour, and hurries while one is pending', () => {
+    // Zelda-like overrun: estimate 30m, now 70m in (due since 20m, so 50m due).
+    const over = st({ currentKey: 'a', runs: { a: { startedAt: T0 } }, tracking: vision });
+    expect(captureInterval(over, timed, T0 + 70 * MIN)).toBe(10 * MIN);
+    const pending = st({
+      ...over,
+      detection: {
+        id: 'x',
+        runKey: 'b',
+        kind: 'advance',
+        currentKey: 'a',
+        startedAt: null,
+        firstAt: T0,
+        signals: [],
+      },
+    });
+    expect(captureInterval(pending, timed, T0 + 70 * MIN)).toBe(MIN);
+  });
+
+  it('stops reading while Twitch says the channel is offline', () => {
+    const s = st({
+      currentKey: 'b',
+      tracking: { twitch: true, vision: true, autoApply: false },
+      stream: { live: false, game: null, title: null, at: T0, error: null },
+    });
+    expect(captureInterval(s, timed, T0)).toBeNull();
+  });
 });

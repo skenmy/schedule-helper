@@ -29,7 +29,7 @@ test('follows the stream to the next run when Twitch says it moved on', async ({
     STREAMS,
     JSON.stringify({ e2echannel: { game: nextTitle, title: `UKSG Demo | ${nextTitle}` } }),
   );
-  const banner = page.getByRole('status', { name: 'Run change detected' });
+  const banner = page.getByRole('region', { name: 'Run change detected' });
   await expect(banner).toContainText(`${nextTitle} is on stream`);
   await expect(banner).toContainText(`category “${nextTitle}”`);
   await banner.getByRole('button', { name: 'Advance' }).click();
