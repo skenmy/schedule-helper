@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ScheduleLine } from '../../shared/types.ts';
-import { evaluateReading, matchRunKey } from './service.ts';
+import { initialState } from '../rooms/state.ts';
+import { captureInterval, evaluateReading, matchRunKey } from './service.ts';
 import { parseTimer } from './vision.ts';
 
 const line = (key: string, game: string, setupBlock = false): ScheduleLine => ({
@@ -89,4 +90,75 @@ describe('parseTimer', () => {
     ['--:--', null],
     ['1:75:00', null],
   ])('%j → %j', (input, out) => expect(parseTimer(input)).toBe(out));
+});
+
+describe('captureInterval', () => {
+  const MIN = 60_000;
+  const T0 = 10_000_000_000;
+  const timed = LINES.map((l, i) => ({ ...l, scheduledStart: T0 + i * 40 * MIN }));
+  const st = (patch: Partial<ReturnType<typeof initialState>> = {}) => ({
+    ...initialState(),
+    ...patch,
+  });
+  const vision = { twitch: false, vision: true, autoApply: false };
+
+  it('captures nothing with both features off', () => {
+    expect(
+      captureInterval(st({ currentKey: 'a', runs: { a: { startedAt: T0 } } }), timed, T0),
+    ).toBe(null);
+  });
+
+  it('keeps the drift interval while a run is live', () => {
+    const s = st({
+      currentKey: 'a',
+      runs: { a: { startedAt: T0 } },
+      drift: { enabled: true, intervalMin: 5, thresholdSec: 10 },
+    });
+    expect(captureInterval(s, timed, T0 + MIN)).toBe(5 * MIN);
+  });
+
+  it('reads the stream every minute when a run change is due, and rarely otherwise', () => {
+    const running = st({ currentKey: 'a', runs: { a: { startedAt: T0 } }, tracking: vision });
+    // Estimate is 30 minutes: quiet early on, every minute from 10 minutes before its end.
+    expect(captureInterval(running, timed, T0 + 5 * MIN)).toBe(10 * MIN);
+    expect(captureInterval(running, timed, T0 + 21 * MIN)).toBe(MIN);
+    // Between runs, watching for the next one to start.
+    const setup = st({ currentKey: 'b', tracking: vision });
+    expect(captureInterval(setup, timed, T0)).toBe(MIN);
+  });
+
+  it('waits for the marathon to be near its start, and stops when it ends or loses its live run', () => {
+    expect(captureInterval(st({ tracking: vision }), timed, T0 - 60 * MIN)).toBeNull();
+    expect(captureInterval(st({ tracking: vision }), timed, T0 - 5 * MIN)).toBe(MIN);
+    expect(captureInterval(st({ tracking: vision, finishedAt: T0 }), timed, T0)).toBeNull();
+    expect(captureInterval(st({ tracking: vision, currentKey: 'gone' }), timed, T0)).toBeNull();
+  });
+
+  it('backs off when a change has been due for half an hour, and hurries while one is pending', () => {
+    // Zelda-like overrun: estimate 30m, now 70m in (due since 20m, so 50m due).
+    const over = st({ currentKey: 'a', runs: { a: { startedAt: T0 } }, tracking: vision });
+    expect(captureInterval(over, timed, T0 + 70 * MIN)).toBe(10 * MIN);
+    const pending = st({
+      ...over,
+      detection: {
+        id: 'x',
+        runKey: 'b',
+        kind: 'advance',
+        currentKey: 'a',
+        startedAt: null,
+        firstAt: T0,
+        signals: [],
+      },
+    });
+    expect(captureInterval(pending, timed, T0 + 70 * MIN)).toBe(MIN);
+  });
+
+  it('stops reading while Twitch says the channel is offline', () => {
+    const s = st({
+      currentKey: 'b',
+      tracking: { twitch: true, vision: true, autoApply: false },
+      stream: { live: false, game: null, title: null, at: T0, error: null },
+    });
+    expect(captureInterval(s, timed, T0)).toBeNull();
+  });
 });

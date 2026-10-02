@@ -3,6 +3,12 @@ import os from 'node:os';
 import path from 'node:path';
 
 const PORT = 4173;
+// Auto-tracking reads fake Twitch channel info from this file (e2e/tracking.spec.ts).
+// Set once in the runner; workers inherit it.
+process.env.E2E_STREAM_FILE ??= path.join(
+  os.tmpdir(),
+  `schedule-helper-e2e-streams-${process.pid}.json`,
+);
 
 export default defineConfig({
   testDir: 'e2e',
@@ -26,6 +32,8 @@ export default defineConfig({
       PORT: String(PORT),
       DATA_DIR: path.join(os.tmpdir(), `schedule-helper-e2e-${process.pid}`),
       LOG_LEVEL: 'warn',
+      STREAM_INFO_FILE: process.env.E2E_STREAM_FILE,
+      TRACKING_TICK_MS: '300',
     },
   },
 });

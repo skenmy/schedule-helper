@@ -112,6 +112,73 @@ export interface CaptureResult {
   currentKey: RunKey | null;
 }
 
+/** What follows the stream to notice run changes on its own. Per room; not undoable. */
+export interface TrackingSettings {
+  /** Watch the Twitch channel's category and title. */
+  twitch: boolean;
+  /** Read stream frames (Claude) around expected run changes. */
+  vision: boolean;
+  /** Act without asking when two independent signals agree. Off: always ask. */
+  autoApply: boolean;
+}
+
+/**
+ * Where a signal came from. `nodecg` and `push` are reserved for sources that
+ * talk to the stream PC (NodeCG speedcontrol, a timer bridge).
+ */
+export type SignalSource = 'twitch' | 'vision' | 'nodecg' | 'push';
+
+export interface DetectionSignal {
+  source: SignalSource;
+  /** When the source saw it (server wallclock). */
+  at: number;
+  /** For the operator: "Twitch category → Spyro the Dragon", "stream timer 0:01:12". */
+  detail: string;
+  /** When the run started on stream, if this source can tell (a timer reading). */
+  startedAt: number | null;
+}
+
+/**
+ * The stream appears to have moved on: to a later run, or the current run's
+ * timer has started on stream but not here. Accepting it is an ordinary,
+ * undoable action; it never applies itself unless `tracking.autoApply` is on
+ * and two independent signals agree.
+ */
+export interface Detection {
+  id: string;
+  runKey: RunKey;
+  /** `advance`: a later run is on stream. `start`: the current run has started on stream. */
+  kind: 'advance' | 'start';
+  /** The live run when this was detected; if that changes, the detection is dropped. */
+  currentKey: RunKey | null;
+  /** Best estimate of the run's start on stream, from a timer reading. */
+  startedAt: number | null;
+  firstAt: number;
+  signals: DetectionSignal[];
+}
+
+/**
+ * A detection an operator (or auto-apply) already dealt with. While the live
+ * run is the same, the same suggestion isn't raised again, so a dismissal or
+ * an undo sticks even though the stream keeps showing the same thing.
+ */
+export interface SettledDetection {
+  runKey: RunKey;
+  kind: Detection['kind'];
+  currentKey: RunKey | null;
+  at: number;
+}
+
+/** The last thing a stream-info source (Twitch) reported for the room's channel. */
+export interface StreamInfo {
+  live: boolean;
+  game: string | null;
+  title: string | null;
+  at: number;
+  /** Set when the source is unavailable (no credentials, API error). */
+  error: string | null;
+}
+
 export interface UndoInfo {
   /** Identifies the entry, so an undo can't revert a different change. */
   id: number;
@@ -139,6 +206,11 @@ export interface RoomState {
   drift: DriftSettings;
   capture: CaptureResult | null;
   captureBusy: boolean;
+  tracking: TrackingSettings;
+  /** A run change the sources noticed, waiting for an operator (or auto-apply). */
+  detection: Detection | null;
+  settled: SettledDetection | null;
+  stream: StreamInfo | null;
   /** The action `undo` would revert, if any. */
   undo: UndoInfo | null;
   updatedAt: number;

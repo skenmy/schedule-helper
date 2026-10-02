@@ -18,6 +18,8 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
   - `sources/` Oengus / Horaro / demo adapters (zod-parsed, cached 60s, 10s timeouts)
   - `capture/` frame grab (streamlink → ffmpeg → JPEG in memory), `vision.ts` (Anthropic SDK,
     structured outputs), `service.ts` (drift evaluation, auto drift scheduler)
+  - `tracking/` auto-tracking: `twitch.ts` (Helix, app token), `match.ts` (category/title → run),
+    `detect.ts` (signals → `state.detection`, pure), `service.ts` (polling, vision hook, auto-apply)
   - `ws.ts` sessions (ordered queue, auth gate, heartbeat) · `http.ts` routes · `feed.ts` overlay feed
 - `src/client/` — Svelte 5 runes, Vite root:
   - `lib/room.svelte.ts` WebSocket connection (`RoomConnection`), reconnect, clock sync, offline
@@ -53,7 +55,7 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
   (`room.request()`), never optimistically.
 - **`room:reset` is the one irreversible action.** It lives on `Room` (not the reducer): writes a
   backup via `store.backup()` (refusing to reset if that fails), clears progress/log/broadcasts/
-  capture/undo but keeps the schedule, Twitch channel and drift settings, and bumps `room.epoch` so
+  capture/undo but keeps the schedule, Twitch channel, drift and tracking settings, and bumps `room.epoch` so
   a capture in flight is discarded. The client asks for a typed confirmation (`ui.ask({ typeToConfirm })`).
 - **Never guess the live run.** If `currentKey` points at a run that's gone from the schedule,
   actions that need it are refused; a stale capture (taken before the live run changed) can't be
@@ -110,6 +112,32 @@ result stored in `state.capture`, frame served from memory at
 `/api/rooms/{ref}/frames/{id}`. `capture:apply` back-dates the matched run's `startedAt` from the
 frame time, so processing latency doesn't matter. Set `CAPTURE_FRAME_FILE=fixtures/stream-frame.png`
 to develop without a live stream.
+
+## Auto-tracking
+
+Sources report what the stream shows as a `Signal` (`{ runKey, source, at, detail, startedAt }`);
+`observe()` folds signals into `state.detection`, which operators accept (`detection:accept`, an
+ordinary undoable action that back-dates the start from a timer reading) or dismiss.
+
+- **Never guess the live run, still.** Only the live run and the next `LOOKAHEAD` (3) runs can be
+  suggested; a live run that's gone from the schedule stops detection. A detection is dropped as
+  soon as the live run changes (`reconcile()` runs on every commit) or after 20 minutes unbacked.
+- **What's dealt with stays dealt with.** Accepting or dismissing records `state.settled`
+  (`{ runKey, kind, currentKey }`): the same suggestion isn't raised again while the room is on the
+  run where it was dealt with or the run it pointed at (30 minutes at most), so an undo (which lands
+  back where it was dealt with) or a dismissal sticks however often the stream repeats itself. Vision readings are level-triggered against that; Twitch only signals when the run its
+  category/title points at changes. A source that now sees the live run withdraws only its own
+  signals. A back-dated start before the live run's start (or the previous run's end) is treated as
+  a misread timer.
+- **Auto-apply** (`tracking.autoApply`, off by default) needs `corroborated()`: a trusted
+  stream-PC source (`TRUSTED_SOURCES`), two different sources, or two timer readings ≥20 s apart
+  implying the same start. It dispatches as `Auto-tracking`, so it's logged and undoable.
+- **Adding a source** (NodeCG speedcontrol, a stream-PC push): build a `Signal`, call `signal()`.
+- Vision reading reuses stream capture; `captureInterval()` decides the cadence: every minute while
+  a suggestion is pending or a change is due (near a run's estimated end, between runs), backing
+  off to every 10 after 30 minutes due, none while Twitch says offline, and only while an operator
+  (not a kiosk) is connected. `capture:apply` carries the reading's `id`.
+  Set `STREAM_INFO_FILE` to fake Twitch locally; e2e does (`e2e/tracking.spec.ts`).
 
 ## Deployment
 

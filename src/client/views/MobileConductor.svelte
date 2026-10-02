@@ -4,6 +4,7 @@
   import { fly } from 'svelte/transition';
   import { lineTitle } from '../../shared/derive.ts';
   import AnnouncementBanner from '../components/conductor/AnnouncementBanner.svelte';
+  import DetectionBanner from '../components/conductor/DetectionBanner.svelte';
   import MiniLog from '../components/conductor/MiniLog.svelte';
   import NowCard from '../components/conductor/NowCard.svelte';
   import StatusStrip from '../components/conductor/StatusStrip.svelte';
@@ -109,6 +110,7 @@
 
 <TopBar variant="phone" />
 <AnnouncementBanner />
+<DetectionBanner />
 <StatusStrip compact />
 
 <main class="view" ontouchstart={touchstart} ontouchend={touchend}>

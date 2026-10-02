@@ -38,6 +38,10 @@ export const EMPTY_STATE: RoomState = {
   drift: { enabled: false, intervalMin: 5, thresholdSec: 10 },
   capture: null,
   captureBusy: false,
+  tracking: { twitch: false, vision: false, autoApply: false },
+  detection: null,
+  settled: null,
+  stream: null,
   undo: null,
   updatedAt: 0,
 };
@@ -175,7 +179,7 @@ export class Ops {
       title: 'Reset the whole marathon?',
       body:
         `${live}Clears the live run, every run’s times, skips and check-ins, the event log, the announcement, the message board, the last stream capture and the undo history — for everyone.\n\n` +
-        'The schedule, Twitch channel and auto drift settings stay. This can’t be undone here, but a backup of the current state is kept on the server.',
+        'The schedule, Twitch channel, auto drift and auto-tracking settings stay. This can’t be undone here, but a backup of the current state is kept on the server.',
       confirmLabel: 'Reset marathon',
       danger: true,
       typeToConfirm: 'reset',
@@ -195,12 +199,28 @@ export class Ops {
     this.send({ action: 'capture:run' });
   }
 
-  applyCapture(): void {
-    void this.withUndo('Applied the stream timer', { action: 'capture:apply' });
+  /** Applies the stream reading the operator is looking at (`id`), not a newer one. */
+  applyCapture(id: string): void {
+    void this.withUndo('Applied the stream timer', { action: 'capture:apply', id });
   }
 
   configureDrift(enabled: boolean, intervalMin: number, thresholdSec: number): void {
     this.send({ action: 'drift:configure', enabled, intervalMin, thresholdSec });
+  }
+
+  configureTracking(twitch: boolean, vision: boolean, autoApply: boolean): void {
+    this.send({ action: 'tracking:configure', twitch, vision, autoApply });
+  }
+
+  /** Follows the run change the stream showed (the exact detection the operator saw). */
+  acceptDetection(id: string): void {
+    const d = this.live.state.detection;
+    const title = d?.id === id ? this.live.titleOf(d.runKey) : 'the stream';
+    void this.withUndo(`Followed the stream to ${title}`, { action: 'detection:accept', id });
+  }
+
+  dismissDetection(id: string): void {
+    this.send({ action: 'detection:dismiss', id });
   }
 
   setTwitch(channel: string): void {

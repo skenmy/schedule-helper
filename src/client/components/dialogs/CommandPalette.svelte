@@ -166,6 +166,17 @@
         run: () => (prefs.tabletMode = floor ? 'console' : 'floor'),
       });
     }
+    const detection = live.state.detection;
+    if (detection) {
+      items.unshift({
+        id: 'detection',
+        group: 'Actions',
+        label: `Follow the stream to ${live.titleOf(detection.runKey)}`,
+        hint: detection.kind === 'start' ? 'Start it from the stream timer' : 'Detected run change',
+        write: true,
+        run: () => ops.acceptDetection(detection.id),
+      });
+    }
     if (live.state.undo) {
       items.unshift({
         id: 'undo',

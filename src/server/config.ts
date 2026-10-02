@@ -29,6 +29,14 @@ export const config = {
   visionModel: env.VISION_MODEL || 'claude-sonnet-5',
   /** Dev/testing: serve this image instead of grabbing a live Twitch frame. */
   captureFrameFile: env.CAPTURE_FRAME_FILE || '',
+
+  /** Twitch app credentials for auto-tracking (category and title). Empty: unavailable. */
+  twitchClientId: env.TWITCH_CLIENT_ID || '',
+  twitchClientSecret: env.TWITCH_CLIENT_SECRET || '',
+  /** Dev/testing: read channel info from this JSON file instead of Twitch. */
+  streamInfoFile: env.STREAM_INFO_FILE || '',
+  /** How often auto-tracking polls Twitch. */
+  trackingTickMs: int(env.TRACKING_TICK_MS, 30_000),
 } as const;
 
 export type Config = typeof config;
