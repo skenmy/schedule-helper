@@ -6,6 +6,7 @@ import { WebSocket } from 'ws';
 import type { ServerMessage } from '../shared/protocol.ts';
 import type { Report } from '../shared/report.ts';
 import type { RoomRef, RoomState, Schedule } from '../shared/types.ts';
+import { config } from './config.ts';
 import { startServer, type RunningServer } from './server.ts';
 import { demoSchedule } from './sources/demo.ts';
 import { UpstreamError, fetchSchedule } from './sources/index.ts';
@@ -22,8 +23,8 @@ class Client {
     [];
   readonly ws: WebSocket;
 
-  constructor(port: number) {
-    this.ws = new WebSocket(`ws://localhost:${port}/ws`);
+  constructor(port: number, origin?: string) {
+    this.ws = new WebSocket(`ws://localhost:${port}/ws`, { origin });
     this.ws.on('message', (raw) => {
       const msg = JSON.parse(raw.toString()) as ServerMessage;
       this.messages.push(msg);
@@ -70,8 +71,8 @@ let server: RunningServer;
 let dataDir: string;
 const clients: Client[] = [];
 
-async function connect(): Promise<Client> {
-  const c = new Client(server.port);
+async function connect(origin?: string): Promise<Client> {
+  const c = new Client(server.port, origin);
   clients.push(c);
   await c.opened();
   return c;
@@ -158,6 +159,31 @@ describe('websocket protocol', () => {
     expect((await c.next('error')).code).toBe('not_joined');
     c.send({ action: 'join', ref: { ...REF, event: 'missing' } });
     expect((await c.next('error')).code).toBe('not_found');
+  });
+});
+
+describe('origin check', () => {
+  it('refuses sockets opened by other sites', async () => {
+    for (const origin of [
+      'https://evil.example',
+      `http://localhost:${server.port}.evil.example`,
+      `${config.publicUrl}.evil.example`,
+      'null',
+    ]) {
+      const ws = new WebSocket(`ws://localhost:${server.port}/ws`, { origin });
+      const refused = await new Promise<Error>((resolve, reject) => {
+        ws.once('error', resolve);
+        ws.once('open', () => reject(new Error(`${origin} was let in`)));
+      });
+      expect(refused.message).toBe('Unexpected server response: 403');
+    }
+  });
+
+  it('lets in non-browser clients, our own host and the public URL', async () => {
+    for (const origin of [undefined, `http://localhost:${server.port}`, config.publicUrl]) {
+      const c = await connect(origin);
+      expect((await c.join()).twitchChannel).toBe('testchannel');
+    }
   });
 });
 
