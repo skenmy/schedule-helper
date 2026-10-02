@@ -61,6 +61,20 @@ export interface RunRecord {
   endedAt?: number;
   skipped?: boolean;
   checkIn?: CheckIn;
+  /** The runners are on their way. Any check-in (ready, missing, cleared) replaces it. */
+  late?: RunnerLate;
+  /** When the runner last checked in from their own link; an operator's check-in clears it. */
+  selfAt?: number;
+}
+
+export interface RunnerLate {
+  /** When they said so. */
+  at: number;
+  /** When they expect to be there, or null for "not sure". */
+  etaAt: number | null;
+  note: string;
+  /** Said by the runner through their check-in link, not by an operator for them. */
+  self: boolean;
 }
 
 export type LogKind = 'note' | 'tech' | 'runner' | 'system' | 'warning';

@@ -172,7 +172,9 @@
     <span class="label">Runners</span>
     <b class="num">{s.runnersTotal}</b>
     <span
-      >Next {live.upcoming.length}: {live.checkIns.ready} ready, {live.checkIns.missing} missing</span
+      >Next {live.upcoming.length}: {live.checkIns.ready} ready{live.checkIns.late
+        ? `, ${live.checkIns.late} late`
+        : ''}, {live.checkIns.missing} missing</span
     >
   </div>
 </div>

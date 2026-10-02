@@ -35,6 +35,8 @@ export const config = {
   twitchClientSecret: env.TWITCH_CLIENT_SECRET || '',
   /** Dev/testing: read channel info from this JSON file instead of Twitch. */
   streamInfoFile: env.STREAM_INFO_FILE || '',
+  /** Signs runner check-in links. Empty: generated once and kept in DATA_DIR. */
+  checkinSecret: env.CHECKIN_SECRET || '',
   /** How often auto-tracking polls Twitch. */
   trackingTickMs: int(env.TRACKING_TICK_MS, 30_000),
 } as const;

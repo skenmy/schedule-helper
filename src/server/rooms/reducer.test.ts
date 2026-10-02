@@ -182,6 +182,59 @@ describe('edits and check-ins', () => {
     s = run(s, { action: 'runner:checkin', key: 'b', status: null }).state;
     expect(s.runs.b?.checkIn).toBeUndefined();
   });
+
+  it('records a runner on their way, until any check-in replaces it', () => {
+    let s = run(initialState(), { action: 'runner:checkin', key: 'b', status: 'ready' }).state;
+    const res = reduce(
+      s,
+      { action: 'runner:late', key: 'b', minutes: 15, note: 'Train delayed' },
+      { lines: LINES, now: T0, actor: 'rb (check-in link)', runner: true },
+    );
+    if (!res.ok) throw new Error(res.message);
+    s = res.state;
+    // Logged, but not on the operators' undo stack.
+    expect(res.undo).toBeNull();
+    expect(s.log[0]?.text).toBe('⏱ rb running late for Game b, about 15 min away: “Train delayed”');
+    expect(s.runs.b).toEqual({
+      late: { at: T0, etaAt: T0 + 15 * MIN, note: 'Train delayed', self: true },
+      selfAt: T0,
+    });
+    // The same again a minute later is nothing new.
+    const again = reduce(
+      s,
+      { action: 'runner:late', key: 'b', minutes: 14, note: 'Train delayed' },
+      { lines: LINES, now: T0 + MIN, actor: 'rb (check-in link)', runner: true },
+    );
+    expect(again).toMatchObject({ ok: true, changed: false });
+    expect(s.log[0]).toMatchObject({ kind: 'warning', actor: 'rb (check-in link)', runKey: 'b' });
+
+    // An operator passing it on, without a time.
+    s = run(s, { action: 'runner:late', key: 'b', minutes: null, note: '' }).state;
+    expect(s.runs.b?.late).toEqual({ at: T0, etaAt: null, note: '', self: false });
+    expect(s.runs.b?.selfAt).toBeUndefined();
+    expect(s.log[0]?.text).toBe('⏱ rb running late for Game b, not sure when');
+
+    // Marking them missing (or ready) supersedes it, even though the check-in was already empty.
+    s = run(s, { action: 'runner:checkin', key: 'b', status: null }).state;
+    expect(s.runs.b?.late).toBeUndefined();
+    expect(fail(s, { action: 'runner:late', key: 's', minutes: 5, note: '' }).code).toBe('invalid');
+  });
+
+  it('refuses a runner’s link once their run has started, been skipped, or the marathon ended', () => {
+    const asRunner = (state: RoomState, key: string) =>
+      reduce(
+        state,
+        { action: 'runner:checkin', key, status: 'ready' },
+        { lines: LINES, now: T0, actor: 'runner', runner: true },
+      );
+    let s = run(initialState(), { action: 'timer:start' }).state;
+    expect(asRunner(s, 'a')).toMatchObject({ ok: false, message: 'That run has already started.' });
+    s = run(s, { action: 'run:skip', key: 'c' }).state;
+    expect(asRunner(s, 'c')).toMatchObject({ ok: false, code: 'conflict' });
+    expect(asRunner(s, 'b')).toMatchObject({ ok: true, changed: true });
+    // An operator can still set anything.
+    expect(run(s, { action: 'runner:checkin', key: 'a', status: 'missing' }).changed).toBe(true);
+  });
 });
 
 describe('broadcasts and settings', () => {

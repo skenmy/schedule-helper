@@ -28,6 +28,8 @@ export interface ReduceContext {
   now: number;
   /** Display name of the operator, or null when auth is disabled. */
   actor: string | null;
+  /** The change came from a runner's own check-in link, not an operator. */
+  runner?: boolean;
 }
 
 export type ReduceResult =
@@ -46,6 +48,7 @@ const UNDOABLE: ReadonlySet<ReducibleAction['action']> = new Set([
   'run:unskip',
   'run:edit',
   'runner:checkin',
+  'runner:late',
   'twitch:set',
   'message:set',
   'message:clear',
@@ -94,7 +97,9 @@ export function reduce(
       ok: true,
       state: draft,
       changed: true,
-      undo: summary && UNDOABLE.has(action.action) ? summary : null,
+      // A runner's own check-in isn't on the operators' undo stack: an operator's
+      // Z must undo their own mistake, not a runner's tap (Room.undo keeps it).
+      undo: summary && UNDOABLE.has(action.action) && !ctx.runner ? summary : null,
     };
   } catch (err) {
     if (err instanceof NoChange) return { ok: true, state, changed: false, undo: null };
@@ -117,6 +122,13 @@ function apply(s: RoomState, action: ReducibleAction, ctx: ReduceContext): strin
     return { line, index };
   };
   const rec = (key: RunKey) => (s.runs[key] ??= {});
+  /** A runner's link can check them in until their run starts, and not after. */
+  const runnerMayCheckIn = (key: RunKey) => {
+    const r = s.runs[key];
+    if (r?.skipped) throw conflict('That run was taken off the schedule. Talk to an organiser.');
+    if (s.finishedAt != null) throw conflict('The marathon is over.');
+    if (r?.startedAt != null) throw conflict('That run has already started.');
+  };
 
   /** The current line, selecting the first run if the marathon hasn't started. */
   const ensureCurrent = (): { line: ScheduleLine; index: number } => {
@@ -289,18 +301,56 @@ function apply(s: RoomState, action: ReducibleAction, ctx: ReduceContext): strin
     case 'runner:checkin': {
       const { line } = lineFor(action.key);
       if (line.setupBlock) throw invalid('Setup blocks have no runners.');
+      if (ctx.runner) runnerMayCheckIn(line.key);
       const r = rec(line.key);
-      if ((r.checkIn ?? null) === action.status) throw new NoChange();
+      if ((r.checkIn ?? null) === action.status && !r.late) throw new NoChange();
       if (action.status) r.checkIn = action.status;
       else delete r.checkIn;
+      // Here, missing or cleared: whatever they said about being late no longer applies.
+      delete r.late;
+      if (ctx.runner) r.selfAt = now;
+      else delete r.selfAt;
       const who = line.runners.join(', ') || lineTitle(line);
       const text =
         action.status === 'ready'
-          ? `✓ ${who} checked in for ${lineTitle(line)}`
+          ? `✓ ${who} checked in for ${lineTitle(line)}${ctx.runner ? ' (from their link)' : ''}`
           : action.status === 'missing'
             ? `⚠ ${who} missing for ${lineTitle(line)}`
             : `Cleared check-in for ${lineTitle(line)}`;
       return log(text, action.status === 'missing' ? 'warning' : 'runner', line.key);
+    }
+
+    case 'runner:late': {
+      const { line } = lineFor(action.key);
+      if (line.setupBlock) throw invalid('Setup blocks have no runners.');
+      if (ctx.runner) runnerMayCheckIn(line.key);
+      const r = rec(line.key);
+      const etaAt = action.minutes == null ? null : now + action.minutes * 60_000;
+      // Saying the same thing again (a double tap, a resend) isn't news.
+      const same =
+        r.late &&
+        r.late.note === action.note &&
+        (r.late.etaAt == null
+          ? etaAt == null
+          : etaAt != null && Math.abs(r.late.etaAt - etaAt) < 2 * 60_000);
+      if (same && !r.checkIn) throw new NoChange();
+      delete r.checkIn;
+      if (ctx.runner) r.selfAt = now;
+      else delete r.selfAt;
+      r.late = {
+        at: now,
+        etaAt,
+        note: action.note,
+        self: !!ctx.runner,
+      };
+      const who = line.runners.join(', ') || lineTitle(line);
+      const away = action.minutes == null ? 'not sure when' : `about ${action.minutes} min away`;
+      const note = action.note ? `: “${action.note}”` : '';
+      return log(
+        `⏱ ${who} running late for ${lineTitle(line)}, ${away}${note}`,
+        'warning',
+        line.key,
+      );
     }
 
     case 'log:add':

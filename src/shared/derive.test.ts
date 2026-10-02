@@ -212,7 +212,14 @@ describe('marathon summaries', () => {
     const s = state({ currentKey: 'a', runs: { b: { checkIn: 'ready' } } });
     const next = upcomingIndexes(LINES, s, 5);
     expect(next).toEqual([1, 3]);
-    expect(checkInSummary(LINES, s.runs, next)).toEqual({ ready: 1, missing: 0, unchecked: 1 });
+    expect(checkInSummary(LINES, s.runs, next)).toEqual({
+      ready: 1,
+      late: 0,
+      missing: 0,
+      unchecked: 1,
+    });
+    const late = { at: T0, etaAt: null, note: '', self: true };
+    expect(checkInSummary(LINES, { c: { late } }, next)).toMatchObject({ late: 1, unchecked: 1 });
   });
 });
 

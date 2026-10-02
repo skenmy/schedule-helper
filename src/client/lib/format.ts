@@ -1,5 +1,6 @@
 // UI formatting helpers on top of the shared time formatters.
 
+import type { RunRecord } from '../../shared/types.ts';
 import type { Live } from './live.svelte.ts';
 
 import { fmtClock, fmtDay, fmtDuration, sameDay } from '../../shared/time.ts';
@@ -62,4 +63,13 @@ export function fmtLate(lateSec: number): string {
 export function fmtAhead(aheadSec: number): string {
   if (Math.abs(aheadSec) < 60) return 'on time';
   return `${fmtDuration(Math.abs(aheadSec))} ${aheadSec > 0 ? 'ahead' : 'behind'}`;
+}
+
+export type CheckInState = 'ready' | 'late' | 'missing' | 'none';
+
+/** One word for a run's runners: checked in, on their way, missing, or not heard from. */
+export function checkInState(rec: RunRecord | undefined): CheckInState {
+  if (rec?.checkIn === 'ready') return 'ready';
+  if (rec?.late) return 'late';
+  return rec?.checkIn ?? 'none';
 }

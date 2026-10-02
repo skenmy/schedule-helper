@@ -1,13 +1,17 @@
-// HTTP surface: schedule discovery, the overlay feed (JSON + SSE), capture
-// frames, health, and the built client with SPA fallback.
+// HTTP surface: schedule discovery, the overlay feed (JSON + SSE), the event
+// report, runner self check-in, capture frames, health, and the built client
+// with SPA fallback.
 
 import express, { type NextFunction, type Request, type Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import { ID_PATTERN, SOURCES, isValidRef } from '../shared/sources.ts';
-import type { RoomRef, ScheduleSource } from '../shared/types.ts';
-import { config } from './config.ts';
+import { SelfCheckInSchema, type MutatingAction } from '../shared/protocol.ts';
 import { buildReport, reportCsv } from '../shared/report.ts';
+import { ID_PATTERN, SOURCES, isValidRef, roomKey } from '../shared/sources.ts';
+import type { RoomRef, RunKey, ScheduleSource } from '../shared/types.ts';
+import { resolveIdentity } from './auth.ts';
+import { LinkThrottle, type CheckInTokens } from './checkin.ts';
+import { config } from './config.ts';
 import { buildFeed } from './feed.ts';
 import { logger } from './logger.ts';
 import type { RoomRegistry } from './rooms/registry.ts';
@@ -38,7 +42,10 @@ const cors = (_req: Request, res: Response, next: NextFunction) => {
   next();
 };
 
-export function createApp(registry: RoomRegistry): express.Express {
+export function createApp(
+  registry: RoomRegistry,
+  { checkins }: { checkins: CheckInTokens },
+): express.Express {
   const app = express();
   app.disable('x-powered-by');
   app.use((_req, res, next) => {
@@ -139,6 +146,99 @@ export function createApp(registry: RoomRegistry): express.Express {
     }
   });
 
+  // ── Runner self check-in ────────────────────────────────────────────────────
+  // Operators get every run's link; a runner's link can only check in that run.
+
+  app.get('/api/rooms/:source/:event/:slug/checkin-links', async (req, res) => {
+    const ref = refFrom(req);
+    res.setHeader('cache-control', 'no-store');
+    if (!ref) {
+      res.status(400).json({ error: 'Invalid room' });
+      return;
+    }
+    const auth = await resolveIdentity(req.headers.cookie);
+    if (!auth) {
+      res.status(503).json({ error: 'Can’t check your sign-in right now. Try again shortly.' });
+      return;
+    }
+    if (!auth.canWrite) {
+      res.status(auth.authenticated ? 403 : 401).json({
+        error: auth.authenticated
+          ? 'You’re signed in, but don’t have operator access to this app.'
+          : 'Sign in to get runner check-in links.',
+      });
+      return;
+    }
+    try {
+      const room = await registry.open(ref);
+      const tokens: Record<RunKey, string> = {};
+      for (const line of room.schedule.lines) {
+        if (!line.setupBlock) tokens[line.key] = checkins.token(ref, line.key);
+      }
+      res.json({ tokens });
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
+  const BAD_LINK = 'This check-in link isn’t valid. Ask an organiser for a new one.';
+  const throttle = new LinkThrottle();
+
+  // Lets the runner's page say up front that the link is wrong, before they tap.
+  // The token comes in a header, not the URL, so it stays out of access logs.
+  app.get('/api/rooms/:source/:event/:slug/checkin/:key', (req, res) => {
+    const ref = refFrom(req);
+    res.setHeader('cache-control', 'no-store');
+    if (!ref || !checkins.verify(ref, String(req.params.key), req.get('x-checkin-token'))) {
+      res.status(403).json({ error: BAD_LINK });
+      return;
+    }
+    res.json({ ok: true });
+  });
+
+  app.post(
+    '/api/rooms/:source/:event/:slug/checkin/:key',
+    express.json({ limit: '4kb' }),
+    async (req, res) => {
+      const ref = refFrom(req);
+      const key = String(req.params.key);
+      res.setHeader('cache-control', 'no-store');
+      const body = SelfCheckInSchema.safeParse(req.body);
+      if (!ref || !body.success) {
+        res.status(400).json({ error: 'That request wasn’t valid.' });
+        return;
+      }
+      if (!checkins.verify(ref, key, body.data.t)) {
+        res.status(403).json({ error: BAD_LINK });
+        return;
+      }
+      if (!throttle.allow(`${roomKey(ref)}\n${key}`)) {
+        res
+          .status(429)
+          .json({ error: 'That was a lot of check-ins. Wait a moment and try again.' });
+        return;
+      }
+      try {
+        const room = await registry.open(ref);
+        const line = room.schedule.lines.find((l) => l.key === key);
+        // The reducer refuses runs that have started, been skipped or left the schedule.
+        const action: MutatingAction =
+          body.data.status === 'ready'
+            ? { action: 'runner:checkin', key, status: 'ready' }
+            : { action: 'runner:late', key, minutes: body.data.minutes, note: body.data.note };
+        const actor = `${line?.runners.join(', ') || 'Runner'} (check-in link)`;
+        const result = room.dispatch(action, actor, undefined, { runner: true });
+        if (!result.ok) {
+          res.status(result.code === 'invalid' ? 400 : 409).json({ error: result.message });
+          return;
+        }
+        res.json({ ok: true });
+      } catch (err) {
+        sendError(res, err);
+      }
+    },
+  );
+
   app.get('/api/rooms/:source/:event/:slug/frames/:id', (req, res) => {
     const ref = refFrom(req);
     const frame = ref ? registry.get(ref)?.frames.get(String(req.params.id)) : undefined;
@@ -153,6 +253,14 @@ export function createApp(registry: RoomRegistry): express.Express {
 
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'Not found' });
+  });
+  // Bodies that aren't JSON, or are too big, get a JSON error like everything else in /api.
+  app.use('/api', (err: { status?: number }, _req: Request, res: Response, next: NextFunction) => {
+    if (res.headersSent || !err.status || err.status >= 500) {
+      next(err);
+      return;
+    }
+    res.status(err.status).json({ error: 'That request wasn’t valid.' });
   });
 
   // Built client. Hashed assets are immutable; everything else revalidates —

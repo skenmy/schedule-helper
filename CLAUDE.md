@@ -22,6 +22,8 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
     structured outputs), `service.ts` (drift evaluation, auto drift scheduler)
   - `tracking/` auto-tracking: `twitch.ts` (Helix, app token), `match.ts` (category/title → run),
     `detect.ts` (signals → `state.detection`, pure), `service.ts` (polling, vision hook, auto-apply)
+  - `checkin.ts` runner self check-in links (HMAC per room + run, secret in `DATA_DIR`); the runner's
+    page posts to `http.ts`, which dispatches `runner:checkin` / `runner:late` with `{ runner: true }`
   - `ws.ts` sessions (ordered queue, auth gate, heartbeat) · `http.ts` routes · `feed.ts` overlay feed
 - `src/client/` — Svelte 5 runes, Vite root:
   - `lib/room.svelte.ts` WebSocket connection (`RoomConnection`), reconnect, clock sync, offline
@@ -34,7 +36,8 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
     `<html data-layout data-touch>` for CSS.
   - `views/` Landing, RoomView (connection owner, picks the view by `layout.kind`), Conductor
     (desktop), TabletConductor (iPad: console / floor modes), MobileConductor, Kiosk (`?kiosk=1`),
-    Report (`?report=1`, read-only; `components/report/DeltaChart.svelte` is its chart)
+    Report (`?report=1`, read-only; `components/report/DeltaChart.svelte` is its chart),
+    RunnerCheckIn (`?checkin={key}&t={token}`, a runner's own page; `lib/checkin.ts`)
   - `components/touch/` Transport (run controls for touch), OnDeck (floor check-ins), MoreSheet
   - `sw.ts` service worker (app shell only), built by the plugin in `vite.config.ts` and
     type-checked by `tsconfig.sw.json` (WebWorker globals, not the DOM)
@@ -66,7 +69,13 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
 - **Never let broadcasts clobber drafts.** The server sends a new state object on every change
   and the clock ticks every 250 ms. Effects that seed form fields must read state via `untrack`
   or key off a primitive `$derived` (see `CaptureTab.svelte`, `EditTimesDialog.svelte`).
-- Mutating actions are auth-gated in `ws.ts`; `join`/`ping` and all HTTP reads are public.
+- Mutating actions are auth-gated in `ws.ts`; `join`/`ping` and all HTTP reads are public, except
+  `checkin-links` (operators only). The one HTTP write is a runner's check-in, authorised by its
+  link's token for that run alone (throttled per link), and runs through the reducer with
+  `{ runner: true }`: refusals for started/skipped runs live there, and it never goes on the undo
+  stack (`Room.undo` carries forward runs whose `selfAt` is newer). **A runner's late note is free
+  text from outside**: render it as text, never as HTML, keep it out of anything that runs
+  (formulas, URLs) and out of the public overlay feed.
 - **WebSockets only open from our own pages.** `ws.ts` answers 403 to an upgrade whose `Origin` is
   present but is neither `PUBLIC_URL` nor the request's own `Host`, so another site can't use an
   operator's cookie to act as them (cross-site WebSocket hijacking). No `Origin` (tests, scripts)

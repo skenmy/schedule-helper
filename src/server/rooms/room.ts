@@ -132,6 +132,7 @@ export class Room {
     action: MutatingAction,
     actor: string | null,
     reply: (msg: ServerMessage) => void = () => {},
+    { runner = false }: { runner?: boolean } = {},
   ): DispatchResult {
     switch (action.action) {
       case 'undo':
@@ -153,7 +154,7 @@ export class Room {
 
     const now = Date.now();
     const before = takeSnapshot(this.state);
-    const res = reduce(this.state, action, { lines: this.schedule.lines, now, actor });
+    const res = reduce(this.state, action, { lines: this.schedule.lines, now, actor, runner });
     if (!res.ok) return res;
     if (!res.changed) return { ok: true, undo: null };
     let undo: UndoInfo | null = null;
@@ -179,8 +180,19 @@ export class Room {
       };
     }
     const entry = this.undoStack.pop()!;
+    const runs = this.state.runs;
     this.mutate((s) => {
       Object.assign(s, structuredClone(entry.snapshot));
+      // What runners said from their links since isn't the operator's to undo.
+      for (const [key, rec] of Object.entries(runs)) {
+        if (rec.selfAt == null || rec.selfAt <= entry.at) continue;
+        const r = (s.runs[key] ??= {});
+        r.selfAt = rec.selfAt;
+        if (rec.checkIn) r.checkIn = rec.checkIn;
+        else delete r.checkIn;
+        if (rec.late) r.late = structuredClone(rec.late);
+        else delete r.late;
+      }
       const by = entry.actor && entry.actor !== actor ? ` (by ${entry.actor})` : '';
       appendLog(s, {
         kind: 'system',

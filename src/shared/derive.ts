@@ -400,6 +400,8 @@ export function upcomingIndexes(lines: Lines, state: RoomState, count: number): 
 
 export interface CheckInSummary {
   ready: number;
+  /** Said they're on their way (and haven't checked in since). */
+  late: number;
   missing: number;
   unchecked: number;
 }
@@ -409,13 +411,14 @@ export function checkInSummary(
   runs: Runs,
   indexes: readonly number[],
 ): CheckInSummary {
-  const summary: CheckInSummary = { ready: 0, missing: 0, unchecked: 0 };
+  const summary: CheckInSummary = { ready: 0, late: 0, missing: 0, unchecked: 0 };
   for (const i of indexes) {
     const line = lines[i];
     if (!line || line.setupBlock) continue;
-    const status = runs[line.key]?.checkIn;
-    if (status === 'ready') summary.ready++;
-    else if (status === 'missing') summary.missing++;
+    const r = runs[line.key];
+    if (r?.checkIn === 'ready') summary.ready++;
+    else if (r?.late) summary.late++;
+    else if (r?.checkIn === 'missing') summary.missing++;
     else summary.unchecked++;
   }
   return summary;

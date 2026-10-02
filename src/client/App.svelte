@@ -11,6 +11,17 @@
   const flag = (name: string) => router.params.has(name) && router.params.get(name) !== '0';
   const kiosk = $derived(flag('kiosk'));
   const report = $derived(!kiosk && flag('report'));
+  /** A runner's check-in link: `?checkin={run key}#t={token}` (lib/checkin.ts). */
+  let hash = $state(location.hash);
+  $effect(() => {
+    const sync = () => (hash = location.hash);
+    window.addEventListener('hashchange', sync);
+    return () => window.removeEventListener('hashchange', sync);
+  });
+  const checkin = $derived.by(() => {
+    const key = router.params.get('checkin');
+    return key ? { key, token: new URLSearchParams(hash.slice(1)).get('t') ?? '' } : null;
+  });
 
   $effect(() => {
     document.documentElement.dataset.theme = prefs.theme;
@@ -19,7 +30,7 @@
 
 {#if ref}
   {#key roomKey(ref)}
-    <RoomView {ref} {kiosk} {report} />
+    <RoomView {ref} {kiosk} {report} {checkin} />
   {/key}
 {:else}
   <Landing />

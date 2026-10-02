@@ -3,7 +3,8 @@
   import { lineTitle, upcomingIndexes } from '../../../shared/derive.ts';
   import type { CheckIn, RunKey } from '../../../shared/types.ts';
   import { haptic } from '../../lib/device.ts';
-  import { fmtClock, fmtHM, fmtOffsetShort } from '../../lib/format.ts';
+  import { etaText } from '../../lib/checkin.ts';
+  import { checkInState, fmtClock, fmtHM, fmtOffsetShort } from '../../lib/format.ts';
   import { getLive, getOps } from '../../lib/live.svelte.ts';
   import { getRoom } from '../../lib/room.svelte.ts';
   import { ui } from '../../lib/ui.svelte.ts';
@@ -23,7 +24,15 @@
         projected != null && line.scheduledStart != null
           ? (projected - line.scheduledStart) / 1000
           : 0;
-      return { line, projected, drift, checkIn: live.state.runs[line.key]?.checkIn ?? null };
+      const rec = live.state.runs[line.key];
+      return {
+        line,
+        projected,
+        drift,
+        checkIn: rec?.checkIn ?? null,
+        state: checkInState(rec),
+        late: rec?.late ?? null,
+      };
     }),
   );
 
@@ -39,13 +48,16 @@
     <span class="label">On deck</span>
     <span class="summary">
       <span class="chip ok">✓ {live.checkIns.ready}</span>
+      {#if live.checkIns.late}<span class="chip warn" title="Running late"
+          >⏱ {live.checkIns.late}</span
+        >{/if}
       {#if live.checkIns.missing}<span class="chip bad">✗ {live.checkIns.missing}</span>{/if}
       <span class="chip">? {live.checkIns.unchecked}</span>
     </span>
   </header>
   <ol>
     {#each rows as r, i (r.line.key)}
-      <li class:first={i === 0} class={r.checkIn ?? 'none'}>
+      <li class:first={i === 0} class={r.state}>
         <button class="what" onclick={() => (ui.runSheet = r.line.key)}>
           <span class="when">
             <b class="num">{fmtClock(r.projected)}</b>
@@ -64,6 +76,13 @@
                 r.line.estimateSec,
               )}</span
             >
+            {#if r.late}
+              <span class="late truncate"
+                >⏱ Running late · {etaText(r.late, live.now)}{r.late.note
+                  ? ` · “${r.late.note}”`
+                  : ''}</span
+              >
+            {/if}
           </span>
         </button>
         {#if r.line.runners.length}
@@ -129,6 +148,14 @@
   li.missing {
     box-shadow: inset 3px 0 0 var(--bad);
     background: var(--bad-soft);
+  }
+  li.late {
+    box-shadow: inset 3px 0 0 var(--warn);
+  }
+  .names .late {
+    color: var(--warn);
+    font-size: 12.5px;
+    font-weight: 600;
   }
   .what {
     flex: 1;

@@ -337,6 +337,122 @@ describe('overlay feed', () => {
   });
 });
 
+describe('runner self check-in', () => {
+  const base = () => `http://localhost:${server.port}/api/rooms/oengus/testmarathon/main`;
+  const post = (key: string, body: unknown) =>
+    fetch(`${base()}/checkin/${key}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: typeof body === 'string' ? body : JSON.stringify(body),
+    });
+  async function tokens(): Promise<Record<string, string>> {
+    const res = await fetch(`${base()}/checkin-links`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    return ((await res.json()) as { tokens: Record<string, string> }).tokens;
+  }
+
+  it('lets a runner check in for their run with the link, and nothing else', async () => {
+    const c = await connect();
+    await c.join();
+    const t = await tokens();
+    expect(Object.keys(t)).toContain('d3');
+
+    const check = (token: string) =>
+      fetch(`${base()}/checkin/d3`, { headers: { 'x-checkin-token': token } });
+    expect((await check(t.d3!)).status).toBe(200);
+    expect((await check(t.d4!)).status).toBe(403);
+
+    expect((await post('d3', { t: t.d4, status: 'ready' })).status).toBe(403);
+    const checkedIn = c.nextState((st) => st.runs.d3?.checkIn === 'ready');
+    expect((await post('d3', { t: t.d3, status: 'ready' })).status).toBe(200);
+    const s = await checkedIn;
+    expect(s.log[0]).toMatchObject({ kind: 'runner', runKey: 'd3' });
+    expect(s.log[0]?.actor).toMatch(/\(check-in link\)$/);
+    expect(s.log[0]?.text).toContain('(from their link)');
+  });
+
+  it('records a runner running late, as said by them', async () => {
+    const c = await connect();
+    await c.join();
+    const t = await tokens();
+    const late = c.nextState((st) => st.runs.d4?.late != null);
+    expect((await post('d4', { t: t.d4, status: 'late', minutes: 10, note: 'Bus' })).status).toBe(
+      200,
+    );
+    const s = await late;
+    expect(s.runs.d4?.late).toMatchObject({ note: 'Bus', self: true });
+    expect(s.runs.d4!.late!.etaAt! - s.runs.d4!.late!.at).toBe(10 * 60_000);
+  });
+
+  it('keeps the note plain, and off the overlay feed', async () => {
+    const c = await connect();
+    await c.join();
+    const t = await tokens();
+    const late = c.nextState((st) => st.runs.d3?.late != null);
+    const note = 'On my way\u202E\n\u0007 soon';
+    await post('d3', { t: t.d3, status: 'late', minutes: 5, note });
+    expect((await late).runs.d3?.late?.note).toBe('On my way soon');
+    const feed = (await (await fetch(`${base()}/feed`)).json()) as {
+      next: { key: string; late: object | null }[];
+    };
+    const row = feed.next.find((n) => n.key === 'd3');
+    expect(row?.late).toEqual({ at: expect.any(Number), etaAt: expect.any(Number), self: true });
+  });
+
+  it('slows a link down rather than let it flood the log', async () => {
+    const t = await tokens();
+    expect((await post('d3', { t: t.d3, status: 'ready' })).status).toBe(200);
+    const again = await post('d3', { t: t.d3, status: 'late', minutes: 5, note: '' });
+    expect(again.status).toBe(429);
+    // Other runs' links aren't affected.
+    expect((await post('d4', { t: t.d4, status: 'ready' })).status).toBe(200);
+  });
+
+  it('leaves a runner’s check-in alone when an operator undoes their own change', async () => {
+    const c = await connect();
+    await c.join();
+    const applied = c.next('applied');
+    c.send({ action: 'run:skip', key: 'd5', rid: 'skip' });
+    const undo = (await applied).undo!;
+    const t = await tokens();
+    const checkedIn = c.nextState((st) => st.runs.d3?.checkIn === 'ready');
+    await post('d3', { t: t.d3, status: 'ready' });
+    await checkedIn;
+
+    // The operator's undo still names their own change, and still works.
+    const undone = c.nextState((st) => !st.runs.d5?.skipped);
+    c.send({ action: 'undo', id: undo.id });
+    const s = await undone;
+    expect(s.runs.d3?.checkIn).toBe('ready');
+  });
+
+  it('refuses runs that have started, and bad requests, with a JSON error', async () => {
+    const c = await connect();
+    await c.join();
+    c.send({ action: 'timer:start' });
+    await c.nextState((s) => s.runs.d0?.startedAt != null);
+    const t = await tokens();
+
+    const started = await post('d0', { t: t.d0, status: 'ready' });
+    expect(started.status).toBe(409);
+    expect(await started.json()).toEqual({ error: 'That run has already started.' });
+    expect((await post('d3', { t: t.d3, status: 'late', minutes: 999, note: '' })).status).toBe(
+      400,
+    );
+    const junk = await post('d3', '{not json');
+    expect(junk.status).toBe(400);
+    expect(await junk.json()).toEqual({ error: 'That request wasn’t valid.' });
+  });
+
+  it('keeps links working across a restart', async () => {
+    const before = await tokens();
+    await server.close();
+    await boot();
+    expect(await tokens()).toEqual(before);
+  });
+});
+
 describe('event report', () => {
   const url = (format: string) =>
     `http://localhost:${server.port}/api/rooms/oengus/testmarathon/main/report.${format}`;
