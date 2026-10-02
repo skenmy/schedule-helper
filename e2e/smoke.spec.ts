@@ -114,7 +114,8 @@ test('a runner checks in from their own link', async ({ browser }) => {
   await sheet.getByRole('button', { name: 'Runner check-in link' }).click();
   await expect(sheet.getByRole('img', { name: 'QR code for the check-in link' })).toBeVisible();
   const url = await sheet.locator('code').innerText();
-  expect(url).toMatch(/\/demo\/demo\/main\?checkin=.+&t=[\w-]{22}$/);
+  // The token rides in the fragment, which never reaches the server's access log.
+  expect(url).toMatch(/\/demo\/demo\/main\?checkin=[^#&]+#t=[\w-]{22}$/);
 
   const runner = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true });
   await runner.goto(url);
@@ -123,13 +124,20 @@ test('a runner checks in from their own link', async ({ browser }) => {
   await runner.getByRole('radio', { name: '10 min' }).click();
   await runner.getByLabel('Anything to add? (optional)').fill('Bus is slow');
   await runner.getByRole('button', { name: 'Tell the organisers' }).click();
-  await expect(runner.getByText('The organisers know you’re on your way')).toBeVisible();
+  await expect(
+    runner.getByRole('heading', { name: 'The organisers know you’re on your way' }),
+  ).toBeVisible();
 
   await expect(sheet).toContainText('Running late');
   await expect(sheet).toContainText('“Bus is slow”');
 
+  // A link can be used once a second at most.
+  await runner.waitForTimeout(1_100);
   await runner.getByRole('button', { name: 'I’m here now' }).click();
-  await expect(runner.getByText('You’re checked in')).toBeVisible();
+  await expect(runner.getByRole('heading', { name: 'You’re checked in' })).toBeVisible();
+  // Focus lands somewhere sensible, and the confirmation is read out.
+  await expect(runner.getByRole('heading', { name: 'Hades' })).toBeFocused();
+  await expect(runner.getByRole('status').first()).toHaveText('You’re checked in.');
   await expect(sheet.getByRole('radio', { name: 'Ready' })).toHaveAttribute('aria-checked', 'true');
 
   // Someone else's (or a mangled) link gets nowhere.

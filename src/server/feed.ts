@@ -14,8 +14,11 @@ import {
   scheduleStatus,
   upcomingIndexes,
 } from '../shared/derive.ts';
-import type { ScheduleLine } from '../shared/types.ts';
+import type { RunnerLate, ScheduleLine } from '../shared/types.ts';
 import type { Room } from './rooms/room.ts';
+
+const lateOf = (late: RunnerLate | undefined) =>
+  late ? { at: late.at, etaAt: late.etaAt, self: late.self } : null;
 
 function runInfo(line: ScheduleLine) {
   return {
@@ -65,7 +68,8 @@ export function buildFeed(room: Room, now = Date.now()) {
       ...runInfo(lines[i]!),
       projectedStart: projection[i]?.start ?? null,
       checkIn: s.runs[lines[i]!.key]?.checkIn ?? null,
-      late: s.runs[lines[i]!.key]?.late ?? null,
+      // Not the runner's note: the feed goes on stream, and that text was written for organisers.
+      late: lateOf(s.runs[lines[i]!.key]?.late),
     })),
     delta: delta == null ? null : { seconds: delta, status: scheduleStatus(delta) },
     scheduledEnd: stats.scheduledEnd,

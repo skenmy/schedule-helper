@@ -158,7 +158,7 @@ Read-only and CORS-open — the same information any viewer can already see.
 
 - `GET /api/rooms/{source}/{event}/{slug}/feed` — JSON snapshot: event, phase, current run (with
   `startedAt` so overlays can tick the timer locally), next five runs with projected starts and
-  check-ins (and `late`: ETA and note, when a runner said they're on their way), delta, scheduled
+  check-ins (and `late`: when and ETA, when a runner said they're on their way), delta, scheduled
   and projected end, progress, message and announcement.
 - `GET /api/rooms/{source}/{event}/{slug}/feed/stream` — the same snapshot as Server-Sent Events
   (`event: feed`), pushed on every change.
@@ -169,19 +169,27 @@ Read-only and CORS-open — the same information any viewer can already see.
 
 ## Runner check-in links
 
-A link is `/{source}/{event}/{slug}?checkin={run key}&t={token}`, where the token is an HMAC of
+A link is `/{source}/{event}/{slug}?checkin={run key}#t={token}`, where the token is an HMAC of
 the room and run key (`src/server/checkin.ts`). It authorises exactly one thing: that run's check-in.
+The token sits in the fragment (and in a header or body on the API calls), so it never lands in an
+access log.
 
 - `GET /api/rooms/{ref}/checkin-links` — every run's token. Operators only (the same
   tools.skenmy.com cookie check as the socket).
-- `GET /api/rooms/{ref}/checkin/{key}?t=…` — 200 if the link is good, 403 if not.
+- `GET /api/rooms/{ref}/checkin/{key}` with `x-checkin-token` — 200 if the link is good, 403 if
+  not.
 - `POST /api/rooms/{ref}/checkin/{key}` with `{ t, status: 'ready' }` or
   `{ t, status: 'late', minutes: 1–240 | null, note }` — dispatches `runner:checkin` /
-  `runner:late` as `{runners} (check-in link)`: logged and undoable like any check-in. Refused once
-  the run has started, been skipped, or left the schedule.
+  `runner:late` as `{runners} (check-in link)`. Logged, but not on the operators' undo stack: an
+  operator's undo reverts their own change and keeps whatever runners said since. Refused once the
+  run has started, been skipped, or left the schedule, or when a link is used more than once a
+  second or 20 times an hour. The note is plain text (control characters stripped) and isn't in
+  the overlay feed.
 
 The secret is generated into `DATA_DIR/checkin-secret` on first start, so links survive restarts
-and deploys. Delete it (or change `CHECKIN_SECRET`) to invalidate every link.
+and deploys. Delete it (or change `CHECKIN_SECRET`, 32+ characters) to invalidate every link. A
+secret file that's empty or unreadable stops the server starting rather than quietly breaking every
+link already handed out.
 
 ## Environment
 

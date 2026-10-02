@@ -332,8 +332,10 @@ describe('runner self check-in', () => {
     const t = await tokens();
     expect(Object.keys(t)).toContain('d3');
 
-    expect((await fetch(`${base()}/checkin/d3?t=${t.d3}`)).status).toBe(200);
-    expect((await fetch(`${base()}/checkin/d3?t=${t.d4}`)).status).toBe(403);
+    const check = (token: string) =>
+      fetch(`${base()}/checkin/d3`, { headers: { 'x-checkin-token': token } });
+    expect((await check(t.d3!)).status).toBe(200);
+    expect((await check(t.d4!)).status).toBe(403);
 
     expect((await post('d3', { t: t.d4, status: 'ready' })).status).toBe(403);
     const checkedIn = c.nextState((st) => st.runs.d3?.checkIn === 'ready');
@@ -355,6 +357,48 @@ describe('runner self check-in', () => {
     const s = await late;
     expect(s.runs.d4?.late).toMatchObject({ note: 'Bus', self: true });
     expect(s.runs.d4!.late!.etaAt! - s.runs.d4!.late!.at).toBe(10 * 60_000);
+  });
+
+  it('keeps the note plain, and off the overlay feed', async () => {
+    const c = await connect();
+    await c.join();
+    const t = await tokens();
+    const late = c.nextState((st) => st.runs.d3?.late != null);
+    const note = 'On my way\u202E\n\u0007 soon';
+    await post('d3', { t: t.d3, status: 'late', minutes: 5, note });
+    expect((await late).runs.d3?.late?.note).toBe('On my way soon');
+    const feed = (await (await fetch(`${base()}/feed`)).json()) as {
+      next: { key: string; late: object | null }[];
+    };
+    const row = feed.next.find((n) => n.key === 'd3');
+    expect(row?.late).toEqual({ at: expect.any(Number), etaAt: expect.any(Number), self: true });
+  });
+
+  it('slows a link down rather than let it flood the log', async () => {
+    const t = await tokens();
+    expect((await post('d3', { t: t.d3, status: 'ready' })).status).toBe(200);
+    const again = await post('d3', { t: t.d3, status: 'late', minutes: 5, note: '' });
+    expect(again.status).toBe(429);
+    // Other runs' links aren't affected.
+    expect((await post('d4', { t: t.d4, status: 'ready' })).status).toBe(200);
+  });
+
+  it('leaves a runner’s check-in alone when an operator undoes their own change', async () => {
+    const c = await connect();
+    await c.join();
+    const applied = c.next('applied');
+    c.send({ action: 'run:skip', key: 'd5', rid: 'skip' });
+    const undo = (await applied).undo!;
+    const t = await tokens();
+    const checkedIn = c.nextState((st) => st.runs.d3?.checkIn === 'ready');
+    await post('d3', { t: t.d3, status: 'ready' });
+    await checkedIn;
+
+    // The operator's undo still names their own change, and still works.
+    const undone = c.nextState((st) => !st.runs.d5?.skipped);
+    c.send({ action: 'undo', id: undo.id });
+    const s = await undone;
+    expect(s.runs.d3?.checkIn).toBe('ready');
   });
 
   it('refuses runs that have started, and bad requests, with a JSON error', async () => {

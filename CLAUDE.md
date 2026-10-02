@@ -71,8 +71,11 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
   or key off a primitive `$derived` (see `CaptureTab.svelte`, `EditTimesDialog.svelte`).
 - Mutating actions are auth-gated in `ws.ts`; `join`/`ping` and all HTTP reads are public, except
   `checkin-links` (operators only). The one HTTP write is a runner's check-in, authorised by its
-  link's token for that run alone. **A runner's late note is free text from outside**: render it as
-  text, never as HTML, and keep it out of anything that runs (formulas, URLs).
+  link's token for that run alone (throttled per link), and runs through the reducer with
+  `{ runner: true }`: refusals for started/skipped runs live there, and it never goes on the undo
+  stack (`Room.undo` carries forward runs whose `selfAt` is newer). **A runner's late note is free
+  text from outside**: render it as text, never as HTML, keep it out of anything that runs
+  (formulas, URLs) and out of the public overlay feed.
 - **Nothing acts on cached state.** A room paints from its offline snapshot before the socket
   connects, and keeps showing state after it drops. `room.canWrite` is operator access **and** a
   live socket with fresh state (`room.synced`); gate every control that sends an action on it. Use

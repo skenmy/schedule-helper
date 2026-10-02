@@ -9,9 +9,10 @@ import { fmtClock } from './format.ts';
 
 const api = (ref: RoomRef) => `/api/rooms${roomPath(ref)}`;
 
+/** The token goes in the fragment, which browsers never send: it stays out of access logs. */
 export function checkinUrl(ref: RoomRef, key: RunKey, token: string): string {
-  const qs = new URLSearchParams({ checkin: key, t: token });
-  return new URL(`${roomPath(ref)}?${qs}`, location.origin).toString();
+  const qs = new URLSearchParams({ checkin: key });
+  return new URL(`${roomPath(ref)}?${qs}#t=${token}`, location.origin).toString();
 }
 
 async function errorOf(res: Response): Promise<Error> {
@@ -43,8 +44,9 @@ export async function linkIsValid(
   token: string,
 ): Promise<boolean | null> {
   try {
-    const qs = new URLSearchParams({ t: token });
-    const res = await fetch(`${api(ref)}/checkin/${encodeURIComponent(key)}?${qs}`);
+    const res = await fetch(`${api(ref)}/checkin/${encodeURIComponent(key)}`, {
+      headers: { 'x-checkin-token': token },
+    });
     if (res.ok) return true;
     return res.status === 403 ? false : null;
   } catch {
@@ -54,11 +56,18 @@ export async function linkIsValid(
 
 /** The runner's "I'm here" / "running late". Throws with the server's explanation. */
 export async function selfCheckIn(ref: RoomRef, key: RunKey, body: SelfCheckIn): Promise<void> {
-  const res = await fetch(`${api(ref)}/checkin/${encodeURIComponent(key)}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${api(ref)}/checkin/${encodeURIComponent(key)}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      // Venue Wi-Fi: better to say so than leave the buttons greyed out for minutes.
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    throw new Error('No answer from the server. Check your connection and try again.');
+  }
   if (!res.ok) throw await errorOf(res);
 }
 

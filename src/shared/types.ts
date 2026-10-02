@@ -63,6 +63,8 @@ export interface RunRecord {
   checkIn?: CheckIn;
   /** The runners are on their way. Any check-in (ready, missing, cleared) replaces it. */
   late?: RunnerLate;
+  /** When the runner last checked in from their own link; an operator's check-in clears it. */
+  selfAt?: number;
 }
 
 export interface RunnerLate {
