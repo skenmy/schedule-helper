@@ -62,6 +62,10 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
   and the clock ticks every 250 ms. Effects that seed form fields must read state via `untrack`
   or key off a primitive `$derived` (see `CaptureTab.svelte`, `EditTimesDialog.svelte`).
 - Mutating actions are auth-gated in `ws.ts`; `join`/`ping` and all HTTP reads are public.
+- **WebSockets only open from our own pages.** `ws.ts` answers 403 to an upgrade whose `Origin` is
+  present but is neither `PUBLIC_URL` nor the request's own `Host`, so another site can't use an
+  operator's cookie to act as them (cross-site WebSocket hijacking). No `Origin` (tests, scripts)
+  is allowed. Serving from a new hostname needs `PUBLIC_URL` set or the proxy to pass `Host` through.
 - **Nothing acts on cached state.** A room paints from its offline snapshot before the socket
   connects, and keeps showing state after it drops. `room.canWrite` is operator access **and** a
   live socket with fresh state (`room.synced`); gate every control that sends an action on it. Use
