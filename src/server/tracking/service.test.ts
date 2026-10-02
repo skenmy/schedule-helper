@@ -169,6 +169,20 @@ describe('auto-apply', () => {
     expect(r.state.undo).toMatchObject({ actor: AUTO_ACTOR });
   });
 
+  it('keeps an undone change undone, however often the stream repeats itself', () => {
+    const r = room(true);
+    signal(r, twitchSaid);
+    signal(r, visionSaw);
+    expect(r.state.currentKey).toBe('d1');
+    // Through the real commit and undo, not a hand-built state.
+    expect(r.dispatch({ action: 'undo', id: r.state.undo!.id }, 'op').ok).toBe(true);
+    expect(r.state.currentKey).toBe('d0');
+    signal(r, { ...twitchSaid, at: now + 60_000 });
+    signal(r, { ...visionSaw, at: now + 120_000, startedAt: now - 90_000 });
+    expect(r.state.currentKey).toBe('d0');
+    expect(r.state.detection).toBeNull();
+  });
+
   it('only asks when auto-apply is off', () => {
     const r = room(false);
     signal(r, twitchSaid);
