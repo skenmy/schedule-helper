@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  catchUpPlan,
   checkInSummary,
   computeDelta,
   eventPace,
@@ -264,5 +265,42 @@ describe('eventPace', () => {
     // Five runs to go (r5 live, r6..r9), each 10% longer; four changeovers between them.
     const extra = 5 * 3 * MIN + 4 * pace.setupDeltaSec * 1000;
     expect(Math.abs(likely - plain - extra)).toBeLessThan(5_000);
+  });
+});
+
+describe('catchUpPlan', () => {
+  // a 10:00 (30m + 10m setup), b 10:40 (60m + 10m), interview 11:50 (10m + 10m), c 12:10 (20m).
+  it('has nothing to say when on time', () => {
+    expect(
+      catchUpPlan(LINES, state({ currentKey: 'a', runs: { a: { startedAt: T0 } } }), T0),
+    ).toBeNull();
+  });
+
+  it('trims setup buffers first, then interludes, and marks where it is enough', () => {
+    // a started 25 minutes late: the end is projected 25 minutes late.
+    const s = state({ currentKey: 'a', runs: { a: { startedAt: T0 + 25 * MIN } } });
+    const plan = catchUpPlan(LINES, s, T0 + 26 * MIN)!;
+    expect(plan.behindSec).toBe(25 * 60);
+    expect(plan.options.map((o) => [o.kind, o.key, o.savesSec / 60])).toEqual([
+      ['setup', 'a', 5],
+      ['setup', 'b', 5],
+      ['interlude', 's', 20],
+    ]);
+    // Trimming both buffers gets 10 of the 25 minutes back; the interview (and its buffer) the rest.
+    expect(plan.options.map((o) => o.cumulativeSec / 60)).toEqual([5, 10, 30]);
+    expect(plan.enoughAt).toBe(2);
+    expect(plan.options.at(-1)!.endAfter).toBe(plan.projectedEnd - 30 * MIN);
+  });
+
+  it('stops counting what has already happened', () => {
+    // Running late in b: a's buffer and the run itself are behind us.
+    const s = state({
+      currentKey: 'b',
+      runs: { a: { startedAt: T0, endedAt: T0 + 30 * MIN }, b: { startedAt: T0 + 55 * MIN } },
+    });
+    const plan = catchUpPlan(LINES, s, T0 + 60 * MIN)!;
+    expect(plan.behindSec).toBe(15 * 60);
+    expect(plan.options.map((o) => o.key)).toEqual(['b', 's']);
+    expect(plan.enoughAt).toBe(1);
   });
 });

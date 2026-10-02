@@ -3,6 +3,7 @@
 
 import { getContext, setContext } from 'svelte';
 import {
+  catchUpPlan,
   checkInSummary,
   computeDelta,
   currentIndex,
@@ -75,6 +76,8 @@ function createLive(room: RoomConnection) {
     likelyEnd = $derived(
       this.pace ? projectedEnd(project(this.lines, this.state, this.now, this.pace)) : null,
     );
+    /** What could give time back when the end is projected late (null when it isn't). */
+    catchUp = $derived(catchUpPlan(this.lines, this.state, this.now, this.pace));
     stats = $derived(marathonStats(this.lines, this.state, this.now));
     upcoming = $derived(upcomingIndexes(this.lines, this.state, 5));
     next = $derived(this.lines[this.upcoming[0] ?? -1] ?? null);
