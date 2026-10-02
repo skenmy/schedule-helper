@@ -148,8 +148,11 @@ test('a runner checks in from their own link', async ({ browser }) => {
 test('an operator turns alerts on for this device', async ({ browser }) => {
   const context = await browser.newContext();
   await context.grantPermissions(['notifications']);
-  // Headless Chromium has no push service: stand in for the browser's subscription.
+  // Headless Chromium has no push service, and its headless shell (what CI runs) denies
+  // notifications whatever is granted: stand in for the permission and the subscription.
   await context.addInitScript(() => {
+    Object.defineProperty(Notification, 'permission', { get: () => 'granted' });
+    Notification.requestPermission = async () => 'granted';
     const sub = {
       endpoint: 'https://fcm.googleapis.com/fcm/send/e2e-device',
       options: { applicationServerKey: null },
