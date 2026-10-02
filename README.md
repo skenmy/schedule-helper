@@ -18,6 +18,10 @@ Horaro schedule. Try it offline with the built-in demo marathon (`/demo/demo/mai
   run against its estimate, the median changeover against its setup, eased towards plan while
   there's little data). It's in the status strip, the Progress tab and the overlay feed
   (`likelyEnd`, `pace`).
+- **Catch-up planner.** When the end is projected more than five minutes late, the Progress tab
+  lists what could give the time back, least visible first: setup buffers still to come trimmed to
+  five minutes (largest first), then interludes. Each shows when it happens and where the end lands
+  with it, and the point where you're back on schedule is marked. Advisory only.
 - **Timeline.** A plan lane (scheduled) over a live lane (actual and projected), so drift is
   visible at a glance. 3h / 6h / 12h / all zoom.
 - **Run control.** Start, stop, resume, advance, back, skip / restore, set the timer after a late

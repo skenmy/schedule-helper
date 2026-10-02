@@ -8,6 +8,7 @@
     relTime,
   } from '../../lib/format.ts';
   import { getLive } from '../../lib/live.svelte.ts';
+  import { ui } from '../../lib/ui.svelte.ts';
 
   let { compact = false }: { compact?: boolean } = $props();
 
@@ -120,6 +121,9 @@
           >likely {fmtWhen(live.likelyEnd, live.now)}</span
         >
       {/if}
+      {#if live.catchUp}
+        <button class="catchup" onclick={() => ui.openTab('progress')}>How to catch up →</button>
+      {/if}
     </div>
     {#if !compact}
       <div class="stat">
@@ -211,6 +215,16 @@
   }
   .off.early {
     color: var(--info);
+  }
+  .catchup {
+    justify-self: start;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--warn);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
   }
   .off.likely {
     color: var(--text-2);

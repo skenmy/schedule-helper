@@ -1,7 +1,7 @@
 // Pure schedule maths. Every view (conductor, kiosk, mobile, overlay feed) and
 // the server derive timing from these functions so they can never disagree.
 
-import type { RoomState, RunRecord, ScheduleLine } from './types.ts';
+import type { RoomState, RunKey, RunRecord, ScheduleLine } from './types.ts';
 
 /** |delta| within this many seconds counts as "on schedule". */
 export const ON_SCHEDULE_WINDOW_SEC = 15 * 60;
@@ -248,6 +248,90 @@ export function project(
     cursor = span.end + setupMs(line);
   }
   return out;
+}
+
+export interface CatchUpOption {
+  /** `setup`: trim a run's setup buffer. `interlude`: cut or shorten an interlude. */
+  kind: 'setup' | 'interlude';
+  /** The run whose buffer it is, or the interlude line. */
+  key: RunKey;
+  /** Seconds it gives back. */
+  savesSec: number;
+  /** When it's projected to happen. */
+  at: number | null;
+  /** Savings so far, taking options in order up to and including this one. */
+  cumulativeSec: number;
+  /** The projected end after taking options up to and including this one. */
+  endAfter: number;
+}
+
+export interface CatchUpPlan {
+  /** How late the end is projected to be (seconds). */
+  behindSec: number;
+  /** The end the plan works from: the likely end with a pace, else the plain projection. */
+  projectedEnd: number;
+  scheduledEnd: number;
+  options: CatchUpOption[];
+  /** Index of the option that gets back on schedule, or −1 if all of them together don't. */
+  enoughAt: number;
+}
+
+/** Buffers aren't trimmed below this: a changeover still needs time. */
+export const MIN_SETUP_SEC = 5 * 60;
+/** Below this lateness there's nothing worth planning. */
+export const CATCH_UP_FROM_SEC = 5 * 60;
+
+/**
+ * When the marathon is projected to finish late, what could give the time
+ * back: trimming the setup buffers still to come down to MIN_SETUP_SEC
+ * (largest first: least visible on stream), then the interludes still to
+ * come (largest first). Advisory only; nothing here changes the schedule.
+ */
+export function catchUpPlan(
+  lines: Lines,
+  state: RoomState,
+  now: number,
+  pace: Pace | null = null,
+): CatchUpPlan | null {
+  const scheduledEnd = scheduledEndOf(lines);
+  const projection = project(lines, state, now, pace);
+  const end = projectedEnd(projection);
+  if (scheduledEnd == null || end == null || state.finishedAt != null) return null;
+  const behindSec = Math.round((end - scheduledEnd) / 1000);
+  if (behindSec < CATCH_UP_FROM_SEC) return null;
+
+  const cur = currentIndex(lines, state);
+  const setups: Omit<CatchUpOption, 'cumulativeSec' | 'endAfter'>[] = [];
+  const interludes: typeof setups = [];
+  // The live run's own buffer hasn't happened yet either, unless it's finished and advanced.
+  for (let i = Math.max(cur, 0); i < lines.length; i++) {
+    const line = lines[i]!;
+    if (state.runs[line.key]?.skipped || (i === cur && line.setupBlock)) continue;
+    // The last line's buffer comes after the end, so it can't help.
+    const last = i === lines.length - 1;
+    const at = projection[i]?.end ?? null;
+    if (line.setupBlock) {
+      const savesSec = line.estimateSec + line.setupSec;
+      if (savesSec > 0)
+        interludes.push({
+          kind: 'interlude',
+          key: line.key,
+          savesSec,
+          at: projection[i]?.start ?? null,
+        });
+    } else if (!last && line.setupSec > MIN_SETUP_SEC) {
+      setups.push({ kind: 'setup', key: line.key, savesSec: line.setupSec - MIN_SETUP_SEC, at });
+    }
+  }
+  const bySavings = (a: { savesSec: number }, b: { savesSec: number }) => b.savesSec - a.savesSec;
+  let cumulativeSec = 0;
+  let enoughAt = -1;
+  const options = [...setups.sort(bySavings), ...interludes.sort(bySavings)].map((o, i) => {
+    cumulativeSec += o.savesSec;
+    if (enoughAt < 0 && cumulativeSec >= behindSec) enoughAt = i;
+    return { ...o, cumulativeSec, endAfter: end - cumulativeSec * 1000 };
+  });
+  return { behindSec, projectedEnd: end, scheduledEnd, options, enoughAt };
 }
 
 export function projectedEnd(projection: readonly (Span | null)[]): number | null {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { lineTitle } from '../../../shared/derive.ts';
+  import { MIN_SETUP_SEC, lineTitle } from '../../../shared/derive.ts';
   import {
     fmtClock,
     fmtDelta,
@@ -50,10 +50,72 @@
     live.projectedEnd && s.scheduledEnd ? (live.projectedEnd - s.scheduledEnd) / 1000 : null,
   );
   const pace = $derived(live.pace);
+  const plan = $derived(live.catchUp);
+  /** Enough to get back on time, plus a couple more; the rest summed up. */
+  let showAll = $state(false);
+  const shown = $derived(
+    plan && !showAll
+      ? plan.options.slice(0, Math.max(plan.enoughAt + 3, 6))
+      : (plan?.options ?? []),
+  );
+  const hidden = $derived(plan ? plan.options.slice(shown.length) : []);
   const likelyOffset = $derived(
     live.likelyEnd && s.scheduledEnd ? (live.likelyEnd - s.scheduledEnd) / 1000 : null,
   );
 </script>
+
+{#if plan}
+  <section class="card catchup" aria-label="Catching up">
+    <header>
+      <span class="label">Catching up</span>
+      <p>
+        <b>{fmtDuration(plan.behindSec)} behind</b>: the end is projected at
+        <b>{fmtWhen(plan.projectedEnd, live.now)}</b>{pace ? ' at this event’s pace' : ''}, against
+        {fmtWhen(plan.scheduledEnd, live.now)} on the schedule.
+        {#if plan.options.length}Here’s what could give time back, least visible first.{:else}There’s
+          no setup buffer or interlude left to trim.{/if}
+      </p>
+    </header>
+    {#if plan.options.length}
+      <ol>
+        {#each shown as o, i (o.kind + o.key)}
+          <li class:dim={plan.enoughAt >= 0 && i > plan.enoughAt}>
+            <span class="what">
+              {o.kind === 'setup'
+                ? `Trim the setup after ${live.titleOf(o.key)} to ${MIN_SETUP_SEC / 60}m`
+                : `Cut ${live.titleOf(o.key)}`}
+              <small class="num">{fmtClock(o.at)}</small>
+            </span>
+            <span class="save num">−{fmtDuration(o.savesSec)}</span>
+            <span class="end num">ends {fmtWhen(o.endAfter, live.now)}</span>
+          </li>
+          {#if i === plan.enoughAt}
+            <li class="enough" aria-label="Back on schedule">↑ back on schedule with these</li>
+          {/if}
+        {/each}
+        {#if hidden.length}
+          <li class="more">
+            <button class="btn ghost sm" onclick={() => (showAll = true)}>
+              {hidden.length} more · −{fmtDuration(hidden.reduce((n, o) => n + o.savesSec, 0))}
+            </button>
+          </li>
+        {/if}
+      </ol>
+      {#if plan.enoughAt < 0}
+        <p class="hint">
+          All of these together give back {fmtDuration(plan.options.at(-1)!.cumulativeSec)}; the
+          rest would have to come from runs.
+        </p>
+      {/if}
+    {/if}
+    {#if pace && pace.setupDeltaSec >= 60}
+      <p class="hint">
+        Changeovers have been running {fmtOffsetShort(pace.setupDeltaSec)} over plan, so trimmed buffers
+        may not hold.
+      </p>
+    {/if}
+  </section>
+{/if}
 
 <div class="cards">
   <div class="card stat">
@@ -159,6 +221,61 @@
 </section>
 
 <style>
+  .catchup {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding: 16px 18px;
+    border-color: color-mix(in oklab, var(--warn) 40%, transparent);
+    background: color-mix(in oklab, var(--warn) 6%, var(--surface));
+  }
+  .catchup header {
+    display: grid;
+    gap: 4px;
+  }
+  .catchup header .label {
+    color: var(--warn);
+  }
+  .catchup ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+  }
+  .catchup li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: baseline;
+    gap: 16px;
+    padding: 8px 0;
+    border-top: 1px solid var(--border);
+  }
+  .catchup li.dim {
+    opacity: 0.55;
+  }
+  .catchup .what small {
+    margin-left: 8px;
+    color: var(--muted);
+  }
+  .catchup .save {
+    color: var(--ok);
+    font-weight: 600;
+  }
+  .catchup .end {
+    color: var(--text-2);
+    font-size: 13px;
+  }
+  .catchup li.enough {
+    display: block;
+    border-top: 0;
+    padding: 2px 0 6px;
+    color: var(--ok);
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .catchup li.more {
+    display: block;
+  }
   .cards {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
