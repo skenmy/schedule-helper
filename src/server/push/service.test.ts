@@ -8,7 +8,7 @@ import { Room } from '../rooms/room.ts';
 import { initialState } from '../rooms/state.ts';
 import { demoSchedule } from '../sources/demo.ts';
 import { loadVapidKeys } from './keys.ts';
-import { PushService, type Notification } from './service.ts';
+import { isPrivateAddress, MAX_FOLLOWERS, PushService, type Notification } from './service.ts';
 import { PushStore, type DeviceSubscription } from './store.ts';
 
 const REF: RoomRef = { source: 'oengus', event: 'pushed', slug: 'main' };
@@ -26,22 +26,35 @@ afterEach(() => {
   for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 });
 
-function setup(store = new PushStore(null)) {
-  const schedule = { ...demoSchedule(), ref: REF };
+function makeRoom(ref: RoomRef, startedAgoMs = 60_000) {
+  const schedule = { ...demoSchedule(), ref };
   const state = initialState();
   state.currentKey = 'd0';
-  state.runs.d0 = { startedAt: Date.now() - 60_000 };
-  const room = new Room({
-    ref: REF,
+  state.runs.d0 = { startedAt: Date.now() - startedAgoMs };
+  return new Room({
+    ref,
     schedule,
     state,
     store: null,
     services: { fetchSchedule: async () => schedule, capture: async () => {} },
   });
+}
+
+function setup(store = new PushStore(null), rooms = [makeRoom(REF)]) {
+  const room = rooms[0]!;
   const opened: RoomRef[] = [];
+  const loaded = new Set<Room>();
+  const find = (ref: RoomRef) =>
+    rooms.find((r) => r.key === `${ref.source}/${ref.event}/${ref.slug}`);
+  // Like the real registry: a room is loaded once something has opened it.
   const registry = {
-    open: async (ref: RoomRef) => (opened.push(ref), room),
-    get: () => room,
+    open: async (ref: RoomRef) => {
+      opened.push(ref);
+      const r = find(ref)!;
+      loaded.add(r);
+      return r;
+    },
+    get: (ref: RoomRef) => [...loaded].find((r) => r === find(ref)),
   } as unknown as RoomRegistry;
   const sent: { endpoint: string; n: Notification }[] = [];
   const failing = new Map<string, number>();
@@ -121,6 +134,83 @@ describe('PushService', () => {
   });
 });
 
+describe('PushService lifecycle', () => {
+  const OTHER: RoomRef = { ...REF, slug: 'side' };
+
+  it('lets go of every room a gone device followed', async () => {
+    const rooms = [makeRoom(REF), makeRoom(OTHER)];
+    const { push, failing } = setup(new PushStore(null), rooms);
+    push.follow(rooms[0]!, device(1), null);
+    push.follow(rooms[1]!, device(1), null);
+    failing.set(device(1).endpoint, 403); // subscribed with keys we no longer have
+    rooms[0]!.dispatch({ action: 'runner:checkin', key: 'd2', status: 'missing' }, 'op');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(rooms.map((r) => r.watcherCount)).toEqual([0, 0]);
+  });
+
+  it('stops watching a marathon that finished a while ago, but keeps the follower', () => {
+    const { room, push } = setup();
+    push.follow(room, device(1), null);
+    room.state.finishedAt = Date.now() - 3 * 3_600_000;
+    push.tick();
+    expect(room.watcherCount).toBe(0);
+    expect(push.isOn(REF, device(1).endpoint)).toBe(true);
+    // Reopened for another go: watched again.
+    room.state.finishedAt = null;
+    push.tick();
+    expect(room.watcherCount).toBe(1);
+  });
+
+  it('says nothing about what was already due when it started watching', () => {
+    const room = makeRoom(REF, 3 * 3_600_000); // hours over its estimate already
+    const { push, sent } = setup(new PushStore(null), [room]);
+    push.follow(room, device(1), null);
+    push.tick();
+    expect(sent).toEqual([]);
+  });
+
+  it('doesn’t repeat an overrun when the start is back-dated', () => {
+    const { room, push, sent } = setup();
+    push.follow(room, device(1), null);
+    const est = room.schedule.lines[0]!.estimateSec * 1000;
+    const due = room.state.runs.d0!.startedAt! + est + 16 * 60_000;
+    push.tick(due);
+    room.state.runs.d0!.startedAt! -= 5_000;
+    push.tick(due + 1_000);
+    expect(sent.filter((x) => x.n.title.startsWith('Run over estimate'))).toHaveLength(1);
+  });
+
+  it('caps followers per schedule', () => {
+    const { room, push } = setup();
+    for (let i = 0; i < MAX_FOLLOWERS; i++) push.follow(room, device(i), null);
+    expect(() => push.follow(room, device(MAX_FOLLOWERS), null)).toThrow(/At most/);
+    // Following again from a device already on the list is fine.
+    expect(() => push.follow(room, device(0), null)).not.toThrow();
+  });
+});
+
+describe('isPrivateAddress', () => {
+  it('refuses loopback, private, link-local and mapped addresses', () => {
+    for (const a of [
+      '127.0.0.1',
+      '10.1.2.3',
+      '172.20.0.5',
+      '192.168.1.1',
+      '169.254.169.254',
+      '::1',
+      'fd00::1',
+      'fe80::1',
+      '::ffff:127.0.0.1',
+      '0.0.0.0',
+    ]) {
+      expect(isPrivateAddress(a), a).toBe(true);
+    }
+    for (const a of ['142.250.180.10', '2a00:1450:4009:81f::200a', '::ffff:8.8.8.8']) {
+      expect(isPrivateAddress(a), a).toBe(false);
+    }
+  });
+});
+
 describe('loadVapidKeys', () => {
   it('keeps one key pair in the data directory, unless pinned', () => {
     const dir = tmp();
@@ -132,5 +222,12 @@ describe('loadVapidKeys', () => {
       publicKey: 'pub',
       privateKey: 'priv',
     });
+    expect(() => loadVapidKeys(dir, { publicKey: 'pub' })).toThrow(/both/);
+  });
+
+  it('won’t start on a broken key file rather than orphan every subscription', () => {
+    const dir = tmp();
+    fs.writeFileSync(path.join(dir, 'vapid.json'), '{}');
+    expect(() => loadVapidKeys(dir)).toThrow(/missing a key/);
   });
 });

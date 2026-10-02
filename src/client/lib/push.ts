@@ -61,6 +61,9 @@ export async function pushIsOn(ref: RoomRef): Promise<boolean> {
   return (await post<{ on: boolean }>(api(ref, '/status'), { endpoint: sub.endpoint })).on;
 }
 
+const sameKey = (a: ArrayBuffer | null | undefined, b: Uint8Array) =>
+  !!a && a.byteLength === b.byteLength && new Uint8Array(a).every((x, i) => x === b[i]);
+
 /** Turns alerts on (asking for permission and subscribing if needed) or off. */
 export async function setPush(ref: RoomRef, on: boolean): Promise<boolean> {
   let sub = await existing();
@@ -68,21 +71,27 @@ export async function setPush(ref: RoomRef, on: boolean): Promise<boolean> {
     if (sub) await post(api(ref), { subscription: sub.toJSON(), on: false });
     return false;
   }
-  if ((await Notification.requestPermission()) !== 'granted') {
+  // Before asking for permission: without the app's service worker (the dev
+  // server, a first visit still installing) there's nothing to deliver to.
+  const reg = await navigator.serviceWorker.getRegistration();
+  if (!reg) {
+    throw new Error('The app hasn’t finished installing in this browser. Reload and try again.');
+  }
+  const permission = await Notification.requestPermission();
+  if (permission === 'denied') {
     throw new Error(
       'Notifications are blocked for this site. Allow them in the browser’s settings.',
     );
   }
-  if (!sub) {
-    const reg = await navigator.serviceWorker.getRegistration();
-    if (!reg)
-      throw new Error('The app hasn’t finished installing in this browser. Reload and try again.');
-    const { publicKey } = (await (await fetch('/api/push/key')).json()) as { publicKey: string };
-    sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: toKey(publicKey),
-    });
+  if (permission !== 'granted') throw new Error('Notifications weren’t allowed.');
+  const { publicKey } = (await (await fetch('/api/push/key')).json()) as { publicKey: string };
+  const key = toKey(publicKey);
+  // A subscription made with the server's old keys can't be sent to: start a new one.
+  if (sub && !sameKey(sub.options.applicationServerKey, key)) {
+    await sub.unsubscribe().catch(() => {});
+    sub = null;
   }
+  sub ??= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
   return (await post<{ on: boolean }>(api(ref), { subscription: sub.toJSON(), on: true })).on;
 }
 

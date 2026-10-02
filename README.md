@@ -183,14 +183,19 @@ Read-only and CORS-open — the same information any viewer can already see.
 ## Push alerts
 
 - `GET /api/push/key` — the VAPID public key.
-- `POST /api/rooms/{ref}/push` with `{ subscription, on }` — operators only. Endpoints must be
-  `https` on a known push service (FCM, Mozilla, Apple, Windows), so the server never posts
-  anywhere else.
+- `POST /api/rooms/{ref}/push` with `{ subscription, on }` — operators only, up to 100 devices
+  per schedule. Endpoints must be canonical `https` URLs on a known push service (FCM, Mozilla,
+  Apple, Windows), and sending refuses any host that resolves to a private or loopback address, so
+  the server never posts anywhere else.
 - `POST /api/rooms/{ref}/push/status` / `push/test` with `{ endpoint }`.
 
 What's worth an alert is `src/server/push/alerts.ts` (pure, tested); delivery, the 30-second clock
 for timed alerts and cleaning up dead subscriptions is `push/service.ts`. Subscriptions live in
-`DATA_DIR/push-subscriptions.json`.
+`DATA_DIR/push-subscriptions.json`. A followed schedule is watched (kept loaded) until its marathon
+has been finished for two hours, or a day after its scheduled end with nothing live; following it
+again or opening it brings it back. Alerts already due when watching starts (a restart, a new
+device) aren't sent. The VAPID keys in `DATA_DIR/vapid.json` must stay put: a broken file stops
+the server rather than quietly orphaning every device.
 
 ## Runner check-in links
 

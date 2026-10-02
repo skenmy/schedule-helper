@@ -121,28 +121,51 @@ const PUSH_HOSTS = [
   'push.apple.com',
   'notify.windows.com',
 ];
+/** Plain DNS names only: what the WHATWG parser and web-push's legacy url.parse agree on. */
+const HOSTNAME = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
+
+/**
+ * Whether the server may post to `value`. It must already be in canonical form
+ * (`new URL(value).href === value`), so the string checked here is exactly the
+ * one sent: no userinfo, port, backslashes, escapes or odd host characters for
+ * another URL parser to read differently.
+ */
+export function isPushEndpoint(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  return (
+    url.href === value &&
+    url.protocol === 'https:' &&
+    !url.port &&
+    !url.username &&
+    !url.password &&
+    HOSTNAME.test(url.hostname) &&
+    PUSH_HOSTS.some((h) => url.hostname === h || url.hostname.endsWith(`.${h}`))
+  );
+}
+
 const pushEndpoint = z
   .string()
   .max(1024)
-  .url()
-  .refine((value) => {
-    const url = new URL(value);
-    return (
-      url.protocol === 'https:' &&
-      !url.port &&
-      PUSH_HOSTS.some((h) => url.hostname === h || url.hostname.endsWith(`.${h}`))
-    );
-  }, 'Not a push service this server sends to.');
-const base64url = z
-  .string()
-  .max(256)
-  .regex(/^[A-Za-z0-9_-]+=*$/);
+  .refine(isPushEndpoint, 'Not a push service this server sends to.');
+/** base64url of exactly `bytes` bytes, padded or not. */
+const keyOf = (bytes: number) =>
+  z
+    .string()
+    .max(128)
+    .regex(/^[A-Za-z0-9_-]+=*$/)
+    .refine((v) => v.replace(/=+$/, '').length === Math.ceil((bytes * 4) / 3), 'Wrong key length.');
 
 /** An operator turning alerts for a room on or off for this device. */
 export const PushFollowSchema = z.object({
   subscription: z.object({
     endpoint: pushEndpoint,
-    keys: z.object({ p256dh: base64url, auth: base64url }),
+    // An uncompressed P-256 public key, and a 16-byte auth secret.
+    keys: z.object({ p256dh: keyOf(65), auth: keyOf(16) }),
   }),
   on: z.boolean(),
 });

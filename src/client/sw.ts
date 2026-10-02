@@ -128,10 +128,9 @@ self.addEventListener('notificationclick', (event) => {
       const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       const open = windows.find((w) => new URL(w.url).pathname === new URL(url).pathname);
       if (open) return void (await open.focus());
-      if (windows[0]) {
-        await windows[0].focus();
-        return void (await windows[0].navigate(url));
-      }
+      // navigate() only works on a window this worker controls; otherwise open a new one.
+      const navigated = await windows[0]?.navigate(url).catch(() => null);
+      if (navigated) return void (await navigated.focus());
       await self.clients.openWindow(url);
     })(),
   );

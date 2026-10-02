@@ -59,14 +59,15 @@ export function changeAlerts(
     }
   }
   const d = next.detection;
-  // With auto-apply on, a detection that's solid enough is acted on at once (and
-  // logged, above); one that isn't still waits for an operator.
+  // Raised whether or not auto-apply is on: a detection waits for an operator
+  // until it's corroborated, and auto-tracking acting on it is a second alert (above).
   const was = prev.detection;
   if (d && !(was && was.runKey === d.runKey && was.kind === d.kind)) {
     out.push({
       title: 'Run change on stream',
       body: `${describe(d, lines)}. Open the app to accept or dismiss.`,
-      tag: 'detection',
+      // Per run, so a second run change sounds again instead of silently replacing the first.
+      tag: `detection-${d.runKey}`,
       actor: null,
     });
   }
@@ -96,7 +97,8 @@ export function timedAlerts(
     const t = runTiming(state.runs[line.key], now);
     const over = t.elapsedMs / 1000 - line.estimateSec;
     if (t.phase === 'running' && over >= OVERRUN_ALERT_SEC) {
-      once(`overrun:${line.key}:${t.startedAt}`, {
+      // Keyed by run, so back-dating its start (a capture, a detection) doesn't say it twice.
+      once(`overrun:${line.key}`, {
         title: 'Run over estimate',
         body: `${lineTitle(line)} is ${fmtDuration(over)} over its ${fmtDuration(line.estimateSec)} estimate.`,
         tag: `overrun-${line.key}`,

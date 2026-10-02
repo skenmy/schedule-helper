@@ -16,7 +16,7 @@ import { ID_PATTERN, SOURCES, isValidRef, roomKey } from '../shared/sources.ts';
 import type { AuthInfo, RoomRef, RunKey, ScheduleSource } from '../shared/types.ts';
 import { actorName, resolveIdentity } from './auth.ts';
 import { LinkThrottle, type CheckInTokens } from './checkin.ts';
-import type { PushService } from './push/service.ts';
+import { FollowRefused, type PushService } from './push/service.ts';
 import { config } from './config.ts';
 import { buildFeed } from './feed.ts';
 import { logger } from './logger.ts';
@@ -59,6 +59,10 @@ async function requireOperator(
 function sendError(res: Response, err: unknown): void {
   if (err instanceof UpstreamError) {
     res.status(err.notFound ? 404 : 502).json({ error: err.message });
+    return;
+  }
+  if (err instanceof FollowRefused) {
+    res.status(409).json({ error: err.message });
     return;
   }
   log.error(err);
@@ -320,15 +324,16 @@ export function createApp(
         await push.test(room, body.data.endpoint);
         res.json({ ok: true });
       } catch (err) {
-        if (err instanceof UpstreamError) {
+        if (err instanceof UpstreamError || err instanceof FollowRefused) {
           sendError(res, err);
           return;
         }
+        // The detail is logged (service.ts); the caller only learns that it didn't arrive.
         const status = (err as { statusCode?: number }).statusCode;
-        res.status(status ? 502 : 409).json({
+        res.status(502).json({
           error: status
             ? `The push service refused it (${status}). Turn alerts off and on again.`
-            : (err as Error).message,
+            : 'Couldn’t reach the push service. Try again in a moment.',
         });
       }
     },

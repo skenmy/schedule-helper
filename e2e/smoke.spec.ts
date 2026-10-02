@@ -152,9 +152,15 @@ test('an operator turns alerts on for this device', async ({ browser }) => {
   await context.addInitScript(() => {
     const sub = {
       endpoint: 'https://fcm.googleapis.com/fcm/send/e2e-device',
+      options: { applicationServerKey: null },
+      unsubscribe: async () => true,
       toJSON: () => ({
         endpoint: sub.endpoint,
-        keys: { p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA', auth: 'tBHItJI5svbpez7KI4CCXg' },
+        keys: {
+          p256dh:
+            'BAHOVcjqx4_GNUbipw3-FMTahov29ELSZgnu18DKRYfmt07CJQXelsz6BIPWdkry5AHOVcjqx4_GNUbipw3-FMT',
+          auth: 'ALWhs3CNYju5EPalw7GRcn',
+        },
       }),
     };
     let current: typeof sub | null = null;

@@ -428,7 +428,11 @@ describe('runner self check-in', () => {
 });
 
 describe('push notifications', () => {
-  const keys = { p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA', auth: 'tBHItJI5svbpez7KI4CCXg' };
+  const keys = {
+    p256dh:
+      'BAHOVcjqx4_GNUbipw3-FMTahov29ELSZgnu18DKRYfmt07CJQXelsz6BIPWdkry5AHOVcjqx4_GNUbipw3-FMT',
+    auth: 'ALWhs3CNYju5EPalw7GRcn',
+  };
   const fcm = 'https://fcm.googleapis.com/fcm/send/device-1';
   const post = (route: string, body: unknown) =>
     fetch(`http://localhost:${server.port}/api/rooms/oengus/testmarathon/main${route}`, {
@@ -462,10 +466,25 @@ describe('push notifications', () => {
       'https://evil.example/?u=fcm.googleapis.com',
       'https://fcm.googleapis.com:8443/x',
       'https://169.254.169.254/latest',
+      'https://[::1]/x',
+      // Spellings another URL parser (web-push uses url.parse) could read as a different host.
+      'https://fcm.googleapis.com\\@evil.example/x',
+      'https://user@fcm.googleapis.com/x',
+      'https://fcm.googleapis.com%2eevil.example/x',
+      'https://FCM.googleapis.com/x',
+      'https://fcm.googleapis.com./x',
+      'https://xn--fcm-googleapis-com.evil.example/x',
+      'https://fcm.googleapis.com:443/x',
+      'hello',
     ]) {
       const res = await post('/push', { subscription: { endpoint, keys }, on: true });
       expect(res.status, endpoint).toBe(400);
     }
+    // Keys of the wrong size would fail on every alert.
+    const short = { p256dh: 'BNcRdreALRFXTkOOUHK1', auth: keys.auth };
+    expect(
+      (await post('/push', { subscription: { endpoint: fcm, keys: short }, on: true })).status,
+    ).toBe(400);
   });
 
   it('sends a test notification to a device that follows the room', async () => {
