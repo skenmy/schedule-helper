@@ -15,7 +15,7 @@ import {
 import { buildReport, reportCsv } from '../shared/report.ts';
 import { ID_PATTERN, SOURCES, isValidRef, roomKey } from '../shared/sources.ts';
 import type { AuthInfo, RoomRef, RunKey, ScheduleSource } from '../shared/types.ts';
-import { actorName, resolveIdentity } from './auth.ts';
+import { actorName, isOwnOrigin, resolveIdentity } from './auth.ts';
 import { LinkThrottle, type CheckInTokens } from './checkin.ts';
 import { FollowRefused, type PushService } from './push/service.ts';
 import { config } from './config.ts';
@@ -42,6 +42,12 @@ async function requireOperator(
   res: Response,
   what: string,
 ): Promise<AuthInfo | null> {
+  // The operator's cookie only counts on requests from our own pages (as for /ws).
+  if (!isOwnOrigin(req.headers)) {
+    log.warn('refused operator request from origin', req.headers.origin);
+    res.status(403).json({ error: 'That request came from another site.' });
+    return null;
+  }
   const auth = await resolveIdentity(req.headers.cookie);
   if (!auth) {
     res.status(503).json({ error: 'Can’t check your sign-in right now. Try again shortly.' });

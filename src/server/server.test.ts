@@ -531,6 +531,25 @@ describe('stream PC (NodeCG speedcontrol)', () => {
     expect((await report({ t: old, via: 'bundle', run, timer: null })).status).toBe(403);
     expect((await report({ t: fresh, via: 'bundle', run, timer: null })).status).toBe(200);
   });
+
+  it('only replaces the token for our own pages, not a form on another site', async () => {
+    const { token: before } = (await (await fetch(`${base()}/source-token`)).json()) as {
+      token: string;
+    };
+    for (const origin of ['https://evil.example', 'null']) {
+      const res = await fetch(`${base()}/source-token`, { method: 'POST', headers: { origin } });
+      expect(res.status).toBe(403);
+    }
+    const { token: after } = (await (await fetch(`${base()}/source-token`)).json()) as {
+      token: string;
+    };
+    expect(after).toBe(before);
+    const own = await fetch(`${base()}/source-token`, {
+      method: 'POST',
+      headers: { origin: `http://localhost:${server.port}` },
+    });
+    expect(own.status).toBe(200);
+  });
 });
 
 describe('push notifications', () => {

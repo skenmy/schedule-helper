@@ -9,7 +9,7 @@ import {
   type ServerMessage,
 } from '../shared/protocol.ts';
 import type { AuthInfo, RoomRef } from '../shared/types.ts';
-import { actorName, anonymousIdentity, resolveIdentity } from './auth.ts';
+import { actorName, anonymousIdentity, isOwnOrigin, resolveIdentity } from './auth.ts';
 import { config } from './config.ts';
 import { logger } from './logger.ts';
 import type { RoomRegistry } from './rooms/registry.ts';
@@ -175,26 +175,6 @@ class Session implements RoomClient {
   }
 }
 
-const PUBLIC_ORIGIN = URL.parse(config.publicUrl)?.origin;
-
-/**
- * Browsers send `Origin` on every WebSocket handshake, along with the operator's
- * `.skenmy.com` cookie whenever its SameSite policy allows. Only our own pages may open a
- * socket, so another site can't act as a signed-in operator (cross-site WebSocket
- * hijacking). "Our own" is PUBLIC_URL or the host the request came in on (local dev, the
- * Vite proxy); behind TLS termination the scheme isn't visible, so that compares hosts.
- * No `Origin` means a non-browser client, which has no ambient cookie to borrow.
- */
-function isOwnOrigin(req: IncomingMessage): boolean {
-  const { origin, host } = req.headers;
-  if (origin === undefined) return true;
-  const from = URL.parse(origin);
-  // Also refuses the opaque "null" origin of sandboxed frames and file:// pages.
-  if (from?.protocol !== 'http:' && from?.protocol !== 'https:') return false;
-  if (from.origin === PUBLIC_ORIGIN) return true;
-  return host !== undefined && from.host === URL.parse(`${from.protocol}//${host}`)?.host;
-}
-
 export function attachWebSocket(server: Server, registry: RoomRegistry): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
   server.on('upgrade', (req, socket, head) => {
@@ -202,7 +182,7 @@ export function attachWebSocket(server: Server, registry: RoomRegistry): WebSock
       socket.destroy();
       return;
     }
-    if (!isOwnOrigin(req)) {
+    if (!isOwnOrigin(req.headers)) {
       log.warn('refused WebSocket from origin', req.headers.origin);
       socket.on('error', () => socket.destroy());
       socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n', () =>
