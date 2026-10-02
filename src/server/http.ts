@@ -7,6 +7,7 @@ import path from 'node:path';
 import { ID_PATTERN, SOURCES, isValidRef } from '../shared/sources.ts';
 import type { RoomRef, ScheduleSource } from '../shared/types.ts';
 import { config } from './config.ts';
+import { buildReport, reportCsv } from '../shared/report.ts';
 import { buildFeed } from './feed.ts';
 import { logger } from './logger.ts';
 import type { RoomRegistry } from './rooms/registry.ts';
@@ -108,6 +109,34 @@ export function createApp(registry: RoomRegistry): express.Express {
       clearInterval(keepAlive);
       unsubscribe();
     });
+  });
+
+  // Event report: planned against actual. Read-only, like the feed.
+  app.get('/api/rooms/:source/:event/:slug/report.:format', cors, async (req, res) => {
+    const ref = refFrom(req);
+    const format = String(req.params.format);
+    if (!ref || (format !== 'json' && format !== 'csv')) {
+      res.status(400).json({ error: 'Invalid report' });
+      return;
+    }
+    try {
+      const room = await registry.open(ref);
+      const report = buildReport(room.schedule, room.state, Date.now());
+      res.setHeader('cache-control', 'no-store');
+      if (format === 'json') {
+        res.json(report);
+        return;
+      }
+      res.type('text/csv; charset=utf-8');
+      res.setHeader(
+        'content-disposition',
+        `attachment; filename="${ref.event}-${ref.slug}-report.csv"`,
+      );
+      // A byte-order mark so spreadsheets read runner names as UTF-8.
+      res.send(`\uFEFF${reportCsv(report)}`);
+    } catch (err) {
+      sendError(res, err);
+    }
   });
 
   app.get('/api/rooms/:source/:event/:slug/frames/:id', (req, res) => {

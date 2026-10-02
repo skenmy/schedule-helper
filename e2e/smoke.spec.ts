@@ -76,6 +76,34 @@ test('phones get the mobile layout', async ({ browser }) => {
   await expect(page.getByPlaceholder('Filter by game, runner, platform…')).toBeVisible();
 });
 
+test('the event report compares the run with the plan and exports it', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await openDemo(page);
+  await page.keyboard.press('Control+k');
+  await page.getByRole('combobox', { name: 'Search commands and runs' }).fill('event report');
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(`${DEMO}?report=1`);
+
+  await expect(page.getByRole('region', { name: 'Summary' })).toContainText('Runs vs estimate');
+  // The demo is seeded part-way through, so the chart has runs to step through.
+  const chart = page.getByRole('slider', { name: 'Start against schedule, by run' });
+  await chart.focus();
+  await page.keyboard.press('Home');
+  await expect(chart).toHaveAttribute('aria-valuenow', '1');
+  await expect(chart).toHaveAttribute('aria-valuetext', /^Run 1, .+: started .+/);
+  await expect(page.getByRole('table')).toContainText('Live');
+
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'CSV' }).click();
+  expect((await download).suggestedFilename()).toBe('demo-main-report.csv');
+
+  await page.getByRole('button', { name: 'Back to the console' }).click();
+  await expect(page).toHaveURL(DEMO);
+  await expect(page.getByRole('region', { name: 'Timeline' })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 // Keep last: it wipes the shared demo room.
 test('the whole marathon can be reset after typing to confirm', async ({ page }) => {
   await openDemo(page);

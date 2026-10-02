@@ -8,6 +8,8 @@
     relTime,
   } from '../../lib/format.ts';
   import { getLive } from '../../lib/live.svelte.ts';
+  import { reportPath } from '../../lib/report.ts';
+  import { router } from '../../lib/router.svelte.ts';
   import { ui } from '../../lib/ui.svelte.ts';
 
   let { compact = false }: { compact?: boolean } = $props();
@@ -122,7 +124,13 @@
         >
       {/if}
       {#if live.catchUp}
-        <button class="catchup" onclick={() => ui.openTab('progress')}>How to catch up →</button>
+        <button class="link catchup" onclick={() => ui.openTab('progress')}
+          >How to catch up →</button
+        >
+      {:else if live.phase === 'complete'}
+        <button class="link" onclick={() => router.navigate(reportPath(live.room.ref))}
+          >Event report →</button
+        >
       {/if}
     </div>
     {#if !compact}
@@ -216,15 +224,18 @@
   .off.early {
     color: var(--info);
   }
-  .catchup {
+  .link {
     justify-self: start;
     padding: 0;
     border: 0;
     background: none;
-    color: var(--warn);
+    color: var(--accent);
     font-size: 12.5px;
     font-weight: 600;
     cursor: pointer;
+  }
+  .link.catchup {
+    color: var(--warn);
   }
   .off.likely {
     color: var(--text-2);

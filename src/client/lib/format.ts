@@ -2,7 +2,7 @@
 
 import type { Live } from './live.svelte.ts';
 
-import { fmtClock, fmtDay, sameDay } from '../../shared/time.ts';
+import { fmtClock, fmtDay, fmtDuration, sameDay } from '../../shared/time.ts';
 
 export {
   fmtClock,
@@ -50,4 +50,16 @@ export function hueOf(name: string): number {
   let h = 0;
   for (const ch of name.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) % 360;
   return h;
+}
+
+/** `13m late`, `1h 05m early`, `on time` (within a minute). */
+export function fmtLate(lateSec: number): string {
+  if (Math.abs(lateSec) < 60) return 'on time';
+  return `${fmtDuration(Math.abs(lateSec))} ${lateSec > 0 ? 'late' : 'early'}`;
+}
+
+/** `13m behind`, `4m ahead`, `on time` — the live delta's words (positive is ahead). */
+export function fmtAhead(aheadSec: number): string {
+  if (Math.abs(aheadSec) < 60) return 'on time';
+  return `${fmtDuration(Math.abs(aheadSec))} ${aheadSec > 0 ? 'ahead' : 'behind'}`;
 }

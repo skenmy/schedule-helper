@@ -8,7 +8,9 @@
   import RoomView from './views/RoomView.svelte';
 
   const ref = $derived(parseRoomPath(router.path));
-  const kiosk = $derived(router.params.has('kiosk') && router.params.get('kiosk') !== '0');
+  const flag = (name: string) => router.params.has(name) && router.params.get(name) !== '0';
+  const kiosk = $derived(flag('kiosk'));
+  const report = $derived(!kiosk && flag('report'));
 
   $effect(() => {
     document.documentElement.dataset.theme = prefs.theme;
@@ -17,7 +19,7 @@
 
 {#if ref}
   {#key roomKey(ref)}
-    <RoomView {ref} {kiosk} />
+    <RoomView {ref} {kiosk} {report} />
   {/key}
 {:else}
   <Landing />

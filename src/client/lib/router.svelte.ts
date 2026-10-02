@@ -41,9 +41,17 @@ class Router {
   }
 
   navigate(url: string, { replace = false } = {}): void {
-    history[replace ? 'replaceState' : 'pushState'](null, '', url);
+    // Entries the app pushed are marked, so back() knows there's a page of ours behind them.
+    if (replace) history.replaceState(history.state, '', url);
+    else history.pushState({ inApp: true }, '', url);
     this.sync();
     window.scrollTo(0, 0);
+  }
+
+  /** Goes back if the app got here itself, else to `fallback` (opened from a link or bookmark). */
+  back(fallback: string): void {
+    if ((history.state as { inApp?: boolean } | null)?.inApp) history.back();
+    else this.navigate(fallback, { replace: true });
   }
 
   /** Updates query parameters in place without adding history entries. */
@@ -54,7 +62,7 @@ class Router {
     } as Record<string, string>;
     for (const [k, v] of Object.entries(update)) if (v == null) delete merged[k];
     const qs = new URLSearchParams(merged).toString();
-    history.replaceState(null, '', `${location.pathname}${qs ? `?${qs}` : ''}`);
+    history.replaceState(history.state, '', `${location.pathname}${qs ? `?${qs}` : ''}`);
     this.sync();
   }
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { FileChartColumn } from '@lucide/svelte';
   import { MIN_SETUP_SEC, lineTitle } from '../../../shared/derive.ts';
   import {
     fmtClock,
@@ -9,6 +10,8 @@
     fmtWhen,
   } from '../../lib/format.ts';
   import { getLive } from '../../lib/live.svelte.ts';
+  import { reportPath } from '../../lib/report.ts';
+  import { router } from '../../lib/router.svelte.ts';
   import { ui } from '../../lib/ui.svelte.ts';
 
   const live = getLive();
@@ -189,7 +192,12 @@
 </section>
 
 <section>
-  <h3 class="label">Finished runs</h3>
+  <header class="finished">
+    <h3 class="label">Finished runs</h3>
+    <button class="btn sm" onclick={() => router.navigate(reportPath(live.room.ref))}>
+      <FileChartColumn size={15} /> Event report
+    </button>
+  </header>
   {#if finished.length}
     <table>
       <thead>
@@ -348,7 +356,11 @@
     font-size: 12px;
     color: var(--muted);
   }
-  h3.label {
+  .finished {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
     margin-bottom: 10px;
   }
   table {

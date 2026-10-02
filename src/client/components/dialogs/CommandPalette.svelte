@@ -8,6 +8,7 @@
   import { layout } from '../../lib/layout.svelte.ts';
   import { getLive, getOps } from '../../lib/live.svelte.ts';
   import { prefs, THEMES } from '../../lib/prefs.svelte.ts';
+  import { reportPath } from '../../lib/report.ts';
   import { getRoom } from '../../lib/room.svelte.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { ui, type TabId } from '../../lib/ui.svelte.ts';
@@ -126,6 +127,13 @@
       tab('broadcast', 'Broadcast: announcement & message board'),
       tab('kiosk', 'Kiosk setup & overlay feed'),
       tab('progress', 'Progress'),
+      {
+        id: 'report',
+        group: 'Go to',
+        label: 'Event report',
+        hint: 'Planned against actual, with CSV export',
+        run: () => router.navigate(reportPath(room.ref)),
+      },
       {
         id: 'kiosk-open',
         group: 'Go to',
