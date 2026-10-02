@@ -231,7 +231,7 @@ link already handed out.
 | `AUTH_APP_ID`          | `schedule`                                   | Passed to `/auth/me?app=…&role=admin`.                                                 |
 | `AUTH_LOGIN_URL`       | `https://tools.skenmy.com/auth/twitch/login` | Sign-in link shown to viewers.                                                         |
 | `AUTH_MANAGE_URL`      | `https://tools.skenmy.com/`                  | Linked from the user chip.                                                             |
-| `PUBLIC_URL`           | `https://schedule.skenmy.com`                | Where sign-in redirects back to.                                                       |
+| `PUBLIC_URL`           | `https://schedule.skenmy.com`                | Where sign-in redirects back to; also an origin allowed to open `/ws`.                 |
 | `ANTHROPIC_API_KEY`    | _(empty)_                                    | Required for stream capture.                                                           |
 | `VISION_MODEL`         | `claude-sonnet-5`                            | Model that reads stream frames (needs `effort` support: Sonnet/Opus 4.6+).             |
 | `BUILD_SHA`            | `dev`                                        | Set by CI for the client build and the server; clients offer a reload on a mismatch.   |
