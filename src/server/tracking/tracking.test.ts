@@ -266,12 +266,17 @@ describe('review fixes', () => {
     // Undo restores the live run (UNDO_FIELDS) but not `settled`.
     const undone = { ...res.state, currentKey: 'z', runs: s.runs };
     expect(observe(undone, LINES, twitch('s1', T0 + 32 * MIN))).toBe(false);
-    // On the new run the old record lapses, and a different suggestion gets through.
+    // On the run it pointed at the record stays (an undo comes back to it), but it only
+    // keeps down the same suggestion: a different one gets through.
     const moved = { ...res.state };
-    expect(reconcile(moved, LINES, T0 + 32 * MIN)).toBe(true);
-    expect(moved.settled).toBeNull();
+    expect(reconcile(moved, LINES, T0 + 32 * MIN)).toBe(false);
+    expect(moved.settled).toMatchObject({ runKey: 's1', currentKey: 'z' });
     expect(observe(moved, LINES, vision('s1', T0 + 33 * MIN, T0 + 32 * MIN))).toBe(true);
     expect(moved.detection?.kind).toBe('start');
+    // Somewhere else entirely, it lapses.
+    const elsewhere = { ...res.state, currentKey: 's2' };
+    expect(reconcile(elsewhere, LINES, T0 + 32 * MIN)).toBe(true);
+    expect(elsewhere.settled).toBeNull();
   });
 
   it('treats a timer implying a start before the live run as a misread', () => {
