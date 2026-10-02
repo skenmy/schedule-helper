@@ -180,8 +180,19 @@ export class Room {
       };
     }
     const entry = this.undoStack.pop()!;
+    const runs = this.state.runs;
     this.mutate((s) => {
       Object.assign(s, structuredClone(entry.snapshot));
+      // What runners said from their links since isn't the operator's to undo.
+      for (const [key, rec] of Object.entries(runs)) {
+        if (rec.selfAt == null || rec.selfAt <= entry.at) continue;
+        const r = (s.runs[key] ??= {});
+        r.selfAt = rec.selfAt;
+        if (rec.checkIn) r.checkIn = rec.checkIn;
+        else delete r.checkIn;
+        if (rec.late) r.late = structuredClone(rec.late);
+        else delete r.late;
+      }
       const by = entry.actor && entry.actor !== actor ? ` (by ${entry.actor})` : '';
       appendLog(s, {
         kind: 'system',

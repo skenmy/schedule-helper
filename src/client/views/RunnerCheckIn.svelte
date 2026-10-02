@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Check, Clock, CloudOff, TriangleAlert } from '@lucide/svelte';
-  import { onMount, untrack } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { indexOfKey, lineTitle } from '../../shared/derive.ts';
   import { etaText, linkIsValid, selfCheckIn } from '../lib/checkin.ts';
   import { haptic } from '../lib/device.ts';
@@ -38,33 +38,68 @@
 
   /** Whether the server accepts this link: null while asking, or when it couldn't be asked. */
   let valid = $state<boolean | null>(null);
-  onMount(() => {
-    void linkIsValid(room.ref, runKey, token).then((v) => (valid = v));
+  $effect(() => {
+    const t = token;
+    let current = true;
+    valid = null;
+    void linkIsValid(room.ref, runKey, t).then((v) => current && (valid = v));
+    return () => {
+      current = false;
+    };
   });
 
-  const MINUTES = [5, 10, 15, 30, 45, 60] as const;
+  const MINUTES = [
+    { value: '5', label: '5 min' },
+    { value: '10', label: '10 min' },
+    { value: '15', label: '15 min' },
+    { value: '30', label: '30 min' },
+    { value: '45', label: '45 min' },
+    { value: '60', label: '1 hour' },
+    { value: 'unsure', label: 'Not sure' },
+  ];
   let telling = $state(false);
-  let minutes = $state<number | null>(15);
+  let away = $state('15');
+  const minutes = $derived(away === 'unsure' ? null : Number(away));
+  /** Read out after each send: the confirmation cards appear later, with the broadcast. */
+  let announcement = $state('');
+  let runHeading = $state<HTMLElement>();
+  let formHeading = $state<HTMLElement>();
   let note = $state('');
   let busy = $state(false);
   let error = $state<string | null>(null);
   const canSend = $derived(room.synced && valid !== false && !busy && stage === 'upcoming');
 
-  function startLate() {
+  async function startLate() {
     // Seed the form from what they said last time, without tracking later broadcasts.
     const late = untrack(() => rec?.late);
     note = late?.note ?? '';
     telling = true;
     error = null;
+    await tick();
+    formHeading?.focus();
+  }
+
+  async function cancelLate() {
+    telling = false;
+    await tick();
+    runHeading?.focus();
   }
 
   async function send(body: Parameters<typeof selfCheckIn>[2]) {
     busy = true;
     error = null;
+    announcement = '';
     haptic(10);
     try {
       await selfCheckIn(room.ref, runKey, body);
       telling = false;
+      announcement =
+        body.status === 'ready'
+          ? 'You’re checked in.'
+          : 'Thanks. The organisers know you’re running late.';
+      // The button pressed is gone now; don't leave focus nowhere.
+      await tick();
+      runHeading?.focus();
     } catch (err) {
       error = (err as Error).message;
     } finally {
@@ -74,6 +109,7 @@
 </script>
 
 <main class="checkin">
+  <p class="visually-hidden" role="status" aria-live="polite">{announcement}</p>
   <header>
     <span class="label">Runner check-in</span>
     <h1>{room.schedule?.eventName}</h1>
@@ -99,7 +135,7 @@
   {:else}
     <section class="card run" aria-label="Your run">
       <span class="label">Your run</span>
-      <h2>{lineTitle(line)}</h2>
+      <h2 tabindex="-1" bind:this={runHeading}>{lineTitle(line)}</h2>
       {#if line.category || line.runners.length}
         <p class="muted">
           {[line.category, line.runners.join(', ')].filter(Boolean).join(' · ')}
@@ -125,14 +161,14 @@
     </section>
 
     {#if stage === 'live'}
-      <section class="card notice ok" role="status">
+      <section class="card notice ok">
         <Check size={20} />
         <div>
           <h2>You’re live. Good luck!</h2>
         </div>
       </section>
     {:else if stage === 'done'}
-      <section class="card notice" role="status">
+      <section class="card notice">
         <Check size={20} />
         <div>
           <h2>Your run is done</h2>
@@ -156,22 +192,14 @@
           void send({ t: token, status: 'late', minutes, note: note.trim() });
         }}
       >
-        <h2>How far away are you?</h2>
-        <div class="minutes" role="radiogroup" aria-label="How far away">
-          {#each MINUTES as m (m)}
-            <button
-              type="button"
-              role="radio"
-              aria-checked={minutes === m}
-              onclick={() => (minutes = m)}>{m < 60 ? `${m} min` : '1 hour'}</button
-            >
+        <h2 id="away-label" tabindex="-1" bind:this={formHeading}>How far away are you?</h2>
+        <div class="minutes" role="radiogroup" aria-labelledby="away-label">
+          {#each MINUTES as m (m.value)}
+            <label class="choice">
+              <input type="radio" name="away" value={m.value} bind:group={away} />
+              <span>{m.label}</span>
+            </label>
           {/each}
-          <button
-            type="button"
-            role="radio"
-            aria-checked={minutes == null}
-            onclick={() => (minutes = null)}>Not sure</button
-          >
         </div>
         <label class="field">
           <span class="label">Anything to add? (optional)</span>
@@ -186,14 +214,12 @@
           <button class="btn primary lg" type="submit" disabled={!canSend}>
             <Clock size={18} /> Tell the organisers
           </button>
-          <button class="btn ghost lg" type="button" onclick={() => (telling = false)}
-            >Cancel</button
-          >
+          <button class="btn ghost lg" type="button" onclick={cancelLate}>Cancel</button>
         </div>
       </form>
     {:else}
       {#if ci === 'ready'}
-        <section class="card notice ok" role="status">
+        <section class="card notice ok">
           <Check size={20} />
           <div>
             <h2>You’re checked in</h2>
@@ -201,7 +227,7 @@
           </div>
         </section>
       {:else if ci === 'late' && rec?.late}
-        <section class="card notice warn" role="status">
+        <section class="card notice warn">
           <Clock size={20} />
           <div>
             <h2>The organisers know you’re on your way</h2>
@@ -255,7 +281,10 @@
           : 'No connection. Check in once you’re back online.'}
       </p>
     {/if}
-    <p class="foot muted">Your check-in shows on the organisers’ screens and in the event log.</p>
+    <p class="foot muted">
+      Your check-in, and anything you add, shows on the organisers’ screens and to anyone following
+      the schedule.
+    </p>
   {/if}
 </main>
 
@@ -367,19 +396,34 @@
     grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
     gap: 8px;
   }
-  .minutes button {
+  .choice {
+    position: relative;
+    display: grid;
+    place-items: center;
     min-height: 48px;
     border-radius: var(--radius);
     border: 1px solid var(--border-strong);
     background: var(--surface-2);
-    color: var(--text);
-    font: inherit;
     font-weight: 600;
+    cursor: pointer;
   }
-  .minutes button[aria-checked='true'] {
+  .choice input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    margin: 0;
+    cursor: pointer;
+  }
+  .choice:has(input:checked) {
     border-color: var(--warn);
     background: var(--warn-soft);
     color: var(--warn);
+  }
+  .choice:has(input:focus-visible) {
+    box-shadow: var(--ring);
+  }
+  h2[tabindex='-1']:focus {
+    outline: none;
   }
   .error {
     color: var(--bad);

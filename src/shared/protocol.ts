@@ -19,7 +19,12 @@ const text = (max: number) => z.string().trim().min(1).max(max);
 /** How far away a late runner is (null: not sure), and anything they want to add. */
 const lateFields = {
   minutes: z.number().int().min(1).max(240).nullable(),
-  note: z.string().trim().max(140),
+  // Free text from outside: no control or invisible formatting characters (newlines, bidi overrides).
+  note: z
+    .string()
+    .max(400)
+    .transform((s) => s.replace(/[\p{Cc}\p{Cf}]/gu, '').trim())
+    .pipe(z.string().max(140)),
 };
 
 export const ClientActionSchema = z.discriminatedUnion('action', [

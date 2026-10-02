@@ -12,10 +12,10 @@ import {
   type MutatingAction,
 } from '../shared/protocol.ts';
 import { buildReport, reportCsv } from '../shared/report.ts';
-import { ID_PATTERN, SOURCES, isValidRef } from '../shared/sources.ts';
+import { ID_PATTERN, SOURCES, isValidRef, roomKey } from '../shared/sources.ts';
 import type { AuthInfo, RoomRef, RunKey, ScheduleSource } from '../shared/types.ts';
 import { actorName, resolveIdentity } from './auth.ts';
-import type { CheckInTokens } from './checkin.ts';
+import { LinkThrottle, type CheckInTokens } from './checkin.ts';
 import type { PushService } from './push/service.ts';
 import { config } from './config.ts';
 import { buildFeed } from './feed.ts';
@@ -198,12 +198,14 @@ export function createApp(
   });
 
   const BAD_LINK = 'This check-in link isn’t valid. Ask an organiser for a new one.';
+  const throttle = new LinkThrottle();
 
   // Lets the runner's page say up front that the link is wrong, before they tap.
+  // The token comes in a header, not the URL, so it stays out of access logs.
   app.get('/api/rooms/:source/:event/:slug/checkin/:key', (req, res) => {
     const ref = refFrom(req);
     res.setHeader('cache-control', 'no-store');
-    if (!ref || !checkins.verify(ref, String(req.params.key), req.query.t)) {
+    if (!ref || !checkins.verify(ref, String(req.params.key), req.get('x-checkin-token'))) {
       res.status(403).json({ error: BAD_LINK });
       return;
     }
@@ -226,27 +228,21 @@ export function createApp(
         res.status(403).json({ error: BAD_LINK });
         return;
       }
+      if (!throttle.allow(`${roomKey(ref)}\n${key}`)) {
+        res
+          .status(429)
+          .json({ error: 'That was a lot of check-ins. Wait a moment and try again.' });
+        return;
+      }
       try {
         const room = await registry.open(ref);
         const line = room.schedule.lines.find((l) => l.key === key);
-        const rec = room.state.runs[key];
-        const refusal =
-          !line || line.setupBlock
-            ? 'That run is no longer on the schedule. Talk to an organiser.'
-            : rec?.skipped
-              ? 'That run was taken off the schedule. Talk to an organiser.'
-              : rec?.startedAt != null || room.state.finishedAt != null
-                ? 'That run has already started.'
-                : null;
-        if (refusal) {
-          res.status(409).json({ error: refusal });
-          return;
-        }
+        // The reducer refuses runs that have started, been skipped or left the schedule.
         const action: MutatingAction =
           body.data.status === 'ready'
             ? { action: 'runner:checkin', key, status: 'ready' }
             : { action: 'runner:late', key, minutes: body.data.minutes, note: body.data.note };
-        const actor = `${line!.runners.join(', ') || 'Runner'} (check-in link)`;
+        const actor = `${line?.runners.join(', ') || 'Runner'} (check-in link)`;
         const result = room.dispatch(action, actor, undefined, { runner: true });
         if (!result.ok) {
           res.status(result.code === 'invalid' ? 400 : 409).json({ error: result.message });
