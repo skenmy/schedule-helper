@@ -6,6 +6,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  NodecgReportSchema,
   PushEndpointSchema,
   PushFollowSchema,
   SelfCheckInSchema,
@@ -14,11 +15,12 @@ import {
 import { buildReport, reportCsv } from '../shared/report.ts';
 import { ID_PATTERN, SOURCES, isValidRef, roomKey } from '../shared/sources.ts';
 import type { AuthInfo, RoomRef, RunKey, ScheduleSource } from '../shared/types.ts';
-import { actorName, resolveIdentity } from './auth.ts';
+import { actorName, isOwnOrigin, resolveIdentity } from './auth.ts';
 import { LinkThrottle, type CheckInTokens } from './checkin.ts';
 import { FollowRefused, type PushService } from './push/service.ts';
 import { config } from './config.ts';
 import { buildFeed } from './feed.ts';
+import { nodecgReport } from './tracking/nodecg.ts';
 import { logger } from './logger.ts';
 import type { RoomRegistry } from './rooms/registry.ts';
 import { UpstreamError, fetchEventListing } from './sources/index.ts';
@@ -40,6 +42,12 @@ async function requireOperator(
   res: Response,
   what: string,
 ): Promise<AuthInfo | null> {
+  // The operator's cookie only counts on requests from our own pages (as for /ws).
+  if (!isOwnOrigin(req.headers)) {
+    log.warn('refused operator request from origin', req.headers.origin);
+    res.status(403).json({ error: 'That request came from another site.' });
+    return null;
+  }
   const auth = await resolveIdentity(req.headers.cookie);
   if (!auth) {
     res.status(503).json({ error: 'Can’t check your sign-in right now. Try again shortly.' });
@@ -259,6 +267,83 @@ export function createApp(
     },
   );
 
+  // ── Stream PC: NodeCG speedcontrol (tracking/nodecg.ts) ─────────────────────
+
+  // The token the stream PC's bundle or bridge page uses for this room.
+  app.get('/api/rooms/:source/:event/:slug/source-token', async (req, res) => {
+    const ref = refFrom(req);
+    res.setHeader('cache-control', 'no-store');
+    if (!ref) {
+      res.status(400).json({ error: 'Invalid room' });
+      return;
+    }
+    if (!(await requireOperator(req, res, 'set up the stream PC'))) return;
+    res.json({ token: checkins.sourceToken(ref) });
+  });
+
+  // A new token for the stream PC (the old one leaked, or a PC is retired).
+  app.post('/api/rooms/:source/:event/:slug/source-token', async (req, res) => {
+    const ref = refFrom(req);
+    res.setHeader('cache-control', 'no-store');
+    if (!ref) {
+      res.status(400).json({ error: 'Invalid room' });
+      return;
+    }
+    if (!(await requireOperator(req, res, 'replace the stream PC token'))) return;
+    res.json({ token: checkins.rotateSource(ref) });
+  });
+
+  // The bridge page runs sandboxed (no origin, no cookies; see the static
+  // headers below), so its reports are cross-origin: allow exactly that, without
+  // credentials, here and nowhere else.
+  const reportCors = (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('access-control-allow-origin', '*');
+    res.setHeader('access-control-allow-methods', 'POST');
+    res.setHeader('access-control-allow-headers', 'content-type');
+    res.setHeader('access-control-max-age', '600');
+    next();
+  };
+  app.options('/api/rooms/:source/:event/:slug/nodecg', reportCors, (_req, res) => {
+    res.status(204).end();
+  });
+
+  // Speedcontrol reports on every run or timer change and every 15 s (a burst
+  // of changes is normal). Plenty of room for that, not for a flood.
+  const sourceThrottle = new LinkThrottle({ gapMs: 0, perHour: 3_600 });
+  app.post(
+    '/api/rooms/:source/:event/:slug/nodecg',
+    reportCors,
+    express.json({ limit: '8kb' }),
+    async (req, res) => {
+      const ref = refFrom(req);
+      res.setHeader('cache-control', 'no-store');
+      const body = NodecgReportSchema.safeParse(req.body);
+      if (!ref || !body.success) {
+        res
+          .status(400)
+          .json({ error: 'That isn’t a speedcontrol report this server understands.' });
+        return;
+      }
+      const { t, ...report } = body.data;
+      if (!checkins.verifySource(ref, t)) {
+        res.status(403).json({ error: 'That stream PC token isn’t valid for this schedule.' });
+        return;
+      }
+      if (!sourceThrottle.allow(roomKey(ref))) {
+        res.status(429).json({ error: 'Too many reports. Slow down.' });
+        return;
+      }
+      try {
+        const room = await registry.open(ref);
+        nodecgReport(room, report);
+        const s = room.state.nodecg;
+        res.json({ ok: true, matched: s?.runKey ?? null, listening: room.state.tracking.nodecg });
+      } catch (err) {
+        sendError(res, err);
+      }
+    },
+  );
+
   // ── Push notifications (operators) ──────────────────────────────────────────
 
   app.get('/api/push/key', (_req, res) => {
@@ -372,8 +457,16 @@ export function createApp(
       setHeaders(res, file) {
         if (file.includes(`${path.sep}assets${path.sep}`)) {
           res.setHeader('cache-control', 'public, max-age=31536000, immutable');
+          // The sandboxed bridge page has no origin: its module script is a CORS fetch.
+          res.setHeader('access-control-allow-origin', '*');
         } else {
           res.setHeader('cache-control', 'no-cache');
+        }
+        // The NodeCG bridge loads a script from whatever NodeCG address it's given.
+        // Sandboxed, that script gets an opaque origin: no cookies, no storage, no
+        // operator rights here, whatever it does.
+        if (path.basename(file) === 'bridge.html') {
+          res.setHeader('content-security-policy', 'sandbox allow-scripts');
         }
       },
     }),

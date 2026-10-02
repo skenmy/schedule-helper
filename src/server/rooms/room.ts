@@ -68,7 +68,14 @@ export class Room {
     this.key = roomKey(opts.ref);
     this.schedule = opts.schedule;
     // Room files written before a field existed get its default.
-    this.state = { ...initialState(), ...opts.state, captureBusy: false };
+    const fresh = initialState();
+    this.state = {
+      ...fresh,
+      ...opts.state,
+      // Settings added later get their defaults too.
+      tracking: { ...fresh.tracking, ...opts.state.tracking },
+      captureBusy: false,
+    };
     this.undoStack = opts.undo ?? [];
     this.store = opts.store;
     this.services = opts.services;

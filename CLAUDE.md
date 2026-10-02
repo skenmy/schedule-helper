@@ -79,10 +79,11 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
   stack (`Room.undo` carries forward runs whose `selfAt` is newer). **A runner's late note is free
   text from outside**: render it as text, never as HTML, keep it out of anything that runs
   (formulas, URLs) and out of the public overlay feed.
-- **WebSockets only open from our own pages.** `ws.ts` answers 403 to an upgrade whose `Origin` is
-  present but is neither `PUBLIC_URL` nor the request's own `Host`, so another site can't use an
-  operator's cookie to act as them (cross-site WebSocket hijacking). No `Origin` (tests, scripts)
-  is allowed. Serving from a new hostname needs `PUBLIC_URL` set or the proxy to pass `Host` through.
+- **The operator cookie only counts from our own pages.** `isOwnOrigin` (`auth.ts`) refuses a `/ws`
+  upgrade and every `requireOperator` HTTP route with 403 when `Origin` is present but is neither
+  `PUBLIC_URL` nor the request's own `Host`, so another site can't use an operator's cookie to act
+  as them (cross-site WebSocket hijacking, CSRF). No `Origin` (tests, scripts) is allowed. Serving
+  from a new hostname needs `PUBLIC_URL` set or the proxy to pass `Host` through.
 - **Nothing acts on cached state.** A room paints from its offline snapshot before the socket
   connects, and keeps showing state after it drops. `room.canWrite` is operator access **and** a
   live socket with fresh state (`room.synced`); gate every control that sends an action on it. Use
@@ -150,7 +151,16 @@ ordinary undoable action that back-dates the start from a timer reading) or dism
 - **Auto-apply** (`tracking.autoApply`, off by default) needs `corroborated()`: a trusted
   stream-PC source (`TRUSTED_SOURCES`), two different sources, or two timer readings ≥20 s apart
   implying the same start. It dispatches as `Auto-tracking`, so it's logged and undoable.
-- **Adding a source** (NodeCG speedcontrol, a stream-PC push): build a `Signal`, call `signal()`.
+- **Adding a source**: build a `Signal`, call `signal()`. NodeCG speedcontrol is one
+  (`tracking/nodecg.ts`): the bundle in `integrations/nodecg-schedule-helper` (plain CommonJS, no
+  dependencies, tested from `nodecg-bundle.test.ts`) or the bridge page (`src/client/bridge.ts`, a
+  second Vite entry) POST reports authorised by the room's stream PC token
+  (`CheckInTokens.sourceToken`, replaceable per room). It's trusted (`TRUSTED_SOURCES`, but alone
+  only once it has held for `TRUSTED_SETTLE_MS`) and `tracking.nodecg` switches it off (undefined
+  counts as on for rooms saved before it existed). **The bridge page is served sandboxed**
+  (`http.ts` static headers) because it loads a script from a URL in its own query string: never
+  give it cookies, storage or an origin, and open only `POST …/nodecg` to it (CORS, no
+  credentials). The service worker leaves `/bridge.html` alone so that header always applies.
 - Vision reading reuses stream capture; `captureInterval()` decides the cadence: every minute while
   a suggestion is pending or a change is due (near a run's estimated end, between runs), backing
   off to every 10 after 30 minutes due, none while Twitch says offline, and only while an operator

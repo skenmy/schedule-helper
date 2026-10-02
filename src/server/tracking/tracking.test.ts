@@ -226,12 +226,35 @@ describe('reducer: detections', () => {
     observe(on.state, LINES, twitch('s1'));
     const off = reduce(
       on.state,
-      { action: 'tracking:configure', twitch: false, vision: false, autoApply: false },
+      {
+        action: 'tracking:configure',
+        twitch: false,
+        vision: false,
+        autoApply: false,
+        nodecg: false,
+      },
       ctx(T0),
     );
     if (!off.ok) throw new Error(off.message);
     expect(off.state.detection).toBeNull();
     expect(off.undo).toBeNull();
+  });
+
+  it('withdraws what a source said when it is switched off, keeping the rest', () => {
+    const s = live();
+    s.tracking = { twitch: true, vision: true, autoApply: false, nodecg: true };
+    observe(s, LINES, twitch('s1'));
+    observe(s, LINES, vision('s1', T0 + 31 * MIN, T0 + 30 * MIN));
+    expect(s.detection?.signals).toHaveLength(2);
+    const res = reduce(
+      s,
+      { action: 'tracking:configure', twitch: false, vision: true, autoApply: false, nodecg: true },
+      ctx(T0 + 32 * MIN),
+    );
+    if (!res.ok) throw new Error(res.message);
+    expect(res.state.detection?.signals.map((x) => x.source)).toEqual(['vision']);
+    // NodeCG isn't named until a stream PC has reported in.
+    expect(res.state.log[0]?.text).toBe('Auto-tracking on (stream reading): asks first');
   });
 });
 

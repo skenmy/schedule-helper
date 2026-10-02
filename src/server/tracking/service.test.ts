@@ -88,7 +88,13 @@ afterEach(async () => {
 
 describe('auto-tracking over the wire', () => {
   it('follows a Twitch category change once accepted, and stays put after an undo', async () => {
-    client.send({ action: 'tracking:configure', twitch: true, vision: false, autoApply: false });
+    client.send({
+      action: 'tracking:configure',
+      twitch: true,
+      vision: false,
+      autoApply: false,
+      nodecg: false,
+    });
     await client.state((s) => s.stream?.game === 'Celeste');
 
     twitch.info = { live: true, game: 'Super Mario 64', title: 'SM64 120 Star by ptkay' };
@@ -123,7 +129,13 @@ describe('auto-tracking over the wire', () => {
     client = new Client(server.port);
     await client.opened();
     client.send({ action: 'join', ref: REF });
-    client.send({ action: 'tracking:configure', twitch: true, vision: false, autoApply: false });
+    client.send({
+      action: 'tracking:configure',
+      twitch: true,
+      vision: false,
+      autoApply: false,
+      nodecg: false,
+    });
     const s = await client.state((st) => st.stream?.error != null);
     expect(s.stream?.error).toContain('TWITCH_CLIENT_ID');
   });
@@ -134,7 +146,7 @@ describe('auto-apply', () => {
     const state = initialState('testchannel');
     state.currentKey = 'd0';
     state.runs.d0 = { startedAt: Date.now() - 30 * 60_000 };
-    state.tracking = { twitch: true, vision: true, autoApply };
+    state.tracking = { twitch: true, vision: true, autoApply, nodecg: false };
     return new Room({
       ref: REF,
       schedule: schedule(),
@@ -214,7 +226,7 @@ describe('observeCapture', () => {
     const s = initialState();
     s.currentKey = 'd0';
     s.runs.d0 = { startedAt: 0 };
-    s.tracking = { twitch: false, vision: true, autoApply: false };
+    s.tracking = { twitch: false, vision: true, autoApply: false, nodecg: false };
     return s;
   }
 

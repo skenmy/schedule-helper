@@ -5,6 +5,7 @@
   import { fmtClock, fmtDelta, fmtHMS, relTime } from '../../lib/format.ts';
   import { getLive, getOps } from '../../lib/live.svelte.ts';
   import { getRoom } from '../../lib/room.svelte.ts';
+  import StreamPcSetup from '../StreamPcSetup.svelte';
 
   const room = getRoom();
   const live = getLive();
@@ -49,19 +50,25 @@
   let trackTwitch = $state(live.state.tracking.twitch);
   let trackVision = $state(live.state.tracking.vision);
   let autoApply = $state(live.state.tracking.autoApply);
+  // Rooms saved before the setting existed have none: on.
+  let trackNodecg = $state(live.state.tracking.nodecg !== false);
   const serverTracking = $derived(
-    `${live.state.tracking.twitch}|${live.state.tracking.vision}|${live.state.tracking.autoApply}`,
+    `${live.state.tracking.twitch}|${live.state.tracking.vision}|${live.state.tracking.autoApply}|${live.state.tracking.nodecg !== false}`,
   );
   $effect(() => {
-    const [twitch, vision, auto] = serverTracking.split('|');
+    const [twitch, vision, auto, nodecg] = serverTracking.split('|');
     trackTwitch = twitch === 'true';
     trackVision = vision === 'true';
     autoApply = auto === 'true';
+    trackNodecg = nodecg === 'true';
   });
   const stream = $derived(live.state.stream);
+  const nodecg = $derived(live.state.nodecg);
+  /** Not heard from in two minutes (the bundle reports every 15 s): say so. */
+  const nodecgQuiet = $derived(!!nodecg && live.now - nodecg.at > 120_000);
 
   function saveTracking() {
-    ops.configureTracking(trackTwitch, trackVision, autoApply);
+    ops.configureTracking(trackTwitch, trackVision, autoApply, trackNodecg);
   }
 
   let showPlayer = $state(false);
@@ -270,13 +277,39 @@
       <label class="toggle">
         <input
           type="checkbox"
+          bind:checked={trackNodecg}
+          disabled={!room.canWrite}
+          onchange={saveTracking}
+        />
+        <span
+          ><b>Listen to the stream PC’s NodeCG speedcontrol</b><small
+            >Its active run and timer, from the NodeCG bundle or the bridge page. It runs the real
+            timer, so one report is enough.</small
+          ></span
+        >
+      </label>
+      {#if nodecg}
+        <p class="status" class:bad={nodecgQuiet}>
+          Speedcontrol ({nodecg.via}) · <b>{nodecg.game ?? 'no active run'}</b>{nodecg.timer
+            ? ` · timer ${nodecg.timer}`
+            : ''}{nodecg.game && !nodecg.runKey ? ' · not the live run or the next few' : ''}
+          <span class="muted">
+            · {nodecgQuiet ? 'last heard' : 'heard'} {relTime(nodecg.at, live.now)}</span
+          >
+        </p>
+      {/if}
+      {#if room.isOperator}<StreamPcSetup />{/if}
+      <label class="toggle">
+        <input
+          type="checkbox"
           bind:checked={autoApply}
-          disabled={!room.canWrite || (!trackTwitch && !trackVision)}
+          disabled={!room.canWrite || (!trackTwitch && !trackVision && !trackNodecg)}
           onchange={saveTracking}
         />
         <span
           ><b>Act without asking when two signals agree</b><small
-            >Twitch and the stream, or two stream readings a minute apart. Logged and undoable.</small
+            >Twitch and the stream, two stream readings a minute apart, or speedcontrol on its own.
+            Logged and undoable.</small
           ></span
         >
       </label>

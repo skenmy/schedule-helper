@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "url": {
+      "type": "string",
+      "default": "https://schedule.skenmy.com",
+      "description": "Where Schedule Helper runs."
+    },
+    "room": {
+      "type": "string",
+      "default": "",
+      "description": "The schedule, as in its address: oengus/{event}/{schedule}."
+    },
+    "token": {
+      "type": "string",
+      "default": "",
+      "description": "The stream PC token, from Stream capture → Stream PC in Schedule Helper."
+    }
+  }
+}

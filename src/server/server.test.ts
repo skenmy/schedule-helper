@@ -453,6 +453,105 @@ describe('runner self check-in', () => {
   });
 });
 
+describe('stream PC (NodeCG speedcontrol)', () => {
+  const base = () => `http://localhost:${server.port}/api/rooms/oengus/testmarathon/main`;
+  const report = (body: unknown) =>
+    fetch(`${base()}/nodecg`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  it('takes reports with the room’s stream PC token, and shows them', async () => {
+    const c = await connect();
+    await c.join();
+    const { token } = (await (await fetch(`${base()}/source-token`)).json()) as { token: string };
+    const shown = c.nextState((s) => s.nodecg != null);
+    const res = await report({
+      t: token,
+      via: 'bundle',
+      run: { game: 'Celeste', players: [] },
+      timer: { state: 'stopped', elapsedMs: 0 },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, listening: true });
+    expect((await shown).nodecg).toMatchObject({
+      via: 'bundle',
+      game: 'Celeste',
+      timer: 'stopped',
+    });
+  });
+
+  it('refuses other tokens and anything that isn’t a report', async () => {
+    const run = { game: 'Celeste', players: [] };
+    expect((await report({ t: 'A'.repeat(22), via: 'bundle', run, timer: null })).status).toBe(403);
+    expect((await report({ t: 'A'.repeat(22), via: 'email', run, timer: null })).status).toBe(400);
+    // A check-in token is no use here, and vice versa.
+    const links = (await (await fetch(`${base()}/checkin-links`)).json()) as {
+      tokens: Record<string, string>;
+    };
+    expect((await report({ t: links.tokens.d3, via: 'bundle', run, timer: null })).status).toBe(
+      403,
+    );
+    const { token } = (await (await fetch(`${base()}/source-token`)).json()) as { token: string };
+    const asCheckIn = await fetch(`${base()}/checkin/d3`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ t: token, status: 'ready' }),
+    });
+    expect(asCheckIn.status).toBe(403);
+  });
+
+  it('lets the sandboxed bridge page report cross-origin, without credentials', async () => {
+    const pre = await fetch(`${base()}/nodecg`, {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'null',
+        'access-control-request-method': 'POST',
+        'access-control-request-headers': 'content-type',
+      },
+    });
+    expect(pre.status).toBe(204);
+    expect(pre.headers.get('access-control-allow-origin')).toBe('*');
+    expect(pre.headers.get('access-control-allow-headers')).toBe('content-type');
+    expect(pre.headers.get('access-control-allow-credentials')).toBeNull();
+    // Nothing else operators use is opened up.
+    const other = await fetch(`${base()}/source-token`, { headers: { origin: 'null' } });
+    expect(other.headers.get('access-control-allow-origin')).toBeNull();
+  });
+
+  it('replaces the stream PC token on request: the old one stops working', async () => {
+    const { token: old } = (await (await fetch(`${base()}/source-token`)).json()) as {
+      token: string;
+    };
+    const res = await fetch(`${base()}/source-token`, { method: 'POST' });
+    const { token: fresh } = (await res.json()) as { token: string };
+    expect(fresh).not.toBe(old);
+    const run = { game: 'Celeste', players: [] };
+    expect((await report({ t: old, via: 'bundle', run, timer: null })).status).toBe(403);
+    expect((await report({ t: fresh, via: 'bundle', run, timer: null })).status).toBe(200);
+  });
+
+  it('only replaces the token for our own pages, not a form on another site', async () => {
+    const { token: before } = (await (await fetch(`${base()}/source-token`)).json()) as {
+      token: string;
+    };
+    for (const origin of ['https://evil.example', 'null']) {
+      const res = await fetch(`${base()}/source-token`, { method: 'POST', headers: { origin } });
+      expect(res.status).toBe(403);
+    }
+    const { token: after } = (await (await fetch(`${base()}/source-token`)).json()) as {
+      token: string;
+    };
+    expect(after).toBe(before);
+    const own = await fetch(`${base()}/source-token`, {
+      method: 'POST',
+      headers: { origin: `http://localhost:${server.port}` },
+    });
+    expect(own.status).toBe(200);
+  });
+});
+
 describe('push notifications', () => {
   const keys = {
     p256dh:

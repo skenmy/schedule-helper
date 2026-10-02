@@ -3,6 +3,7 @@
 // reconnect storms don't hammer tools-skenmy.
 
 import { createHash } from 'node:crypto';
+import type { IncomingHttpHeaders } from 'node:http';
 import type { AuthInfo, AuthUser } from '../shared/types.ts';
 import { config } from './config.ts';
 import { logger } from './logger.ts';
@@ -10,6 +11,25 @@ import { logger } from './logger.ts';
 const log = logger('auth');
 const TTL_MS = 60_000;
 const cache = new Map<string, { at: number; value: AuthInfo }>();
+
+const PUBLIC_ORIGIN = URL.parse(config.publicUrl)?.origin;
+
+/**
+ * Browsers send `Origin` on every WebSocket handshake and every cross-site POST, along with
+ * the operator's `.skenmy.com` cookie whenever its SameSite policy allows. Only our own pages
+ * may act on that cookie, so another site can't act as a signed-in operator (cross-site
+ * WebSocket hijacking, CSRF). "Our own" is PUBLIC_URL or the host the request came in on
+ * (local dev, the Vite proxy); behind TLS termination the scheme isn't visible, so that
+ * compares hosts. No `Origin` means a non-browser client, which has no ambient cookie to borrow.
+ */
+export function isOwnOrigin({ origin, host }: IncomingHttpHeaders): boolean {
+  if (origin === undefined) return true;
+  const from = URL.parse(origin);
+  // Also refuses the opaque "null" origin of sandboxed frames and file:// pages.
+  if (from?.protocol !== 'http:' && from?.protocol !== 'https:') return false;
+  if (from.origin === PUBLIC_ORIGIN) return true;
+  return host !== undefined && from.host === URL.parse(`${from.protocol}//${host}`)?.host;
+}
 
 function loginUrl(): string {
   const u = new URL(config.authLoginUrl);

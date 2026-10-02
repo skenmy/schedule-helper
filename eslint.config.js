@@ -22,6 +22,11 @@ export default defineConfig(
     },
   },
   {
+    // The NodeCG bundle runs inside NodeCG, which loads CommonJS.
+    files: ['integrations/**/*.js'],
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
+  {
     files: ['**/*.svelte', '**/*.svelte.ts'],
     languageOptions: {
       parserOptions: { parser: ts.parser, extraFileExtensions: ['.svelte'], svelteConfig },

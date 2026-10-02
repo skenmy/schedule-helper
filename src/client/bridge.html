@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="robots" content="noindex" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>NodeCG bridge · Schedule Helper</title>
+    <style>
+      html {
+        background: #0a0c10;
+        color: #eceff4;
+        font:
+          14px/1.45 system-ui,
+          sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 16px;
+      }
+      main {
+        max-width: 560px;
+        display: grid;
+        gap: 10px;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 17px;
+      }
+      p {
+        margin: 0;
+        color: #bdc4d0;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 9.5em 1fr;
+        gap: 8px;
+        padding: 8px 10px;
+        border: 1px solid #232935;
+        border-radius: 8px;
+        background: #12161d;
+      }
+      .row b {
+        color: #7f8898;
+        font-weight: 600;
+      }
+      .ok {
+        color: #34d399;
+      }
+      .warn {
+        color: #fbbf24;
+      }
+      .bad {
+        color: #f87171;
+      }
+      code {
+        font-size: 12px;
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>NodeCG bridge</h1>
+      <p>
+        Keep this page open on the stream PC (or as an OBS browser source). It reads NodeCG
+        speedcontrol and tells Schedule Helper which run is up and what the timer is doing.
+      </p>
+      <div class="row"><b>Schedule</b><span id="room">—</span></div>
+      <div class="row"><b>NodeCG</b><span id="nodecg">Starting…</span></div>
+      <div class="row"><b>Speedcontrol</b><span id="speedcontrol">—</span></div>
+      <div class="row"><b>Schedule Helper</b><span id="report">—</span></div>
+    </main>
+    <script type="module" src="/bridge.ts"></script>
+  </body>
+</html>
