@@ -1,5 +1,6 @@
 <script lang="ts">
   import AnnouncementBanner from '../components/conductor/AnnouncementBanner.svelte';
+  import DetectionBanner from '../components/conductor/DetectionBanner.svelte';
   import MiniLog from '../components/conductor/MiniLog.svelte';
   import NowCard from '../components/conductor/NowCard.svelte';
   import StatusStrip from '../components/conductor/StatusStrip.svelte';
@@ -14,6 +15,7 @@
 
 <TopBar />
 <AnnouncementBanner />
+<DetectionBanner />
 <main>
   <StatusStrip />
   <Timeline />

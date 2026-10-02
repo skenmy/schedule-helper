@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Camera, Download, Eye, EyeOff, LoaderCircle } from '@lucide/svelte';
+  import { Camera, Download, Eye, EyeOff, LoaderCircle, Radar } from '@lucide/svelte';
   import { untrack } from 'svelte';
   import { roomPath } from '../../../shared/sources.ts';
   import { fmtClock, fmtDelta, fmtHMS, relTime } from '../../lib/format.ts';
@@ -45,6 +45,24 @@
     intervalMin = Number(interval);
     thresholdSec = Number(threshold);
   });
+
+  let trackTwitch = $state(live.state.tracking.twitch);
+  let trackVision = $state(live.state.tracking.vision);
+  let autoApply = $state(live.state.tracking.autoApply);
+  const serverTracking = $derived(
+    `${live.state.tracking.twitch}|${live.state.tracking.vision}|${live.state.tracking.autoApply}`,
+  );
+  $effect(() => {
+    const [twitch, vision, auto] = serverTracking.split('|');
+    trackTwitch = twitch === 'true';
+    trackVision = vision === 'true';
+    autoApply = auto === 'true';
+  });
+  const stream = $derived(live.state.stream);
+
+  function saveTracking() {
+    ops.configureTracking(trackTwitch, trackVision, autoApply);
+  }
 
   let showPlayer = $state(false);
   const activeChannel = $derived(live.state.twitchChannel || room.schedule?.twitch || '');
@@ -209,6 +227,60 @@
         ></iframe>
       </div>
     {/if}
+
+    <div class="card box tracking">
+      <h3><Radar size={16} /> Auto-tracking</h3>
+      <p class="hint">
+        Notices when the stream moves to the next run and offers to follow it, back-dating the start
+        when the stream timer shows it.
+      </p>
+      <label class="toggle">
+        <input
+          type="checkbox"
+          bind:checked={trackTwitch}
+          disabled={!room.canWrite}
+          onchange={saveTracking}
+        />
+        <span><b>Watch the Twitch category and title</b><small>Free; checks every 30s.</small></span
+        >
+      </label>
+      {#if trackTwitch && stream}
+        <p class="status" class:bad={stream.error}>
+          {#if stream.error}{stream.error}
+          {:else if !stream.live}{activeChannel} is offline
+          {:else}<b>{stream.game ?? 'No category'}</b>{stream.title
+              ? ` · “${stream.title}”`
+              : ''}<span class="muted"> · since {fmtClock(stream.at)}</span>{/if}
+        </p>
+      {/if}
+      <label class="toggle">
+        <input
+          type="checkbox"
+          bind:checked={trackVision}
+          disabled={!room.canWrite}
+          onchange={saveTracking}
+        />
+        <span
+          ><b>Read the stream around run changes</b><small
+            >Every minute near a run’s estimated end and between runs, every 10 otherwise. About
+            $0.01 a reading.</small
+          ></span
+        >
+      </label>
+      <label class="toggle">
+        <input
+          type="checkbox"
+          bind:checked={autoApply}
+          disabled={!room.canWrite || (!trackTwitch && !trackVision)}
+          onchange={saveTracking}
+        />
+        <span
+          ><b>Act without asking when two signals agree</b><small
+            >Twitch and the stream, or two stream readings a minute apart. Logged and undoable.</small
+          ></span
+        >
+      </label>
+    </div>
 
     <div class="card box">
       <h3>Auto drift check</h3>
@@ -393,6 +465,39 @@
     width: 18px;
     height: 18px;
     accent-color: var(--accent);
+    flex: none;
+  }
+  .tracking .toggle {
+    align-items: flex-start;
+  }
+  .tracking .toggle input {
+    margin-top: 2px;
+  }
+  .tracking .toggle span {
+    display: grid;
+    gap: 1px;
+  }
+  .tracking .toggle small {
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 400;
+  }
+  .tracking h3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .tracking h3 :global(svg) {
+    color: var(--info);
+  }
+  .status {
+    margin: -2px 0 0 28px;
+    font-size: 13px;
+    color: var(--text-2);
+    overflow-wrap: anywhere;
+  }
+  .status.bad {
+    color: var(--warn);
   }
   .player {
     aspect-ratio: 16 / 9;

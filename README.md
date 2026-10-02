@@ -23,12 +23,20 @@ Horaro schedule. Try it offline with the built-in demo marathon (`/demo/demo/mai
   change to runs, timers, check-ins or broadcasts.
 - **Reset marathon.** Schedule tab → **Reset…** (or the command palette) starts the marathon over
   for a rehearsal: no live run, no timings, skips or check-ins, an empty log, no broadcasts,
-  capture reading or undo history. The schedule, Twitch channel and drift settings stay. You type
+  capture reading or undo history. The schedule, Twitch channel, drift and tracking settings stay. You type
   `reset` to confirm, and the previous state is kept as a backup file (see below).
 - **Stream capture.** `streamlink → ffmpeg → Claude` reads the run timer and game off the live
   Twitch stream, compares it with ours and offers a one-click correction. The optional **auto
   drift check** does this every few minutes while a run is live and logs a warning when the
   timers diverge or the stream shows a different run.
+- **Auto-tracking.** Notices when the stream moves on to the next run and puts a banner on every
+  operator's screen — “Spyro the Dragon is on stream · Advance & start” — so following it is one
+  tap, with the start back-dated when the stream timer shows it. Signals come from the Twitch
+  category and title (free, every 30 s) and from reading the stream with Claude, every minute near a
+  run's estimated end and between runs. Only the live run and the next three are ever suggested.
+  Optionally it acts by itself when two signals agree (Twitch and the stream, or two stream
+  readings a minute apart); every change is logged and undoable. Stream-PC sources (NodeCG
+  speedcontrol, a timer bridge) can plug into the same pipeline (`src/server/tracking/`).
 - **Broadcast.** An announcement banner for all operators, and a message board for kiosk screens.
 - **Kiosk mode.** Configurable multi-panel displays for venue TVs (delta, now running, up next,
   check-ins, schedule, progress, clock, message board, controls, log, stream). The layout lives in
@@ -61,7 +69,8 @@ src/
     rooms/    reducer.ts (pure state transitions), room.ts (undo, broadcast, persistence),
               registry.ts (load/evict), store.ts (atomic JSON files)
     sources/  Oengus, Horaro and demo adapters behind a cached facade
-    capture/  frame grab, Claude Vision reading, drift checks
+    capture/  frame grab, Claude Vision reading, drift checks, capture cadence
+    tracking/ auto-tracking: Twitch source, signal matching, detections, auto-apply
     feed.ts   overlay feed · http.ts routes · ws.ts sessions · auth.ts tools.skenmy.com
   client/   Svelte 5 (runes) single-page app, built by Vite
     lib/        room connection, derived view model, clock, prefs, router, kiosk config
@@ -109,6 +118,8 @@ Client → server messages are validated with zod (`src/shared/protocol.ts`):
 | `message:clear` / `announcement:clear` / `capture:run` / `capture:apply` | —                                                |
 | `undo`                                                                   | `{ id? }` (refused if the latest change differs) |
 | `drift:configure`                                                        | `{ enabled, intervalMin, thresholdSec }`         |
+| `tracking:configure`                                                     | `{ twitch, vision, autoApply }`                  |
+| `detection:accept` / `detection:dismiss`                                 | `{ id }` (the detection the operator saw)        |
 | `schedule:refresh`                                                       | —                                                |
 | `room:reset`                                                             | — (clears progress; not undoable)                |
 
@@ -131,21 +142,25 @@ Read-only and CORS-open — the same information any viewer can already see.
 
 ## Environment
 
-| var                  | default                                      | notes                                                                                |
-| -------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `PORT`               | `3000`                                       |                                                                                      |
-| `DATA_DIR`           | `./data`                                     | Room files live in `DATA_DIR/rooms/`. Mount as a volume.                             |
-| `TOOLS_AUTH_URL`     | _(empty)_                                    | tools-skenmy base URL. Empty = everyone can write (local dev only).                  |
-| `AUTH_APP_ID`        | `schedule`                                   | Passed to `/auth/me?app=…&role=admin`.                                               |
-| `AUTH_LOGIN_URL`     | `https://tools.skenmy.com/auth/twitch/login` | Sign-in link shown to viewers.                                                       |
-| `AUTH_MANAGE_URL`    | `https://tools.skenmy.com/`                  | Linked from the user chip.                                                           |
-| `PUBLIC_URL`         | `https://schedule.skenmy.com`                | Where sign-in redirects back to.                                                     |
-| `ANTHROPIC_API_KEY`  | _(empty)_                                    | Required for stream capture.                                                         |
-| `VISION_MODEL`       | `claude-sonnet-5`                            | Model that reads stream frames (needs `effort` support: Sonnet/Opus 4.6+).           |
-| `BUILD_SHA`          | `dev`                                        | Set by CI for the client build and the server; clients offer a reload on a mismatch. |
-| `CAPTURE_FRAME_FILE` | _(empty)_                                    | Dev/testing: use this image instead of grabbing a live frame.                        |
-| `CLIENT_DIR`         | `dist/client`                                | Built client assets.                                                                 |
-| `LOG_LEVEL`          | `info`                                       | `debug`, `info`, `warn` or `error`.                                                  |
+| var                    | default                                      | notes                                                                                  |
+| ---------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `PORT`                 | `3000`                                       |                                                                                        |
+| `DATA_DIR`             | `./data`                                     | Room files live in `DATA_DIR/rooms/`. Mount as a volume.                               |
+| `TOOLS_AUTH_URL`       | _(empty)_                                    | tools-skenmy base URL. Empty = everyone can write (local dev only).                    |
+| `AUTH_APP_ID`          | `schedule`                                   | Passed to `/auth/me?app=…&role=admin`.                                                 |
+| `AUTH_LOGIN_URL`       | `https://tools.skenmy.com/auth/twitch/login` | Sign-in link shown to viewers.                                                         |
+| `AUTH_MANAGE_URL`      | `https://tools.skenmy.com/`                  | Linked from the user chip.                                                             |
+| `PUBLIC_URL`           | `https://schedule.skenmy.com`                | Where sign-in redirects back to.                                                       |
+| `ANTHROPIC_API_KEY`    | _(empty)_                                    | Required for stream capture.                                                           |
+| `VISION_MODEL`         | `claude-sonnet-5`                            | Model that reads stream frames (needs `effort` support: Sonnet/Opus 4.6+).             |
+| `BUILD_SHA`            | `dev`                                        | Set by CI for the client build and the server; clients offer a reload on a mismatch.   |
+| `CAPTURE_FRAME_FILE`   | _(empty)_                                    | Dev/testing: use this image instead of grabbing a live frame.                          |
+| `TWITCH_CLIENT_ID`     | _(empty)_                                    | Twitch app for auto-tracking (category and title). Same app as other services is fine. |
+| `TWITCH_CLIENT_SECRET` | _(empty)_                                    | Its secret. Without both, Twitch tracking says it isn't set up.                        |
+| `STREAM_INFO_FILE`     | _(empty)_                                    | Dev/testing: read channel info from this JSON file instead of Twitch.                  |
+| `TRACKING_TICK_MS`     | `30000`                                      | How often auto-tracking polls Twitch.                                                  |
+| `CLIENT_DIR`           | `dist/client`                                | Built client assets.                                                                   |
+| `LOG_LEVEL`            | `info`                                       | `debug`, `info`, `warn` or `error`.                                                    |
 
 Stream capture needs `streamlink` and `ffmpeg` on the server; both are in the Docker image. Each
 capture costs roughly $0.01 in API usage.

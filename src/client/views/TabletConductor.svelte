@@ -1,6 +1,7 @@
 <script lang="ts">
   import { MediaQuery } from 'svelte/reactivity';
   import AnnouncementBanner from '../components/conductor/AnnouncementBanner.svelte';
+  import DetectionBanner from '../components/conductor/DetectionBanner.svelte';
   import MiniLog from '../components/conductor/MiniLog.svelte';
   import NowCard from '../components/conductor/NowCard.svelte';
   import StatusStrip from '../components/conductor/StatusStrip.svelte';
@@ -49,6 +50,7 @@
 <div class="tablet" class:wide={wide.current} class:floor>
   <TopBar variant="tablet" />
   <AnnouncementBanner />
+  <DetectionBanner />
   <StatusStrip />
   <div class="panes">
     <section class="pane live" aria-label="Live run">
