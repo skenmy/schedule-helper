@@ -6,6 +6,7 @@ import {
   checkInSummary,
   computeDelta,
   currentIndex,
+  eventPace,
   lineTitle,
   marathonPhase,
   marathonStats,
@@ -68,6 +69,12 @@ function createLive(room: RoomConnection) {
 
     projection = $derived(project(this.lines, this.state, this.now));
     projectedEnd = $derived(projectedEnd(this.projection));
+    /** How this event's runs and changeovers have gone (null until a few runs finish). */
+    pace = $derived(eventPace(this.lines, this.state));
+    /** The end if the rest of the marathon goes at that pace. */
+    likelyEnd = $derived(
+      this.pace ? projectedEnd(project(this.lines, this.state, this.now, this.pace)) : null,
+    );
     stats = $derived(marathonStats(this.lines, this.state, this.now));
     upcoming = $derived(upcomingIndexes(this.lines, this.state, 5));
     next = $derived(this.lines[this.upcoming[0] ?? -1] ?? null);

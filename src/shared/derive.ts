@@ -115,13 +115,97 @@ export interface Span {
   end: number;
 }
 
+/** How this event is actually running, learnt from the runs it has finished. */
+export interface Pace {
+  /** Runs take this × their estimate (1 = spot on; shrunk towards 1 with few samples). */
+  runRatio: number;
+  /** Changeovers take this many seconds more (+) or less (−) than planned. */
+  setupDeltaSec: number;
+  /** Finished runs and measured changeovers the figures come from. */
+  runs: number;
+  setups: number;
+}
+
+/** No pace until this many runs have finished: two runs say little about a weekend. */
+export const PACE_MIN_RUNS = 3;
+/** Samples worth of "on plan" mixed in, so early figures don't swing the projection. */
+const PACE_PRIOR = 5;
+const RATIO_LIMITS = [0.75, 1.35] as const;
+const SETUP_LIMIT_SEC = 20 * 60;
+/** A gap this long between runs is a break (overnight, a pause), not a changeover. */
+const BREAK_SEC = 90 * 60;
+
+const median = (xs: number[]) => {
+  const s = [...xs].sort((a, b) => a - b);
+  const mid = s.length >> 1;
+  return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
+};
+const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
+
+/**
+ * Measures the event so far: the median of each finished run's actual time
+ * over its estimate, and the median overrun of changeovers (end of one run to
+ * the start of the next, against its setup buffer plus any interludes between).
+ * Medians, shrunk towards "on plan" and clamped, so one disaster or a run
+ * edited after the fact can't drag the whole projection with it.
+ */
+export function eventPace(lines: Lines, state: RoomState): Pace | null {
+  const ratios: number[] = [];
+  const setupDeltas: number[] = [];
+  let prev: { index: number; end: number } | null = null;
+  lines.forEach((line, i) => {
+    const rec = state.runs[line.key];
+    if (line.setupBlock || rec?.skipped || rec?.startedAt == null) return;
+    if (prev && rec.startedAt >= prev.end) {
+      // Planned gap: the previous run's setup buffer, plus interludes in between.
+      let planned = lines[prev.index]!.setupSec;
+      for (let j = prev.index + 1; j < i; j++) {
+        const between = lines[j]!;
+        if (between.setupBlock) planned += between.estimateSec + between.setupSec;
+      }
+      const actual = (rec.startedAt - prev.end) / 1000;
+      if (actual <= BREAK_SEC + planned) setupDeltas.push(actual - planned);
+    }
+    prev = null;
+    if (rec.endedAt == null || rec.endedAt <= rec.startedAt) return;
+    prev = { index: i, end: rec.endedAt };
+    if (line.estimateSec > 0) ratios.push((rec.endedAt - rec.startedAt) / 1000 / line.estimateSec);
+  });
+  if (ratios.length < PACE_MIN_RUNS) return null;
+  const shrink = (n: number) => n / (n + PACE_PRIOR);
+  const ratio = 1 + (median(ratios) - 1) * shrink(ratios.length);
+  const setup = setupDeltas.length
+    ? median(setupDeltas.map((d) => clamp(d, -SETUP_LIMIT_SEC, SETUP_LIMIT_SEC))) *
+      shrink(setupDeltas.length)
+    : 0;
+  return {
+    runRatio: clamp(ratio, RATIO_LIMITS[0], RATIO_LIMITS[1]),
+    setupDeltaSec: Math.round(setup),
+    runs: ratios.length,
+    setups: setupDeltas.length,
+  };
+}
+
 /**
  * Projected start/end for the current line and everything after it, chaining
  * each line's estimate + setup from where the current run will realistically
  * finish. Skipped lines get no projection. Before the marathon starts the chain
  * is anchored to the scheduled start; if nothing is current it starts now.
+ *
+ * With a `pace`, runs still to come are scaled by how this event's runs have
+ * gone and changeovers by how long they've really taken: the "likely" view.
+ * Interludes keep their planned length.
  */
-export function project(lines: Lines, state: RoomState, now: number): (Span | null)[] {
+export function project(
+  lines: Lines,
+  state: RoomState,
+  now: number,
+  pace: Pace | null = null,
+): (Span | null)[] {
+  const runMs = (line: ScheduleLine) =>
+    line.estimateSec * 1000 * (pace && !line.setupBlock ? pace.runRatio : 1);
+  const setupMs = (line: ScheduleLine) =>
+    Math.max(0, line.setupSec + (pace && !line.setupBlock ? pace.setupDeltaSec : 0)) * 1000;
   const out: (Span | null)[] = lines.map(() => null);
   if (state.finishedAt != null || lines.length === 0) return out;
 
@@ -130,14 +214,14 @@ export function project(lines: Lines, state: RoomState, now: number): (Span | nu
   if (i >= 0) {
     const line = lines[i]!;
     const t = runTiming(state.runs[line.key], now);
-    const est = line.estimateSec * 1000;
+    const est = runMs(line);
     let start: number;
     let end: number;
     if (t.phase === 'setup') {
       // Still setting up: earliest start is when the previous run's setup buffer runs out.
       const prev = prevPlayableIndex(lines, state.runs, i);
       const prevRec = prev >= 0 ? state.runs[lines[prev]!.key] : undefined;
-      const ready = prevRec?.endedAt != null ? prevRec.endedAt + lines[prev]!.setupSec * 1000 : now;
+      const ready = prevRec?.endedAt != null ? prevRec.endedAt + setupMs(lines[prev]!) : now;
       start = Math.max(now, ready);
       end = start + est;
     } else if (t.phase === 'running') {
@@ -149,7 +233,7 @@ export function project(lines: Lines, state: RoomState, now: number): (Span | nu
     }
     out[i] = { start, end };
     // A finished run waiting to be advanced can't make the next one start in the past.
-    cursor = Math.max(end + line.setupSec * 1000, now);
+    cursor = Math.max(end + setupMs(line), now);
   } else {
     const first = scheduledStartOf(lines);
     cursor = first != null && first > now ? first : now;
@@ -159,9 +243,9 @@ export function project(lines: Lines, state: RoomState, now: number): (Span | nu
   for (let j = i + 1; j < lines.length; j++) {
     const line = lines[j]!;
     if (state.runs[line.key]?.skipped) continue;
-    const span = { start: cursor, end: cursor + line.estimateSec * 1000 };
+    const span = { start: cursor, end: cursor + runMs(line) };
     out[j] = span;
-    cursor = span.end + line.setupSec * 1000;
+    cursor = span.end + setupMs(line);
   }
   return out;
 }

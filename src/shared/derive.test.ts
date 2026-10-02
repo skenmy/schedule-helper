@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   checkInSummary,
   computeDelta,
+  eventPace,
   marathonPhase,
   marathonStats,
   nextPlayableIndex,
@@ -209,5 +210,59 @@ describe('marathon summaries', () => {
     const next = upcomingIndexes(LINES, s, 5);
     expect(next).toEqual([1, 3]);
     expect(checkInSummary(LINES, s.runs, next)).toEqual({ ready: 1, missing: 0, unchecked: 1 });
+  });
+});
+
+describe('eventPace', () => {
+  // Ten 30-minute runs with 10-minute setups, scheduled back to back.
+  const RUNS = Array.from({ length: 10 }, (_, i) => line(`r${i}`, T0 + i * 40 * MIN, 30));
+
+  /** Plays the first `n` runs, each taking `factor` × estimate, with `gapMin` changeovers. */
+  function played(n: number, factor: number, gapMin: number): RoomState {
+    const runs: RoomState['runs'] = {};
+    let t = T0;
+    for (let i = 0; i < n; i++) {
+      const end = t + 30 * MIN * factor;
+      runs[`r${i}`] = { startedAt: t, endedAt: end };
+      t = end + gapMin * MIN;
+    }
+    return state({ currentKey: `r${n}`, runs });
+  }
+
+  it('needs a few finished runs before it says anything', () => {
+    expect(eventPace(RUNS, played(2, 1.2, 10))).toBeNull();
+    expect(eventPace(RUNS, played(3, 1.2, 10))).not.toBeNull();
+  });
+
+  it('measures runs against estimates and changeovers against setups, shrunk towards plan', () => {
+    const pace = eventPace(RUNS, played(5, 1.2, 15))!;
+    // Median ratio 1.2, five samples against a prior of five: halfway to 1.2.
+    expect(pace.runRatio).toBeCloseTo(1.1, 5);
+    // Changeovers 5 minutes over plan, four samples: 4/9 of 300s.
+    expect(pace.setupDeltaSec).toBe(Math.round((300 * 4) / 9));
+    expect(pace).toMatchObject({ runs: 5, setups: 4 });
+  });
+
+  it('ignores overnight breaks and caps how far one bad run can move it', () => {
+    const s = played(4, 1, 10);
+    // A 12-hour gap before the next run is a break, not a changeover.
+    s.runs.r4 = { startedAt: s.runs.r3!.endedAt! + 12 * 60 * MIN, endedAt: undefined };
+    expect(eventPace(RUNS, s)!.setupDeltaSec).toBe(0);
+    const wild = played(30, 3, 10);
+    const many = Array.from({ length: 31 }, (_, i) => line(`r${i}`, T0 + i * 40 * MIN, 30));
+    expect(eventPace(many, wild)!.runRatio).toBe(1.35);
+  });
+
+  it('feeds a likely projection that leaves the plain one alone', () => {
+    const s = played(5, 1.2, 15);
+    s.runs.r5 = { startedAt: T0 + 5 * 51 * MIN };
+    const now = s.runs.r5.startedAt! + 5 * MIN;
+    const pace = eventPace(RUNS, s)!;
+    const plain = projectedEnd(project(RUNS, s, now))!;
+    const likely = projectedEnd(project(RUNS, s, now, pace))!;
+    expect(likely).toBeGreaterThan(plain);
+    // Five runs to go (r5 live, r6..r9), each 10% longer; four changeovers between them.
+    const extra = 5 * 3 * MIN + 4 * pace.setupDeltaSec * 1000;
+    expect(Math.abs(likely - plain - extra)).toBeLessThan(5_000);
   });
 });

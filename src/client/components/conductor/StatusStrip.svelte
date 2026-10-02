@@ -61,6 +61,14 @@
     }
   });
 
+  /** Only worth showing when the event's pace moves the end by a couple of minutes. */
+  const likelyGap = $derived(
+    live.likelyEnd != null && live.projectedEnd != null
+      ? Math.abs(live.likelyEnd - live.projectedEnd) >= 120_000
+        ? live.likelyEnd - live.projectedEnd
+        : null
+      : null,
+  );
   const finishOffset = $derived(
     live.projectedEnd && stats.scheduledEnd
       ? (live.projectedEnd - stats.scheduledEnd) / 1000
@@ -102,6 +110,15 @@
         <span class="off" class:late={finishOffset > 60} class:early={finishOffset < -60}>
           {fmtOffsetShort(finishOffset)} vs {fmtWhen(stats.scheduledEnd, live.now)}
         </span>
+      {/if}
+      {#if likelyGap != null && live.phase !== 'complete'}
+        <span
+          class="off likely"
+          title="If the rest goes like the runs so far: {Math.round(
+            live.pace!.runRatio * 100,
+          )}% of estimates, changeovers {fmtOffsetShort(live.pace!.setupDeltaSec)}"
+          >likely {fmtWhen(live.likelyEnd, live.now)}</span
+        >
       {/if}
     </div>
     {#if !compact}
@@ -194,6 +211,12 @@
   }
   .off.early {
     color: var(--info);
+  }
+  .off.likely {
+    color: var(--text-2);
+    border-bottom: 1px dotted var(--faint);
+    justify-self: start;
+    cursor: help;
   }
   .checkins {
     display: flex;
