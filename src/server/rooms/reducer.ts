@@ -28,6 +28,8 @@ export interface ReduceContext {
   now: number;
   /** Display name of the operator, or null when auth is disabled. */
   actor: string | null;
+  /** The change came from a runner's own check-in link, not an operator. */
+  runner?: boolean;
 }
 
 export type ReduceResult =
@@ -46,6 +48,7 @@ const UNDOABLE: ReadonlySet<ReducibleAction['action']> = new Set([
   'run:unskip',
   'run:edit',
   'runner:checkin',
+  'runner:late',
   'twitch:set',
   'message:set',
   'message:clear',
@@ -290,17 +293,40 @@ function apply(s: RoomState, action: ReducibleAction, ctx: ReduceContext): strin
       const { line } = lineFor(action.key);
       if (line.setupBlock) throw invalid('Setup blocks have no runners.');
       const r = rec(line.key);
-      if ((r.checkIn ?? null) === action.status) throw new NoChange();
+      if ((r.checkIn ?? null) === action.status && !r.late) throw new NoChange();
       if (action.status) r.checkIn = action.status;
       else delete r.checkIn;
+      // Here, missing or cleared: whatever they said about being late no longer applies.
+      delete r.late;
       const who = line.runners.join(', ') || lineTitle(line);
       const text =
         action.status === 'ready'
-          ? `✓ ${who} checked in for ${lineTitle(line)}`
+          ? `✓ ${who} checked in for ${lineTitle(line)}${ctx.runner ? ' (from their link)' : ''}`
           : action.status === 'missing'
             ? `⚠ ${who} missing for ${lineTitle(line)}`
             : `Cleared check-in for ${lineTitle(line)}`;
       return log(text, action.status === 'missing' ? 'warning' : 'runner', line.key);
+    }
+
+    case 'runner:late': {
+      const { line } = lineFor(action.key);
+      if (line.setupBlock) throw invalid('Setup blocks have no runners.');
+      const r = rec(line.key);
+      delete r.checkIn;
+      r.late = {
+        at: now,
+        etaAt: action.minutes == null ? null : now + action.minutes * 60_000,
+        note: action.note,
+        self: !!ctx.runner,
+      };
+      const who = line.runners.join(', ') || lineTitle(line);
+      const away = action.minutes == null ? 'not sure when' : `about ${action.minutes} min away`;
+      const note = action.note ? `: “${action.note}”` : '';
+      return log(
+        `⏱ ${who} running late for ${lineTitle(line)}, ${away}${note}`,
+        'warning',
+        line.key,
+      );
     }
 
     case 'log:add':

@@ -2,6 +2,7 @@
   import { Ellipsis, RefreshCw, RotateCcw, Search } from '@lucide/svelte';
   import { lineTitle } from '../../../shared/derive.ts';
   import { upstreamUrl } from '../../../shared/sources.ts';
+  import { etaText } from '../../lib/checkin.ts';
   import {
     fmtClock,
     fmtDay,
@@ -205,6 +206,10 @@
         <td>
           {#if r.rec?.checkIn === 'missing'}
             <span class="chip bad">Runner missing</span>
+          {:else if r.rec?.late && r.status === 'upcoming'}
+            <span class="chip warn" title={r.rec.late.note || undefined}
+              >Late · {etaText(r.rec.late, live.now)}</span
+            >
           {:else if r.rec?.checkIn === 'ready' && r.status === 'upcoming'}
             <span class="chip ok">Ready</span>
           {:else}

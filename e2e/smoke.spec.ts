@@ -104,6 +104,39 @@ test('the event report compares the run with the plan and exports it', async ({ 
   expect(errors).toEqual([]);
 });
 
+test('a runner checks in from their own link', async ({ browser }) => {
+  const operator = await browser.newPage();
+  await openDemo(operator);
+  await operator.keyboard.press('Control+k');
+  await operator.getByRole('combobox', { name: 'Search commands and runs' }).fill('hades');
+  await operator.keyboard.press('Enter');
+  const sheet = operator.getByRole('dialog', { name: 'Hades' });
+  await sheet.getByRole('button', { name: 'Runner check-in link' }).click();
+  await expect(sheet.getByRole('img', { name: 'QR code for the check-in link' })).toBeVisible();
+  const url = await sheet.locator('code').innerText();
+  expect(url).toMatch(/\/demo\/demo\/main\?checkin=.+&t=[\w-]{22}$/);
+
+  const runner = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true });
+  await runner.goto(url);
+  await expect(runner.getByRole('region', { name: 'Your run' })).toContainText('Hades');
+  await runner.getByRole('button', { name: 'Running late' }).click();
+  await runner.getByRole('radio', { name: '10 min' }).click();
+  await runner.getByLabel('Anything to add? (optional)').fill('Bus is slow');
+  await runner.getByRole('button', { name: 'Tell the organisers' }).click();
+  await expect(runner.getByText('The organisers know you’re on your way')).toBeVisible();
+
+  await expect(sheet).toContainText('Running late');
+  await expect(sheet).toContainText('“Bus is slow”');
+
+  await runner.getByRole('button', { name: 'I’m here now' }).click();
+  await expect(runner.getByText('You’re checked in')).toBeVisible();
+  await expect(sheet.getByRole('radio', { name: 'Ready' })).toHaveAttribute('aria-checked', 'true');
+
+  // Someone else's (or a mangled) link gets nowhere.
+  await runner.goto(url.replace(/t=[\w-]+$/, 't=AAAAAAAAAAAAAAAAAAAAAA'));
+  await expect(runner.getByText('This link isn’t valid')).toBeVisible();
+});
+
 // Keep last: it wipes the shared demo room.
 test('the whole marathon can be reset after typing to confirm', async ({ page }) => {
   await openDemo(page);

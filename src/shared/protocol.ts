@@ -16,6 +16,11 @@ const runKey = z.string().min(1).max(80);
 const color = z.string().regex(/^#[0-9a-fA-F]{3,8}$/);
 const epochMs = z.number().int().min(0).max(8.64e15);
 const text = (max: number) => z.string().trim().min(1).max(max);
+/** How far away a late runner is (null: not sure), and anything they want to add. */
+const lateFields = {
+  minutes: z.number().int().min(1).max(240).nullable(),
+  note: z.string().trim().max(140),
+};
 
 export const ClientActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('join'), ref: RoomRefSchema }),
@@ -49,6 +54,8 @@ export const ClientActionSchema = z.discriminatedUnion('action', [
     key: runKey,
     status: z.enum(['ready', 'missing']).nullable(),
   }),
+  /** The runners are on their way: about `minutes` away (null: not sure). */
+  z.object({ action: z.literal('runner:late'), key: runKey, ...lateFields }),
 
   z.object({
     action: z.literal('log:add'),
@@ -90,6 +97,13 @@ export const ClientActionSchema = z.discriminatedUnion('action', [
   /** `id` names the change the operator saw; a different latest change is left alone. */
   z.object({ action: z.literal('undo'), id: z.number().int().optional() }),
 ]);
+
+/** A runner's own check-in, posted from their link over HTTP (runners aren't operators). */
+export const SelfCheckInSchema = z.discriminatedUnion('status', [
+  z.object({ t: z.string().max(64), status: z.literal('ready') }),
+  z.object({ t: z.string().max(64), status: z.literal('late'), ...lateFields }),
+]);
+export type SelfCheckIn = z.infer<typeof SelfCheckInSchema>;
 
 export type ClientAction = z.infer<typeof ClientActionSchema>;
 export type ActionName = ClientAction['action'];

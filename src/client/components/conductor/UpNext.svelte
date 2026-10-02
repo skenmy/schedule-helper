@@ -1,6 +1,7 @@
 <script lang="ts">
   import { lineTitle } from '../../../shared/derive.ts';
-  import { fmtClock, fmtHM, fmtOffsetShort } from '../../lib/format.ts';
+  import { etaText } from '../../lib/checkin.ts';
+  import { checkInState, fmtClock, fmtHM, fmtOffsetShort } from '../../lib/format.ts';
   import { getLive } from '../../lib/live.svelte.ts';
   import { ui } from '../../lib/ui.svelte.ts';
 
@@ -15,7 +16,17 @@
         projected != null && line.scheduledStart != null
           ? (projected - line.scheduledStart) / 1000
           : 0;
-      return { line, projected, drift, checkIn: live.state.runs[line.key]?.checkIn };
+      const rec = live.state.runs[line.key];
+      const ci = checkInState(rec);
+      const hint =
+        ci === 'ready'
+          ? 'Runners ready'
+          : ci === 'late'
+            ? `Running late · ${etaText(rec!.late!, live.now)}`
+            : ci === 'missing'
+              ? 'Runner missing'
+              : 'Not checked in';
+      return { line, projected, drift, ci, hint };
     }),
   );
 </script>
@@ -46,14 +57,7 @@
       </span>
       <span class="side">
         <span class="num est">{fmtHM(r.line.estimateSec)}</span>
-        <span
-          class="ci {r.checkIn ?? 'none'}"
-          title={r.checkIn === 'ready'
-            ? 'Runners ready'
-            : r.checkIn === 'missing'
-              ? 'Runner missing'
-              : 'Not checked in'}
-        ></span>
+        <span class="ci {r.ci}" title={r.hint} aria-label={r.hint} role="img"></span>
       </span>
     </button>
   {:else}
@@ -142,6 +146,10 @@
   .ci.missing {
     background: var(--bad);
     border-color: var(--bad);
+  }
+  .ci.late {
+    background: var(--warn);
+    border-color: var(--warn);
   }
   .empty {
     padding: 14px;

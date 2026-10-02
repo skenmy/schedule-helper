@@ -4,6 +4,7 @@
   import { Play, Square, StepForward } from '@lucide/svelte';
   import { lineTitle } from '../../../shared/derive.ts';
   import {
+    checkInState,
     fmtClock,
     fmtDelta,
     fmtHM,
@@ -138,10 +139,10 @@
     {:else if id === 'checkins'}
       <ol class="list">
         {#each next as n (n.line.key)}
-          {@const ci = live.state.runs[n.line.key]?.checkIn}
+          {@const ci = checkInState(live.state.runs[n.line.key])}
           <li>
-            <span class="ci {ci ?? 'none'}"
-              >{ci === 'ready' ? '✓' : ci === 'missing' ? '✗' : '?'}</span
+            <span class="ci {ci}"
+              >{ci === 'ready' ? '✓' : ci === 'missing' ? '✗' : ci === 'late' ? '⏱' : '?'}</span
             >
             <span class="what"
               ><b>{n.line.runners.join(', ') || '—'}</b><small
@@ -460,6 +461,10 @@
   .ci.missing {
     background: var(--bad-soft);
     color: var(--bad);
+  }
+  .ci.late {
+    background: var(--warn-soft);
+    color: var(--warn);
   }
   .log li {
     grid-template-columns: auto 1fr;

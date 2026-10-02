@@ -1,8 +1,9 @@
 <script lang="ts">
   import { Search } from '@lucide/svelte';
-  import { lineTitle } from '../../../shared/derive.ts';
+  import { lineTitle, upcomingIndexes } from '../../../shared/derive.ts';
   import { roomPath } from '../../../shared/sources.ts';
-  import { fmtClock } from '../../lib/format.ts';
+  import { checkinTokens, checkinUrl } from '../../lib/checkin.ts';
+  import { fmtClock, fmtWhen } from '../../lib/format.ts';
   import { kioskUrl } from '../../lib/kiosk.ts';
   import { LAYOUT_PREFS } from '../../lib/layout.ts';
   import { layout } from '../../lib/layout.svelte.ts';
@@ -11,6 +12,7 @@
   import { reportPath } from '../../lib/report.ts';
   import { getRoom } from '../../lib/room.svelte.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import { toasts } from '../../lib/toasts.svelte.ts';
   import { ui, type TabId } from '../../lib/ui.svelte.ts';
 
   const room = getRoom();
@@ -39,6 +41,37 @@
       el.showModal();
     } else if (!ui.palette && el.open) el.close();
   });
+
+  /** Every upcoming run's check-in link, one block per run, ready to paste into a chat. */
+  async function copyCheckinLinks() {
+    try {
+      const tokens = await checkinTokens(room.ref);
+      const blocks = upcomingIndexes(live.lines, live.state, live.lines.length)
+        .filter((i) => tokens[live.lines[i]!.key] && live.lines[i]!.runners.length)
+        .map((i) => {
+          const line = live.lines[i]!;
+          const at = fmtWhen(live.projection[i]?.start, live.now);
+          const who = line.runners.join(', ');
+          return `${lineTitle(line)} (${who}) · ${at}\n${checkinUrl(room.ref, line.key, tokens[line.key]!)}`;
+        });
+      if (!blocks.length) {
+        toasts.push({ kind: 'info', title: 'No upcoming runs to send links for' });
+        return;
+      }
+      await navigator.clipboard.writeText(blocks.join('\n\n'));
+      toasts.push({
+        kind: 'success',
+        title: `Copied ${blocks.length} check-in link${blocks.length === 1 ? '' : 's'}`,
+        body: 'One per upcoming run. Each only works for its own run.',
+      });
+    } catch (err) {
+      toasts.push({
+        kind: 'error',
+        title: 'Couldn’t copy the links',
+        body: (err as Error).message,
+      });
+    }
+  }
 
   const tab = (id: TabId, label: string): Item => ({
     id: `tab-${id}`,
@@ -172,6 +205,15 @@
         label: floor ? 'Switch to the console' : 'Switch to the floor view',
         hint: floor ? 'Every tool and tab' : 'Big timer and one-tap check-ins',
         run: () => (prefs.tabletMode = floor ? 'console' : 'floor'),
+      });
+    }
+    if (room.isOperator) {
+      items.push({
+        id: 'checkin-links',
+        group: 'Actions',
+        label: 'Copy runner check-in links',
+        hint: 'A link per upcoming run: “I’m here” or “running late”',
+        run: () => void copyCheckinLinks(),
       });
     }
     if (live.catchUp) {

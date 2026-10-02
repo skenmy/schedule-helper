@@ -182,6 +182,32 @@ describe('edits and check-ins', () => {
     s = run(s, { action: 'runner:checkin', key: 'b', status: null }).state;
     expect(s.runs.b?.checkIn).toBeUndefined();
   });
+
+  it('records a runner on their way, until any check-in replaces it', () => {
+    let s = run(initialState(), { action: 'runner:checkin', key: 'b', status: 'ready' }).state;
+    const res = reduce(
+      s,
+      { action: 'runner:late', key: 'b', minutes: 15, note: 'Train delayed' },
+      { lines: LINES, now: T0, actor: 'rb (check-in link)', runner: true },
+    );
+    if (!res.ok) throw new Error(res.message);
+    s = res.state;
+    expect(res.undo).toBe('⏱ rb running late for Game b, about 15 min away: “Train delayed”');
+    expect(s.runs.b).toEqual({
+      late: { at: T0, etaAt: T0 + 15 * MIN, note: 'Train delayed', self: true },
+    });
+    expect(s.log[0]).toMatchObject({ kind: 'warning', actor: 'rb (check-in link)', runKey: 'b' });
+
+    // An operator passing it on, without a time.
+    s = run(s, { action: 'runner:late', key: 'b', minutes: null, note: '' }).state;
+    expect(s.runs.b?.late).toEqual({ at: T0, etaAt: null, note: '', self: false });
+    expect(s.log[0]?.text).toBe('⏱ rb running late for Game b, not sure when');
+
+    // Marking them missing (or ready) supersedes it, even though the check-in was already empty.
+    s = run(s, { action: 'runner:checkin', key: 'b', status: null }).state;
+    expect(s.runs.b?.late).toBeUndefined();
+    expect(fail(s, { action: 'runner:late', key: 's', minutes: 5, note: '' }).code).toBe('invalid');
+  });
 });
 
 describe('broadcasts and settings', () => {

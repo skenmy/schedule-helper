@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Pencil, Play, RotateCcw, SkipForward } from '@lucide/svelte';
+  import { Clock, Pencil, Play, RotateCcw, SkipForward } from '@lucide/svelte';
   import { indexOfKey, lineTitle } from '../../../shared/derive.ts';
   import type { CheckIn } from '../../../shared/types.ts';
   import {
@@ -10,11 +10,14 @@
     fmtOffsetShort,
     hueOf,
     initials,
+    relTime,
     runStatus,
   } from '../../lib/format.ts';
+  import { etaText } from '../../lib/checkin.ts';
   import { getLive, getOps } from '../../lib/live.svelte.ts';
   import { getRoom } from '../../lib/room.svelte.ts';
   import { ui } from '../../lib/ui.svelte.ts';
+  import CheckInLink from '../checkin/CheckInLink.svelte';
   import Dialog from '../ui/Dialog.svelte';
   import Segmented from '../ui/Segmented.svelte';
 
@@ -82,6 +85,25 @@
           {disabled}
           onchange={(v) => ops.checkIn(line.key, v === 'none' ? null : v)}
         />
+        {#if rec?.late}
+          <p class="late">
+            <Clock size={15} />
+            <span
+              ><b>Running late</b> · {etaText(rec.late, live.now)}{rec.late.note
+                ? ` · “${rec.late.note}”`
+                : ''}
+              <small
+                >{rec.late.self ? 'from the runner' : 'passed on'}
+                {relTime(rec.late.at, live.now)}</small
+              ></span
+            >
+          </p>
+        {/if}
+        {#if room.isOperator && status === 'upcoming' && !rec?.startedAt}
+          {#key line.key}
+            <CheckInLink key={line.key} title={lineTitle(line)} runners={line.runners} />
+          {/key}
+        {/if}
       </section>
     {/if}
 
@@ -191,6 +213,25 @@
     color: oklch(0.95 0.03 var(--h));
     font-size: 12px;
     font-weight: 800;
+  }
+  .late {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    background: var(--warn-soft);
+    color: var(--text);
+    font-size: 13.5px;
+  }
+  .late :global(svg) {
+    flex: none;
+    margin-top: 2px;
+    color: var(--warn);
+  }
+  .late small {
+    color: var(--muted);
+    margin-left: 4px;
   }
   dl {
     display: grid;

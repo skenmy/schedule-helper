@@ -13,9 +13,20 @@
   import Kiosk from './Kiosk.svelte';
   import MobileConductor from './MobileConductor.svelte';
   import Report from './Report.svelte';
+  import RunnerCheckIn from './RunnerCheckIn.svelte';
   import TabletConductor from './TabletConductor.svelte';
 
-  let { ref, kiosk, report }: { ref: RoomRef; kiosk: boolean; report: boolean } = $props();
+  let {
+    ref,
+    kiosk,
+    report,
+    checkin,
+  }: {
+    ref: RoomRef;
+    kiosk: boolean;
+    report: boolean;
+    checkin: { key: string; token: string } | null;
+  } = $props();
 
   const room = new RoomConnection(untrack(() => ref));
   setRoom(room);
@@ -46,13 +57,14 @@
     room.schedule ? `${room.schedule.eventName} · ${room.schedule.scheduleName}` : null,
   );
   $effect(() => {
-    const prefix = kiosk ? 'Kiosk · ' : report ? 'Report · ' : '';
+    const prefix = checkin ? 'Check in · ' : kiosk ? 'Kiosk · ' : report ? 'Report · ' : '';
     document.title = title ? `${prefix}${title}` : 'Schedule Helper';
   });
 
   let remembered = false;
   $effect(() => {
-    if (!title || remembered || kiosk) return;
+    // A runner's link isn't a schedule they work on; don't reopen it as one.
+    if (!title || remembered || kiosk || checkin) return;
     remembered = true;
     untrack(() => prefs.remember(ref, title));
   });
@@ -81,6 +93,8 @@
       <p>{room.status === 'reconnecting' ? 'Reconnecting…' : 'Loading schedule…'}</p>
     </div>
   </main>
+{:else if checkin}
+  <RunnerCheckIn runKey={checkin.key} token={checkin.token} />
 {:else if kiosk}
   <Kiosk />
 {:else if report}

@@ -138,6 +138,9 @@
         <span class="label">Check-ins · next {live.upcoming.length}</span>
         <span class="checkins">
           <span class="chip ok" title="Ready">✓ {live.checkIns.ready}</span>
+          {#if live.checkIns.late}<span class="chip warn" title="Running late"
+              >⏱ {live.checkIns.late}</span
+            >{/if}
           {#if live.checkIns.missing}<span class="chip bad" title="Missing"
               >✗ {live.checkIns.missing}</span
             >{/if}

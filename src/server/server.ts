@@ -3,6 +3,7 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { runCapture, startDriftScheduler } from './capture/service.ts';
+import { CheckInTokens } from './checkin.ts';
 import { config } from './config.ts';
 import { createApp } from './http.ts';
 import { RoomRegistry } from './rooms/registry.ts';
@@ -32,7 +33,8 @@ export async function startServer(opts: {
     store: new RoomStore(opts.dataDir),
     services: { fetchSchedule, capture: runCapture, ...opts.services },
   });
-  const server = http.createServer(createApp(registry));
+  const checkins = CheckInTokens.load(opts.dataDir, config.checkinSecret);
+  const server = http.createServer(createApp(registry, { checkins }));
   const wss = attachWebSocket(server, registry);
   const stopDrift = startDriftScheduler(registry);
   const stopTracking = startTracking(registry, {

@@ -65,6 +65,7 @@ export function buildFeed(room: Room, now = Date.now()) {
       ...runInfo(lines[i]!),
       projectedStart: projection[i]?.start ?? null,
       checkIn: s.runs[lines[i]!.key]?.checkIn ?? null,
+      late: s.runs[lines[i]!.key]?.late ?? null,
     })),
     delta: delta == null ? null : { seconds: delta, status: scheduleStatus(delta) },
     scheduledEnd: stats.scheduledEnd,

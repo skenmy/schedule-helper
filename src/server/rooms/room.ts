@@ -132,6 +132,7 @@ export class Room {
     action: MutatingAction,
     actor: string | null,
     reply: (msg: ServerMessage) => void = () => {},
+    { runner = false }: { runner?: boolean } = {},
   ): DispatchResult {
     switch (action.action) {
       case 'undo':
@@ -153,7 +154,7 @@ export class Room {
 
     const now = Date.now();
     const before = takeSnapshot(this.state);
-    const res = reduce(this.state, action, { lines: this.schedule.lines, now, actor });
+    const res = reduce(this.state, action, { lines: this.schedule.lines, now, actor, runner });
     if (!res.ok) return res;
     if (!res.changed) return { ok: true, undo: null };
     let undo: UndoInfo | null = null;

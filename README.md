@@ -34,6 +34,13 @@ Horaro schedule. Try it offline with the built-in demo marathon (`/demo/demo/mai
 - **Run control.** Start, stop, resume, advance, back, skip / restore, set the timer after a late
   start, and edit actual start/end times (absolute timestamps — multi-day marathons work).
 - **Runner check-ins** per run (ready / missing), summarised for the next five runs.
+- **Runner self check-in.** Every run has its own link (a QR code in the run's sheet, or
+  **Copy runner check-in links** in the command palette for all of them at once). A runner opens it
+  on their phone, sees when their run is expected to start, and taps **I'm here** or **Running
+  late** (how far away, plus an optional note). It shows on every operator's screen as it happens:
+  an amber "late" state with the ETA in Up next, On deck, the schedule and kiosks, and a warning in
+  the log. Runners need no account; a link can only check in its own run. Operator check-ins still
+  work as before and replace whatever the runner said.
 - **Undo and audit trail.** Every change is logged with who made it; undo reverts the most recent
   change to runs, timers, check-ins or broadcasts.
 - **Reset marathon.** Schedule tab → **Reset…** (or the command palette) starts the marathon over
@@ -151,13 +158,30 @@ Read-only and CORS-open — the same information any viewer can already see.
 
 - `GET /api/rooms/{source}/{event}/{slug}/feed` — JSON snapshot: event, phase, current run (with
   `startedAt` so overlays can tick the timer locally), next five runs with projected starts and
-  check-ins, delta, scheduled and projected end, progress, message and announcement.
+  check-ins (and `late`: ETA and note, when a runner said they're on their way), delta, scheduled
+  and projected end, progress, message and announcement.
 - `GET /api/rooms/{source}/{event}/{slug}/feed/stream` — the same snapshot as Server-Sent Events
   (`event: feed`), pushed on every change.
 - `GET /api/rooms/{source}/{event}/{slug}/report.json` / `report.csv` — the event report
   (`shared/report.ts`): per run, the scheduled and actual start and end, estimate and time taken,
   start against schedule, and the changeover after it against its plan; plus the overall
   figures. CSV times are ISO 8601 UTC, durations `HH:MM:SS`, deltas signed seconds.
+
+## Runner check-in links
+
+A link is `/{source}/{event}/{slug}?checkin={run key}&t={token}`, where the token is an HMAC of
+the room and run key (`src/server/checkin.ts`). It authorises exactly one thing: that run's check-in.
+
+- `GET /api/rooms/{ref}/checkin-links` — every run's token. Operators only (the same
+  tools.skenmy.com cookie check as the socket).
+- `GET /api/rooms/{ref}/checkin/{key}?t=…` — 200 if the link is good, 403 if not.
+- `POST /api/rooms/{ref}/checkin/{key}` with `{ t, status: 'ready' }` or
+  `{ t, status: 'late', minutes: 1–240 | null, note }` — dispatches `runner:checkin` /
+  `runner:late` as `{runners} (check-in link)`: logged and undoable like any check-in. Refused once
+  the run has started, been skipped, or left the schedule.
+
+The secret is generated into `DATA_DIR/checkin-secret` on first start, so links survive restarts
+and deploys. Delete it (or change `CHECKIN_SECRET`) to invalidate every link.
 
 ## Environment
 
@@ -178,6 +202,7 @@ Read-only and CORS-open — the same information any viewer can already see.
 | `TWITCH_CLIENT_SECRET` | _(empty)_                                    | Its secret. Without both, Twitch tracking says it isn't set up.                        |
 | `STREAM_INFO_FILE`     | _(empty)_                                    | Dev/testing: read channel info from this JSON file instead of Twitch.                  |
 | `TRACKING_TICK_MS`     | `30000`                                      | How often auto-tracking polls Twitch.                                                  |
+| `CHECKIN_SECRET`       | _(empty)_                                    | Signs runner check-in links. Empty: generated once into `DATA_DIR/checkin-secret`.     |
 | `CLIENT_DIR`           | `dist/client`                                | Built client assets.                                                                   |
 | `LOG_LEVEL`            | `info`                                       | `debug`, `info`, `warn` or `error`.                                                    |
 
