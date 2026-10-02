@@ -161,18 +161,84 @@ describe('buildReport', () => {
       }),
       T0 + 200 * MIN,
     );
-    expect(r.runs).toEqual({ total: 3, done: 2, skipped: 1 });
+    expect(r.runs).toEqual({ total: 3, done: 2, skipped: 1, unplayed: 0 });
     expect(r.rows[1]).toMatchObject({ status: 'skipped', actualSec: null, changeoverSec: null });
     // a's changeover runs to c, the next run played: its setup and the interview were planned, not b.
     expect(r.rows[0]).toMatchObject({ changeoverSec: 10 * 60, plannedChangeoverSec: 30 * 60 });
     expect(r.runTimeSec).toBe(50 * 60);
   });
 
+  it('pairs changeovers in the order runs were played, not the schedule', () => {
+    // Swapped on the day: c (12:10 on the schedule) went before b.
+    const r = buildReport(
+      schedule(),
+      state({
+        finishedAt: T0 + 140 * MIN,
+        runs: {
+          a: { startedAt: T0, endedAt: T0 + 30 * MIN },
+          c: { startedAt: T0 + 40 * MIN, endedAt: T0 + 60 * MIN },
+          b: { startedAt: T0 + 70 * MIN, endedAt: T0 + 130 * MIN },
+        },
+      }),
+      T0 + 200 * MIN,
+    );
+    const [a, b, , c] = r.rows;
+    // Every changeover took ten minutes; none was the one the schedule planned.
+    expect(a).toMatchObject({ changeoverSec: 10 * 60, plannedChangeoverSec: null });
+    expect(c).toMatchObject({ changeoverSec: 10 * 60, plannedChangeoverSec: null });
+    expect(b).toMatchObject({ changeoverSec: null });
+    expect(r.changeoverDeltaSec).toBeNull();
+    expect(r.changeoversMeasured).toBe(0);
+  });
+
+  it('calls a run nobody started "not run" once the marathon has moved past it', () => {
+    const finished = buildReport(
+      schedule(),
+      state({
+        finishedAt: T0 + 140 * MIN,
+        runs: {
+          a: { startedAt: T0, endedAt: T0 + 30 * MIN },
+          c: { startedAt: T0 + 40 * MIN, endedAt: T0 + 60 * MIN },
+        },
+      }),
+      T0 + 200 * MIN,
+    );
+    expect(finished.rows[1]).toMatchObject({ key: 'b', status: 'unplayed' });
+    expect(finished.runs).toEqual({ total: 3, done: 2, skipped: 0, unplayed: 1 });
+
+    // Mid-marathon: jumped from a straight to c.
+    const live = buildReport(
+      schedule(),
+      state({ currentKey: 'c', runs: { a: { startedAt: T0, endedAt: T0 + 30 * MIN } } }),
+      T0 + 40 * MIN,
+    );
+    expect(live.rows.map((x) => x.status)).toEqual(['done', 'unplayed', 'interlude', 'live']);
+  });
+
+  it('leaves breaks out of the changeover median', () => {
+    const r = buildReport(
+      schedule(),
+      state({
+        finishedAt: T0 + 600 * MIN,
+        runs: {
+          a: { startedAt: T0, endedAt: T0 + 30 * MIN },
+          b: { startedAt: T0 + 42 * MIN, endedAt: T0 + 100 * MIN },
+          // Overnight between b and c.
+          c: { startedAt: T0 + 500 * MIN, endedAt: T0 + 520 * MIN },
+        },
+      }),
+      T0 + 700 * MIN,
+    );
+    expect(r.rows[1]!.changeoverSec).toBe(400 * 60);
+    expect(r.changeoverDeltaSec).toBe(2 * 60);
+    expect(r.changeoversMeasured).toBe(1);
+  });
+
   it('has nothing to say before the marathon starts', () => {
     const r = buildReport(schedule(), state(), T0 - 60 * MIN);
     expect(r).toMatchObject({
       actualStart: null,
-      runs: { total: 3, done: 0, skipped: 0 },
+      runs: { total: 3, done: 0, skipped: 0, unplayed: 0 },
       changeoverDeltaSec: null,
       overruns: [],
       underruns: [],

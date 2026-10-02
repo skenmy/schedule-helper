@@ -5,15 +5,7 @@
   import { roomPath } from '../../shared/sources.ts';
   import DeltaChart from '../components/report/DeltaChart.svelte';
   import { clock } from '../lib/clock.svelte.ts';
-  import {
-    fmtClock,
-    fmtDelta,
-    fmtDuration,
-    fmtHMS,
-    fmtLate,
-    fmtWhen,
-    relTime,
-  } from '../lib/format.ts';
+  import { fmtDelta, fmtDuration, fmtHMS, fmtLate, fmtWhen, relTime } from '../lib/format.ts';
   import { getLive } from '../lib/live.svelte.ts';
   import { downloadCsv, reportApi } from '../lib/report.ts';
   import { getRoom } from '../lib/room.svelte.ts';
@@ -31,7 +23,8 @@
   // projections move by the minute and the page shouldn't churn at 4 Hz.
   const at = $derived(Math.floor(live.now / 15_000) * 15_000);
   const report = $derived(buildReport(room.schedule!, live.state, at));
-  const now = $derived(live.now);
+  /** Times here only need to know which day it is, so the 15-second clock will do. */
+  const now = $derived(at);
   const runRows = $derived(report.rows.filter((r) => r.number != null));
 
   const startLate = $derived(
@@ -49,8 +42,20 @@
       : null,
   );
   const runDiff = $derived(report.runTimeSec - report.runEstimateSec);
-  const changeovers = $derived(report.rows.filter((r) => r.changeoverSec != null).length);
-  const toGo = $derived(report.runs.total - report.runs.done - report.runs.skipped);
+  const changeovers = $derived(report.changeoversMeasured);
+  const { runs } = $derived(report);
+  const toGo = $derived(
+    report.complete ? 0 : runs.total - runs.done - runs.skipped - runs.unplayed,
+  );
+  const runsNote = $derived(
+    [
+      runs.skipped ? `${runs.skipped} skipped` : '',
+      runs.unplayed ? `${runs.unplayed} not run` : '',
+      toGo > 0 ? `${toGo} to go` : '',
+    ]
+      .filter(Boolean)
+      .join(' · ') || 'None skipped',
+  );
 
   const badge = $derived(
     report.complete
@@ -84,17 +89,23 @@
       onclick={() => router.back(roomPath(room.ref))}
       aria-label="Back to the console"
     >
-      <ArrowLeft size={18} /><span>Console</span>
+      <ArrowLeft size={18} /><span class="txt">Console</span>
     </button>
     <div class="actions">
-      <button class="btn sm" onclick={() => downloadCsv(report)}>
-        <Download size={15} /> CSV
+      <button class="btn sm" onclick={() => downloadCsv(report)} title="Download CSV">
+        <Download size={15} /> <span class="txt">CSV</span>
       </button>
-      <a class="btn sm ghost" href={reportApi(room.ref, 'json')} target="_blank" rel="noopener">
-        <Braces size={15} /> JSON
+      <a
+        class="btn sm ghost"
+        href={reportApi(room.ref, 'json')}
+        target="_blank"
+        rel="noopener"
+        title="Open as JSON"
+      >
+        <Braces size={15} /> <span class="txt">JSON</span>
       </a>
-      <button class="btn sm ghost" onclick={() => window.print()}>
-        <Printer size={15} /> Print
+      <button class="btn sm ghost" onclick={() => window.print()} title="Print">
+        <Printer size={15} /> <span class="txt">Print</span>
       </button>
     </div>
   </header>
@@ -139,11 +150,7 @@
         <div class="card tile">
           <span class="label">Runs</span>
           <b class="num">{report.runs.done}<small>/{report.runs.total}</small></b>
-          <span
-            >{report.runs.skipped ? `${report.runs.skipped} skipped` : 'None skipped'}{toGo > 0
-              ? ` · ${toGo} to go`
-              : ''}</span
-          >
+          <span>{runsNote}</span>
         </div>
         <div class="card tile">
           <span class="label">Runs vs estimate</span>
@@ -231,7 +238,8 @@
                   <td class="n"></td>
                   <td colspan="8"
                     ><span class="truncate">{r.title}</span>
-                    <small class="num">{fmtClock(r.scheduledStart)} · {fmtHMS(r.estimateSec)}</small
+                    <small class="num"
+                      >{fmtWhen(r.scheduledStart, now)} · {fmtHMS(r.estimateSec)}</small
                     ></td
                   >
                 </tr>
@@ -252,6 +260,7 @@
                   <td class="t num opt">{fmtHMS(r.estimateSec)}</td>
                   <td class="t num">
                     {#if r.status === 'skipped'}<span class="chip">Skipped</span>
+                    {:else if r.status === 'unplayed'}<span class="chip">Not run</span>
                     {:else if r.status === 'live'}<span class="chip accent">Live</span>
                     {:else if r.actualSec != null}{fmtHMS(r.actualSec)}{/if}
                   </td>
@@ -280,8 +289,8 @@
 
     <p class="foot muted">
       Generated {fmtWhen(report.generatedAt, now)} · times are local to this device · “Start” compares
-      each run’s start with the schedule; changeovers run from a run’s end to the next run’s start, against
-      its setup time plus any interlude between.
+      each run’s start with the schedule; changeovers run from a run’s end to the start of the run played
+      next, against its setup time plus any interlude between (gaps over 90 minutes count as breaks).
     </p>
   </main>
 </div>
@@ -289,6 +298,18 @@
 <style>
   .report {
     min-height: 100dvh;
+    container: report / inline-size;
+  }
+  /* Phones: icon-only actions, so the bar stays one row. The labels stay for screen readers. */
+  @container report (max-width: 520px) {
+    .bar .txt {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
   }
   .bar {
     position: sticky;
@@ -512,11 +533,13 @@
     font-size: 11.5px;
   }
   tr.upcoming td,
-  tr.skipped td {
+  tr.skipped td,
+  tr.unplayed td {
     color: var(--muted);
   }
   tr.upcoming .run b,
-  tr.skipped .run b {
+  tr.skipped .run b,
+  tr.unplayed .run b {
     color: var(--text-2);
     font-weight: 500;
   }

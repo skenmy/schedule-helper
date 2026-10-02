@@ -135,12 +135,65 @@ const SETUP_LIMIT_SEC = 20 * 60;
 /** A gap this long between runs is a break (overnight, a pause), not a changeover. */
 const BREAK_SEC = 90 * 60;
 
-const median = (xs: number[]) => {
+/** The middle value (the mean of the middle two for an even count); NaN for none. */
+export const median = (xs: readonly number[]): number => {
   const s = [...xs].sort((a, b) => a - b);
   const mid = s.length >> 1;
   return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
 };
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
+
+export interface Changeover {
+  /** The run that ended, and the run started next after it. */
+  from: RunKey;
+  to: RunKey;
+  actualSec: number;
+  /**
+   * What the schedule allowed: the setup buffer plus any interludes between.
+   * Null when `to` isn't the run the schedule had next (swapped on the day, or
+   * a run in between was passed over), so there's no plan to compare with.
+   */
+  plannedSec: number | null;
+  /** Long enough to be a break (overnight, a pause), not a changeover. */
+  isBreak: boolean;
+}
+
+/**
+ * Changeovers as they happened: from each finished run to whichever run was
+ * started next, in the order they were played (not schedule order, which
+ * swaps on the day and re-imports can change).
+ */
+export function changeovers(lines: Lines, state: RoomState): Changeover[] {
+  const played = lines
+    .map((line, index) => ({ line, index, rec: state.runs[line.key] }))
+    .filter((p) => !p.line.setupBlock && p.rec?.startedAt != null)
+    .sort((a, b) => a.rec!.startedAt! - b.rec!.startedAt!);
+  const out: Changeover[] = [];
+  for (let k = 0; k + 1 < played.length; k++) {
+    const a = played[k]!;
+    const b = played[k + 1]!;
+    const end = a.rec!.endedAt;
+    const start = b.rec!.startedAt!;
+    if (end == null || end <= a.rec!.startedAt! || start < end) continue;
+    let plannedSec: number | null = null;
+    if (nextPlayableIndex(lines, state.runs, a.index) === b.index) {
+      plannedSec = a.line.setupSec;
+      for (let j = a.index + 1; j < b.index; j++) {
+        const between = lines[j]!;
+        if (between.setupBlock) plannedSec += between.estimateSec + between.setupSec;
+      }
+    }
+    const actualSec = (start - end) / 1000;
+    out.push({
+      from: a.line.key,
+      to: b.line.key,
+      actualSec,
+      plannedSec,
+      isBreak: actualSec > BREAK_SEC + (plannedSec ?? 0),
+    });
+  }
+  return out;
+}
 
 /**
  * Measures the event so far: the median of each finished run's actual time
@@ -151,26 +204,16 @@ const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x
  */
 export function eventPace(lines: Lines, state: RoomState): Pace | null {
   const ratios: number[] = [];
-  const setupDeltas: number[] = [];
-  let prev: { index: number; end: number } | null = null;
-  lines.forEach((line, i) => {
+  for (const line of lines) {
     const rec = state.runs[line.key];
-    if (line.setupBlock || rec?.skipped || rec?.startedAt == null) return;
-    if (prev && rec.startedAt >= prev.end) {
-      // Planned gap: the previous run's setup buffer, plus interludes in between.
-      let planned = lines[prev.index]!.setupSec;
-      for (let j = prev.index + 1; j < i; j++) {
-        const between = lines[j]!;
-        if (between.setupBlock) planned += between.estimateSec + between.setupSec;
-      }
-      const actual = (rec.startedAt - prev.end) / 1000;
-      if (actual <= BREAK_SEC + planned) setupDeltas.push(actual - planned);
+    if (line.setupBlock || rec?.skipped || rec?.startedAt == null || rec.endedAt == null) continue;
+    if (rec.endedAt > rec.startedAt && line.estimateSec > 0) {
+      ratios.push((rec.endedAt - rec.startedAt) / 1000 / line.estimateSec);
     }
-    prev = null;
-    if (rec.endedAt == null || rec.endedAt <= rec.startedAt) return;
-    prev = { index: i, end: rec.endedAt };
-    if (line.estimateSec > 0) ratios.push((rec.endedAt - rec.startedAt) / 1000 / line.estimateSec);
-  });
+  }
+  const setupDeltas = changeovers(lines, state)
+    .filter((c) => c.plannedSec != null && !c.isBreak)
+    .map((c) => c.actualSec - c.plannedSec!);
   if (ratios.length < PACE_MIN_RUNS) return null;
   const shrink = (n: number) => n / (n + PACE_PRIOR);
   const ratio = 1 + (median(ratios) - 1) * shrink(ratios.length);

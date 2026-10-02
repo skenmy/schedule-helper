@@ -3,10 +3,11 @@
 // Built from derive.ts — no schedule maths of its own beyond adding up.
 
 import {
+  changeovers,
   currentIndex,
   eventPace,
   lineTitle,
-  nextPlayableIndex,
+  median,
   project,
   projectedEnd,
   scheduledEndOf,
@@ -15,7 +16,8 @@ import {
 import { fmtHMS } from './time.ts';
 import type { RoomRef, RoomState, Schedule } from './types.ts';
 
-export type ReportStatus = 'done' | 'live' | 'skipped' | 'upcoming' | 'interlude';
+/** `unplayed`: never started, and the marathon has moved past it (or finished). */
+export type ReportStatus = 'done' | 'live' | 'skipped' | 'unplayed' | 'upcoming' | 'interlude';
 
 export interface ReportRow {
   key: string;
@@ -35,7 +37,10 @@ export interface ReportRow {
   overSec: number | null;
   /** Scheduled minus actual start: positive started early, like the live delta. */
   startDeltaSec: number | null;
-  /** End of this run to the start of the next one played, and what was planned for it. */
+  /**
+   * End of this run to the start of the run played next, and what the schedule
+   * allowed for it (null when the next run played wasn't the next scheduled).
+   */
   changeoverSec: number | null;
   plannedChangeoverSec: number | null;
 }
@@ -52,29 +57,27 @@ export interface Report {
   /** While it's going: where it's headed (plain), and at its own pace. */
   projectedEnd: number | null;
   likelyEnd: number | null;
-  runs: { total: number; done: number; skipped: number };
+  runs: { total: number; done: number; skipped: number; unplayed: number };
   /** Finished runs: time taken against their estimates. */
   runTimeSec: number;
   runEstimateSec: number;
-  /** Median changeover minus plan, over measured changeovers. */
+  /** Median changeover minus plan, over changeovers with a plan that weren't breaks. */
   changeoverDeltaSec: number | null;
+  /** How many changeovers that median is over. */
+  changeoversMeasured: number;
   rows: ReportRow[];
   /** Up to five each, biggest first. */
   overruns: ReportRow[];
   underruns: ReportRow[];
 }
 
-const median = (xs: number[]) => {
-  const s = [...xs].sort((a, b) => a - b);
-  const mid = s.length >> 1;
-  return s.length ? (s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2) : null;
-};
 const sec = (ms: number) => Math.round(ms / 1000);
 
 export function buildReport(schedule: Schedule, state: RoomState, now: number): Report {
   const { lines } = schedule;
   const cur = currentIndex(lines, state);
   const complete = state.finishedAt != null;
+  const after = new Map(changeovers(lines, state).map((c) => [c.from, c]));
   let number = 0;
   const rows: ReportRow[] = lines.map((line, i) => {
     const rec = state.runs[line.key];
@@ -88,25 +91,11 @@ export function buildReport(schedule: Schedule, state: RoomState, now: number): 
           ? 'live'
           : started != null && ended != null
             ? 'done'
-            : 'upcoming';
+            : started == null && (complete || (cur >= 0 && i < cur))
+              ? 'unplayed'
+              : 'upcoming';
     const actualSec = status === 'done' ? sec(ended! - started!) : null;
-    let changeoverSec: number | null = null;
-    let plannedChangeoverSec: number | null = null;
-    const next = nextPlayableIndex(lines, state.runs, i);
-    const nextStart = next >= 0 ? state.runs[lines[next]!.key]?.startedAt : undefined;
-    if (
-      (status === 'done' || status === 'live') &&
-      ended != null &&
-      nextStart != null &&
-      nextStart >= ended
-    ) {
-      changeoverSec = sec(nextStart - ended);
-      plannedChangeoverSec = line.setupSec;
-      for (let j = i + 1; j < next; j++) {
-        if (lines[j]!.setupBlock)
-          plannedChangeoverSec += lines[j]!.estimateSec + lines[j]!.setupSec;
-      }
-    }
+    const change = status === 'done' || status === 'live' ? after.get(line.key) : undefined;
     return {
       key: line.key,
       number: line.setupBlock ? null : ++number,
@@ -124,8 +113,8 @@ export function buildReport(schedule: Schedule, state: RoomState, now: number): 
         started != null && line.scheduledStart != null && !line.setupBlock
           ? sec(line.scheduledStart - started)
           : null,
-      changeoverSec,
-      plannedChangeoverSec,
+      changeoverSec: change ? sec(change.actualSec * 1000) : null,
+      plannedChangeoverSec: change?.plannedSec ?? null,
     };
   });
 
@@ -134,9 +123,9 @@ export function buildReport(schedule: Schedule, state: RoomState, now: number): 
   const lastEnd = rows.map((r) => r.endedAt).filter((t): t is number => t != null);
   const byOver = done.filter((r) => r.overSec != null).sort((a, b) => b.overSec! - a.overSec!);
   const pace = complete ? null : eventPace(lines, state);
-  const deltas = rows
-    .filter((r) => r.changeoverSec != null && r.plannedChangeoverSec != null)
-    .map((r) => r.changeoverSec! - r.plannedChangeoverSec!);
+  const deltas = [...after.values()]
+    .filter((c) => c.plannedSec != null && !c.isBreak)
+    .map((c) => c.actualSec - c.plannedSec!);
 
   return {
     event: { name: schedule.eventName, schedule: schedule.scheduleName, ref: schedule.ref },
@@ -154,10 +143,12 @@ export function buildReport(schedule: Schedule, state: RoomState, now: number): 
       total: rows.filter((r) => r.number != null).length,
       done: done.length,
       skipped: rows.filter((r) => r.status === 'skipped').length,
+      unplayed: rows.filter((r) => r.status === 'unplayed').length,
     },
     runTimeSec: done.reduce((n, r) => n + r.actualSec!, 0),
     runEstimateSec: done.reduce((n, r) => n + r.estimateSec, 0),
-    changeoverDeltaSec: median(deltas),
+    changeoverDeltaSec: deltas.length ? Math.round(median(deltas)) : null,
+    changeoversMeasured: deltas.length,
     rows,
     overruns: byOver.filter((r) => r.overSec! > 0).slice(0, 5),
     underruns: byOver
