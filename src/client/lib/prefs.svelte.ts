@@ -3,6 +3,7 @@
 
 import type { RoomRef } from '../../shared/types.ts';
 import { DEFAULT_KIOSK, type KioskConfig } from './kiosk.ts';
+import { parseLayoutPref, type LayoutPref, type TabletMode } from './layout.ts';
 
 export const THEMES = [
   { id: 'green', name: 'Green' },
@@ -66,6 +67,11 @@ class Prefs {
   recent = $state<RecentSchedule[]>(read('sh.recent', legacyRecent()));
   kiosk = $state<KioskConfig>(read('sh.kiosk', DEFAULT_KIOSK));
   logFilter = $state<string>(read('sh.logFilter', 'all'));
+  /** Interface override for this device; `auto` picks from the screen. */
+  layout = $state<LayoutPref>(parseLayoutPref(read('sh.layout', 'auto')));
+  tabletMode = $state<TabletMode>(
+    read<string>('sh.tabletMode', 'console') === 'floor' ? 'floor' : 'console',
+  );
 
   constructor() {
     $effect.root(() => {
@@ -74,6 +80,8 @@ class Prefs {
       $effect(() => write('sh.recent', this.recent));
       $effect(() => write('sh.kiosk', this.kiosk));
       $effect(() => write('sh.logFilter', this.logFilter));
+      $effect(() => write('sh.layout', this.layout));
+      $effect(() => write('sh.tabletMode', this.tabletMode));
     });
   }
 

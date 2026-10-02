@@ -48,7 +48,7 @@
       bind:value
       aria-label="Elapsed time"
       placeholder="0:00:00"
-      inputmode="numeric"
+      inputmode="decimal"
     />
     <div class="nudges">
       {#each [-60, -10, -1, 1, 10, 60] as d (d)}
@@ -62,7 +62,9 @@
       {:else if phase === 'finished'}Adjusts the final time; the run stays finished.
       {:else}The run starts now, already this far in — for when the timer was started late.{/if}
     </p>
-    {#if value && seconds == null}<p class="error">Use H:MM:SS, MM:SS or seconds.</p>{/if}
+    {#if value && seconds == null}<p class="error">
+        Use H:MM:SS, MM:SS or seconds (dots work too: 1.23.45).
+      </p>{/if}
   </form>
   {#snippet footer()}
     <button class="btn ghost" onclick={() => (ui.setElapsed = false)}>Cancel</button>

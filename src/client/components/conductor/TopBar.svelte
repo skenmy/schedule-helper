@@ -1,15 +1,24 @@
 <script lang="ts">
-  import { CircleQuestionMark, House, LogIn, MonitorPlay, Search } from '@lucide/svelte';
+  import { CircleQuestionMark, Ellipsis, House, LogIn, MonitorPlay, Search } from '@lucide/svelte';
   import { detectBrand, roomPath } from '../../../shared/sources.ts';
   import { clock } from '../../lib/clock.svelte.ts';
   import { fmtClock } from '../../lib/format.ts';
   import { kioskUrl } from '../../lib/kiosk.ts';
+  import type { TabletMode } from '../../lib/layout.ts';
   import { prefs, THEMES } from '../../lib/prefs.svelte.ts';
   import { getRoom } from '../../lib/room.svelte.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { ui } from '../../lib/ui.svelte.ts';
+  import Segmented from '../ui/Segmented.svelte';
 
-  let { compact = false }: { compact?: boolean } = $props();
+  /** `phone` keeps only the essentials; `tablet` swaps the search box and
+   * kiosk/help buttons for a mode switch and a More menu. */
+  let { variant = 'desktop' }: { variant?: 'desktop' | 'tablet' | 'phone' } = $props();
+  const compact = $derived(variant === 'phone');
+  const MODES = [
+    { value: 'console', label: 'Console' },
+    { value: 'floor', label: 'Floor' },
+  ] as const satisfies readonly { value: TabletMode; label: string }[];
 
   const room = getRoom();
   const brand = $derived(detectBrand(room.ref));
@@ -28,7 +37,7 @@
   }
 </script>
 
-<header class="topbar" class:compact data-huds="bar">
+<header class="topbar {variant}" class:compact data-huds="bar">
   <div class="left">
     <button
       class="btn ghost icon"
@@ -49,20 +58,36 @@
     </div>
   </div>
 
-  {#if !compact}
+  {#if variant === 'desktop'}
     <button class="search" onclick={() => (ui.palette = true)}>
       <Search size={16} />
       <span>Jump to a run or command…</span>
       <span class="kbd">{isMac ? '⌘' : 'Ctrl'} K</span>
     </button>
+  {:else if variant === 'tablet'}
+    <div class="mode">
+      <Segmented label="Interface mode" options={MODES} bind:value={prefs.tabletMode} />
+    </div>
   {/if}
 
   <div class="right">
     <span class="conn" title={room.status === 'open' ? 'Live sync connected' : 'Sync disconnected'}>
       <span class="dot {conn.tone}" class:pulse={room.status !== 'open'}></span>
-      {#if !compact}{conn.text}{/if}
+      {#if variant === 'desktop'}{conn.text}{:else if variant === 'tablet' && room.status === 'open'}{room.presence}{/if}
     </span>
-    {#if !compact}
+    {#if variant === 'tablet'}
+      <span class="clock num">{fmtClock(clock.now)}</span>
+      <button
+        class="btn ghost icon"
+        aria-label="Search runs and commands"
+        onclick={() => (ui.palette = true)}
+      >
+        <Search size={19} />
+      </button>
+      <button class="btn ghost icon" aria-label="More" onclick={() => (ui.moreOpen = true)}>
+        <Ellipsis size={20} />
+      </button>
+    {:else if variant === 'desktop'}
       <span class="clock num">{fmtClock(clock.now, true)}</span>
       {#if !brand}
         <select class="select theme" bind:value={prefs.theme} aria-label="Theme">
@@ -95,7 +120,7 @@
         title="Signed in as {auth.user.login} ({role})"
       >
         {#if auth.user.avatar}<img src={auth.user.avatar} alt="" />{/if}
-        {#if !compact}<span class="name truncate">{auth.user.display}</span>{/if}
+        {#if variant === 'desktop'}<span class="name truncate">{auth.user.display}</span>{/if}
         <span class="role chip {auth.canWrite ? 'accent' : ''}">{role}</span>
       </a>
     {:else if auth?.loginUrl}
@@ -115,7 +140,8 @@
     align-items: center;
     gap: 16px;
     height: var(--topbar-h);
-    padding: 0 var(--gutter) 0 calc(var(--gutter) - 8px);
+    /* Installed apps draw under the status bar (black-translucent). */
+    padding: env(safe-area-inset-top) var(--gutter) 0 calc(var(--gutter) - 8px);
     background: color-mix(in oklab, var(--bg) 88%, transparent);
     backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--border);
@@ -224,6 +250,28 @@
     font-size: 10.5px;
     text-transform: uppercase;
     letter-spacing: 0.08em;
+  }
+  .tablet .names {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+  }
+  .tablet .names strong {
+    font-size: 15.5px;
+    line-height: 1.2;
+  }
+  .tablet .names span {
+    font-size: 12.5px;
+    line-height: 1.2;
+  }
+  .tablet .right {
+    gap: 4px;
+  }
+  .tablet .conn {
+    margin-right: 6px;
+  }
+  .mode {
+    flex: none;
   }
   @media (max-width: 1100px) {
     .search span:not(.kbd),

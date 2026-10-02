@@ -31,11 +31,52 @@
     if (open && !el.open) el.showModal();
     else if (!open && el.open) el.close();
   });
+
+  // Sheets can be swiped away by their header: down when docked to the
+  // bottom (phones), right when docked to the side.
+  let drag = $state(0);
+  let axis = $state<'x' | 'y'>('y');
+  let start = 0;
+  let startAt = 0;
+  let pointer = $state<number | null>(null);
+
+  // Closed mid-drag (Escape, a button, the header unmounting): start clean next time.
+  $effect(() => {
+    if (!open) {
+      drag = 0;
+      pointer = null;
+    }
+  });
+
+  function dragStart(e: PointerEvent) {
+    if (variant !== 'sheet' || e.pointerType === 'mouse') return;
+    if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return;
+    const rect = el.getBoundingClientRect();
+    axis = rect.width >= window.innerWidth - 1 ? 'y' : 'x';
+    start = axis === 'y' ? e.clientY : e.clientX;
+    startAt = performance.now();
+    pointer = e.pointerId;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+  function dragMove(e: PointerEvent) {
+    if (e.pointerId !== pointer) return;
+    drag = Math.max(0, (axis === 'y' ? e.clientY : e.clientX) - start);
+  }
+  function dragEnd(e: PointerEvent) {
+    if (e.pointerId !== pointer) return;
+    pointer = null;
+    const speed = drag / Math.max(1, performance.now() - startAt);
+    // Closing leaves the sheet where the finger let go; the effect above resets it.
+    if (drag > 110 || (drag > 30 && speed > 0.6)) open = false;
+    else drag = 0;
+  }
 </script>
 
 <dialog
   bind:this={el}
   class="dialog {variant} {size}"
+  class:dragging={pointer != null}
+  style:translate={drag ? (axis === 'y' ? `0 ${drag}px` : `${drag}px 0`) : null}
   aria-label={title}
   onclose={() => {
     open = false;
@@ -47,7 +88,19 @@
 >
   {#if open}
     <div class="panel">
-      <header>
+      <!-- svelte-ignore a11y_no_static_element_interactions (a swipe shortcut; the Close button is the accessible way out) -->
+      <header
+        onpointerdown={dragStart}
+        onpointermove={dragMove}
+        onpointerup={dragEnd}
+        onpointercancel={dragEnd}
+        onlostpointercapture={(e) => {
+          if (e.pointerId !== pointer) return;
+          pointer = null;
+          drag = 0;
+        }}
+      >
+        {#if variant === 'sheet'}<span class="grabber" aria-hidden="true"></span>{/if}
         <div class="titles">
           <h2>{title}</h2>
           {#if subtitle}<p>{subtitle}</p>{/if}
@@ -97,23 +150,40 @@
     width: min(460px, 100vw);
     border-radius: var(--radius-lg) 0 0 var(--radius-lg);
     border-right: 0;
+    /* Full height: clear the status bar and home indicator in installed apps. */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 0;
+    transition: translate 0.2s var(--ease);
+  }
+  .dialog.sheet.dragging {
+    transition: none;
   }
   .dialog.sheet[open] {
     animation: slide-left 0.22s var(--ease);
   }
-  @media (max-width: 820px) {
-    .dialog.sheet {
+  .sheet .body {
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  }
+  /* Phones in portrait (and narrow desktop windows): a bottom sheet. */
+  @media (orientation: portrait) {
+    :global(html[data-layout='phone']) .dialog.sheet {
       margin: auto 0 0;
       height: auto;
-      max-height: 88dvh;
+      max-height: calc(92dvh - env(safe-area-inset-top));
       width: 100vw;
       max-width: 100vw;
+      padding: 0;
       border-radius: var(--radius-lg) var(--radius-lg) 0 0;
       border-right: 1px solid var(--border-strong);
       border-bottom: 0;
     }
-    .dialog.sheet[open] {
+    :global(html[data-layout='phone']) .dialog.sheet[open] {
       animation: slide-up 0.22s var(--ease);
+    }
+    :global(html[data-layout='phone']) .sheet header {
+      padding-top: 22px;
+    }
+    :global(html[data-layout='phone']) .grabber {
+      display: block;
     }
   }
   @keyframes pop {
@@ -141,10 +211,27 @@
     height: 100%;
   }
   header {
+    position: relative;
     display: flex;
     align-items: flex-start;
     gap: 12px;
     padding: 18px 16px 12px 22px;
+  }
+  .sheet header {
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .grabber {
+    display: none;
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    width: 38px;
+    height: 5px;
+    margin-left: -19px;
+    border-radius: 3px;
+    background: var(--border-strong);
   }
   .titles {
     flex: 1;

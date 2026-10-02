@@ -83,4 +83,15 @@
     cursor: not-allowed;
     opacity: 0.6;
   }
+  /* Finger-sized on touch screens. */
+  :global([data-touch]) button {
+    min-height: 38px;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+  :global([data-touch]) .sm button {
+    min-height: 34px;
+    padding: 0 11px;
+    font-size: 13px;
+  }
 </style>

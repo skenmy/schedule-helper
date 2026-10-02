@@ -24,7 +24,8 @@ import { ui } from './ui.svelte.ts';
 
 export type Tone = 'on' | 'ahead' | 'behind' | 'idle';
 
-const EMPTY_STATE: RoomState = {
+/** A room with nothing in it yet; also the defaults for an older offline snapshot. */
+export const EMPTY_STATE: RoomState = {
   rev: 0,
   currentKey: null,
   finishedAt: null,

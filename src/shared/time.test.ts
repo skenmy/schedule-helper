@@ -58,8 +58,11 @@ describe('parseDurationInput', () => {
     ['62:03', 3723],
     ['45', 45],
     [' 0:00:10 ', 10],
+    ['1.02.03', 3723],
+    ['62,03', 3723],
   ])('%s → %d', (input, sec) => expect(parseDurationInput(input)).toBe(sec));
-  it.each(['', '1:60', '1:2:3:4', 'abc', '-5', '1:99:00'])('rejects %j', (input) =>
-    expect(parseDurationInput(input)).toBeNull(),
+  it.each(['', '1:60', '1:2:3:4', 'abc', '-5', '1:99:00', '1.5.', '1:2.3.4', '1.5', '1.2.30'])(
+    'rejects %j',
+    (input) => expect(parseDurationInput(input)).toBeNull(),
   );
 });

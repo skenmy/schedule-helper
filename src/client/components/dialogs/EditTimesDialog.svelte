@@ -129,6 +129,7 @@
         <input
           class="input num"
           placeholder="1:02:03"
+          inputmode="decimal"
           bind:value={duration}
           onchange={onDuration}
         />

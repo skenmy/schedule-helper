@@ -20,11 +20,19 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
     structured outputs), `service.ts` (drift evaluation, auto drift scheduler)
   - `ws.ts` sessions (ordered queue, auth gate, heartbeat) · `http.ts` routes · `feed.ts` overlay feed
 - `src/client/` — Svelte 5 runes, Vite root:
-  - `lib/room.svelte.ts` WebSocket connection (`RoomConnection`), reconnect, clock sync
+  - `lib/room.svelte.ts` WebSocket connection (`RoomConnection`), reconnect, clock sync, offline
+    snapshot hydration (`lib/offline.ts`)
   - `lib/live.svelte.ts` derived view model (`Live`) + operator actions (`Ops`); get via
     `getRoom()` / `getLive()` / `getOps()` context helpers
   - `lib/ui.svelte.ts` open dialogs/tabs; `lib/prefs.svelte.ts` localStorage prefs
-  - `views/` Landing, RoomView (connection owner), Conductor, MobileConductor, Kiosk
+  - `lib/layout.ts` (pure, tested) + `layout.svelte.ts`: phone / tablet / desktop from window size,
+    `pointer: coarse` and iPad detection, plus the per-device `prefs.layout` override. Sets
+    `<html data-layout data-touch>` for CSS.
+  - `views/` Landing, RoomView (connection owner, picks the view by `layout.kind`), Conductor
+    (desktop), TabletConductor (iPad: console / floor modes), MobileConductor, Kiosk
+  - `components/touch/` Transport (run controls for touch), OnDeck (floor check-ins), MoreSheet
+  - `sw.ts` service worker (app shell only), built by the plugin in `vite.config.ts` and
+    type-checked by `tsconfig.sw.json` (WebWorker globals, not the DOM)
 
 ## Rules that keep this working
 
@@ -58,15 +66,31 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
   present but is neither `PUBLIC_URL` nor the request's own `Host`, so another site can't use an
   operator's cookie to act as them (cross-site WebSocket hijacking). No `Origin` (tests, scripts)
   is allowed. Serving from a new hostname needs `PUBLIC_URL` set or the proxy to pass `Host` through.
+- **Nothing acts on cached state.** A room paints from its offline snapshot before the socket
+  connects, and keeps showing state after it drops. `room.canWrite` is operator access **and** a
+  live socket with fresh state (`room.synced`); gate every control that sends an action on it. Use
+  `room.isOperator` only for identity (role chip, "sign in" prompts). There is no offline queue.
+  After the app returns to the foreground nothing is sent until the socket answers a ping.
+  **Bump `VERSION` in `lib/offline.ts`** when `Schedule` or `RoomState` change shape in a way an
+  old snapshot would break (new optional `RoomState` fields are filled from `EMPTY_STATE`).
+- **Size components by their container, not the viewport.** Tabs and cards render in a phone view,
+  an iPad pane and a desktop column, so their breakpoints are `@container panel` / `nowcard` /
+  `timer` queries. Touch sizing hangs off `[data-touch]`; hover-only affordances need a
+  `@media (hover: hover)` guard (hover sticks after a tap on iPad).
+- **The service worker never touches `/api` or `/ws`**, navigations are network-first, and the
+  precache list comes from the build. Non-hashed static files are served `no-cache` so deploys
+  reach installed apps. The client is built with `__BUILD__` (`BUILD_SHA`), so a page served from
+  the cache still sees the server's newer build and offers a reload.
 
 ## Commands
 
 ```sh
 npm run dev        # server :3000 + Vite :5173 (open /demo/demo/main — works offline)
-npm run check      # tsc (server rules) + svelte-check + eslint + prettier --check
+npm run check      # tsc (server rules, service worker) + svelte-check + eslint + prettier --check
 npm test           # vitest: shared maths, reducer, capture, upstream mapping, WS/SSE integration
 npm run test:e2e   # playwright smoke tests (set CHROMIUM_PATH to use a preinstalled browser)
 npm run format     # prettier --write
+npm run icons      # re-render the PNG app icons from favicon.svg
 ```
 
 Run `npm run check && npm test` before pushing; CI runs those plus the e2e suite.

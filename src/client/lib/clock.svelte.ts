@@ -7,6 +7,7 @@ class Clock {
   /** serverTime − localTime, measured by ping round-trips. */
   offset = $state(0);
   now = $derived(this.local + this.offset);
+  #calibrated = false;
 
   constructor() {
     setInterval(() => (this.local = Date.now()), 250);
@@ -21,8 +22,14 @@ class Clock {
     const receivedAt = Date.now();
     const rtt = receivedAt - sentAt;
     if (rtt > 5_000) return;
+    this.#calibrated = true;
     const next = serverTime + rtt / 2 - receivedAt;
     if (Math.abs(next - this.offset) > 40) this.offset = Math.round(next);
+  }
+
+  /** Reuses an offset measured earlier (offline launch) until a ping can measure one. */
+  adopt(offset: number): void {
+    if (!this.#calibrated) this.offset = offset;
   }
 }
 

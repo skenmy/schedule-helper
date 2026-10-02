@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
-  import { MediaQuery } from 'svelte/reactivity';
   import { detectBrand } from '../../shared/sources.ts';
   import type { RoomRef } from '../../shared/types.ts';
   import { loadBrandFont } from '../lib/device.ts';
+  import { layout } from '../lib/layout.svelte.ts';
   import { provideLive } from '../lib/live.svelte.ts';
   import { prefs } from '../lib/prefs.svelte.ts';
   import { RoomConnection, setRoom } from '../lib/room.svelte.ts';
@@ -12,13 +12,13 @@
   import Conductor from './Conductor.svelte';
   import Kiosk from './Kiosk.svelte';
   import MobileConductor from './MobileConductor.svelte';
+  import TabletConductor from './TabletConductor.svelte';
 
   let { ref, kiosk }: { ref: RoomRef; kiosk: boolean } = $props();
 
   const room = new RoomConnection(untrack(() => ref));
   setRoom(room);
   provideLive(room);
-  const mobile = new MediaQuery('max-width: 820px');
 
   onMount(() => {
     room.connect();
@@ -81,8 +81,10 @@
   </main>
 {:else if kiosk}
   <Kiosk />
-{:else if mobile.current}
+{:else if layout.kind === 'phone'}
   <MobileConductor />
+{:else if layout.kind === 'tablet'}
+  <TabletConductor />
 {:else}
   <Conductor />
 {/if}

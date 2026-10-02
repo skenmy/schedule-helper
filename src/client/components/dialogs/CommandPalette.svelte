@@ -4,6 +4,8 @@
   import { roomPath } from '../../../shared/sources.ts';
   import { fmtClock } from '../../lib/format.ts';
   import { kioskUrl } from '../../lib/kiosk.ts';
+  import { LAYOUT_PREFS } from '../../lib/layout.ts';
+  import { layout } from '../../lib/layout.svelte.ts';
   import { getLive, getOps } from '../../lib/live.svelte.ts';
   import { prefs, THEMES } from '../../lib/prefs.svelte.ts';
   import { getRoom } from '../../lib/room.svelte.ts';
@@ -145,7 +147,25 @@
         label: `Theme: ${t.name}`,
         run: () => (prefs.theme = t.id),
       })),
+      ...LAYOUT_PREFS.map((l) => ({
+        id: `layout-${l.id}`,
+        group: 'Go to' as const,
+        label: `Layout: ${l.name}`,
+        hint: l.id === 'auto' ? 'Pick from the screen' : 'On this device',
+        run: () => (prefs.layout = l.id),
+      })),
     ];
+    if (layout.kind !== 'desktop') items.push(tab('timeline', 'Timeline'));
+    if (layout.kind === 'tablet') {
+      const floor = prefs.tabletMode === 'floor';
+      items.push({
+        id: 'mode',
+        group: 'Go to',
+        label: floor ? 'Switch to the console' : 'Switch to the floor view',
+        hint: floor ? 'Every tool and tab' : 'Big timer and one-tap check-ins',
+        run: () => (prefs.tabletMode = floor ? 'console' : 'floor'),
+      });
+    }
     if (live.state.undo) {
       items.unshift({
         id: 'undo',

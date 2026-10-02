@@ -14,13 +14,14 @@
     "build": "vite build",
     "start": "node src/server/index.ts",
     "check": "npm run check:types && npm run lint && npm run format:check",
-    "check:types": "tsc -p tsconfig.server.json && svelte-check --tsconfig tsconfig.json --fail-on-warnings",
+    "check:types": "tsc -p tsconfig.server.json && tsc -p tsconfig.sw.json && svelte-check --tsconfig tsconfig.json --fail-on-warnings",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "icons": "node scripts/build-icons.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",

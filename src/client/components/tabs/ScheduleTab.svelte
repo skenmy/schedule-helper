@@ -278,7 +278,7 @@
   }
   th {
     position: sticky;
-    top: calc(var(--topbar-h) + 47px);
+    top: var(--panel-sticky-top, calc(var(--topbar-h) + 47px));
     z-index: 1;
     padding: 8px 10px;
     background: var(--bg);
@@ -382,14 +382,18 @@
     color: var(--muted);
     padding: 32px;
   }
-  @media (max-width: 1100px) {
+  /* Container queries: the panel is a phone screen, an iPad pane or a desktop window. */
+  @container panel (max-width: 1050px) {
     .runners,
     th:nth-child(7),
     td:nth-child(7) {
       display: none;
     }
   }
-  @media (max-width: 820px) {
+  @container panel (max-width: 790px) {
+    .search {
+      flex-basis: 100%;
+    }
     .sched thead {
       display: none;
     }

@@ -34,8 +34,20 @@ Horaro schedule. Try it offline with the built-in demo marathon (`/demo/demo/mai
   check-ins, schedule, progress, clock, message board, controls, log, stream). The layout lives in
   the URL, so set up a screen once and bookmark it. Kiosks keep the screen awake.
 - **Overlay feed.** Read-only JSON and Server-Sent Events for stream overlays, NodeCG or bots.
-- **Mobile layout.** Below 820 px: bottom navigation, a thumb-reachable Start / Next bar, swipe
-  between views, haptics and screen wake lock while a run is live.
+- **iPad interface.** A touch-first console: on a landscape iPad the live run and its controls sit
+  in one pane and the workspace tabs (timeline, schedule, log, tools) in another, each scrolling on
+  its own. In portrait the page scrolls, with the controls docked along the bottom. A **Floor**
+  mode (switch in the top bar, remembered per iPad) shows the live run, a big timer and one-tap
+  Ready / Missing check-ins for the next runs. Hardware-keyboard shortcuts still work.
+- **Phone interface.** Bottom tab bar (Now / Up next / Schedule / Log / More), Start / Next under
+  your thumb, one-tap runner check-ins in Up next, swipe between views, swipe-down-to-close sheets
+  and haptics. Landscape switches to a side rail with Start / Next on the right. Phones and iPads
+  keep the screen awake while the app is open.
+- **Installable, works without signal.** Add it to the Home Screen (Safari → Share → Add to Home
+  Screen) and it opens full screen, back on the schedule you last had open. With no connection it
+  still opens and shows the last state it saw, run timer ticking, with every control disabled until
+  it reconnects — nothing is ever sent from a stale view. The layout is picked from the screen and
+  pointer; More → _Layout on this device_ overrides it.
 - Command palette (⌘K / Ctrl K), keyboard shortcuts (`?` lists them), five colour themes, the UKSG
   brand theme for `uksg*` marathons, and a surprise if you type `huds`.
 
@@ -53,8 +65,9 @@ src/
     feed.ts   overlay feed · http.ts routes · ws.ts sessions · auth.ts tools.skenmy.com
   client/   Svelte 5 (runes) single-page app, built by Vite
     lib/        room connection, derived view model, clock, prefs, router, kiosk config
-    views/      Landing, Conductor (desktop), MobileConductor, Kiosk
-    components/ conductor panels, workspace tabs, dialogs, kiosk panels, UI primitives
+    views/      Landing, Conductor (desktop), TabletConductor (iPad), MobileConductor, Kiosk
+    components/ conductor panels, workspace tabs, dialogs, kiosk panels, touch controls, UI
+    sw.ts       service worker: caches the app shell so the installed app opens offline
 ```
 
 Rooms are keyed by `{source}/{event}/{slug}` and served at the same path (for example
@@ -69,6 +82,11 @@ room file and start it again.
 
 Timers are absolute server timestamps. Clients measure their clock offset against the server,
 so every screen shows the same elapsed time even when laptop clocks disagree.
+
+Each browser keeps the last state it received for its four most recent rooms in `localStorage`
+(`src/client/lib/offline.ts`), and the service worker (`src/client/sw.ts`) caches the app shell.
+So the installed app opens with no connection, and every launch paints at once instead of showing
+a spinner. Until the server sends fresh state over a live connection, controls stay disabled.
 
 ## WebSocket protocol (`/ws`)
 
@@ -113,21 +131,21 @@ Read-only and CORS-open — the same information any viewer can already see.
 
 ## Environment
 
-| var                  | default                                      | notes                                                                      |
-| -------------------- | -------------------------------------------- | -------------------------------------------------------------------------- |
-| `PORT`               | `3000`                                       |                                                                            |
-| `DATA_DIR`           | `./data`                                     | Room files live in `DATA_DIR/rooms/`. Mount as a volume.                   |
-| `TOOLS_AUTH_URL`     | _(empty)_                                    | tools-skenmy base URL. Empty = everyone can write (local dev only).        |
-| `AUTH_APP_ID`        | `schedule`                                   | Passed to `/auth/me?app=…&role=admin`.                                     |
-| `AUTH_LOGIN_URL`     | `https://tools.skenmy.com/auth/twitch/login` | Sign-in link shown to viewers.                                             |
-| `AUTH_MANAGE_URL`    | `https://tools.skenmy.com/`                  | Linked from the user chip.                                                 |
-| `PUBLIC_URL`         | `https://schedule.skenmy.com`                | Where sign-in redirects back to; also an origin allowed to open `/ws`.     |
-| `ANTHROPIC_API_KEY`  | _(empty)_                                    | Required for stream capture.                                               |
-| `VISION_MODEL`       | `claude-sonnet-5`                            | Model that reads stream frames (needs `effort` support: Sonnet/Opus 4.6+). |
-| `BUILD_SHA`          | `dev`                                        | Set by CI; clients offer a reload when it changes.                         |
-| `CAPTURE_FRAME_FILE` | _(empty)_                                    | Dev/testing: use this image instead of grabbing a live frame.              |
-| `CLIENT_DIR`         | `dist/client`                                | Built client assets.                                                       |
-| `LOG_LEVEL`          | `info`                                       | `debug`, `info`, `warn` or `error`.                                        |
+| var                  | default                                      | notes                                                                                |
+| -------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `PORT`               | `3000`                                       |                                                                                      |
+| `DATA_DIR`           | `./data`                                     | Room files live in `DATA_DIR/rooms/`. Mount as a volume.                             |
+| `TOOLS_AUTH_URL`     | _(empty)_                                    | tools-skenmy base URL. Empty = everyone can write (local dev only).                  |
+| `AUTH_APP_ID`        | `schedule`                                   | Passed to `/auth/me?app=…&role=admin`.                                               |
+| `AUTH_LOGIN_URL`     | `https://tools.skenmy.com/auth/twitch/login` | Sign-in link shown to viewers.                                                       |
+| `AUTH_MANAGE_URL`    | `https://tools.skenmy.com/`                  | Linked from the user chip.                                                           |
+| `PUBLIC_URL`         | `https://schedule.skenmy.com`                | Where sign-in redirects back to; also an origin allowed to open `/ws`.               |
+| `ANTHROPIC_API_KEY`  | _(empty)_                                    | Required for stream capture.                                                         |
+| `VISION_MODEL`       | `claude-sonnet-5`                            | Model that reads stream frames (needs `effort` support: Sonnet/Opus 4.6+).           |
+| `BUILD_SHA`          | `dev`                                        | Set by CI for the client build and the server; clients offer a reload on a mismatch. |
+| `CAPTURE_FRAME_FILE` | _(empty)_                                    | Dev/testing: use this image instead of grabbing a live frame.                        |
+| `CLIENT_DIR`         | `dist/client`                                | Built client assets.                                                                 |
+| `LOG_LEVEL`          | `info`                                       | `debug`, `info`, `warn` or `error`.                                                  |
 
 Stream capture needs `streamlink` and `ffmpeg` on the server; both are in the Docker image. Each
 capture costs roughly $0.01 in API usage.
@@ -145,7 +163,8 @@ open http://localhost:5173/demo/demo/main
 | `npm run check`    | typecheck (server under Node rules, client via svelte-check), lint, format check |
 | `npm test`         | unit + integration tests (Vitest)                                                |
 | `npm run test:e2e` | browser smoke tests (Playwright; builds and starts the server)                   |
-| `npm run build`    | production client build into `dist/client`                                       |
+| `npm run build`    | production client build into `dist/client`, including the service worker         |
+| `npm run icons`    | re-render the PNG app icons from `favicon.svg` (uses Playwright's Chromium)      |
 | `npm start`        | production server                                                                |
 
 Node 22.18+ is required locally (native TypeScript type stripping); the image uses Node 24.

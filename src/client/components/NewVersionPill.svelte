@@ -25,7 +25,7 @@
   .pill {
     position: fixed;
     left: 16px;
-    bottom: calc(16px + env(safe-area-inset-bottom));
+    bottom: calc(16px + var(--dock-space, 0px) + env(safe-area-inset-bottom));
     z-index: 900;
     display: flex;
     align-items: center;
@@ -38,8 +38,5 @@
     font-size: 13.5px;
     font-weight: 600;
     color: var(--accent);
-  }
-  :global(body.has-bottom-nav) .pill {
-    bottom: calc(150px + env(safe-area-inset-bottom));
   }
 </style>

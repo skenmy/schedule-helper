@@ -17,6 +17,12 @@
   import { ui } from '../../lib/ui.svelte.ts';
   import Segmented from '../ui/Segmented.svelte';
 
+  /**
+   * `stage`: the tablet floor view, with bigger type.
+   * `timer`: show the run timer in the card, for when no other control shows it.
+   */
+  let { stage = false, timer = false }: { stage?: boolean; timer?: boolean } = $props();
+
   const room = getRoom();
   const live = getLive();
   const ops = getOps();
@@ -86,7 +92,7 @@
   });
 </script>
 
-<article class="card now">
+<article class="card now" class:stage>
   {#if live.phase === 'complete'}
     <div class="done">
       <Flag size={34} />
@@ -141,6 +147,21 @@
         </span>
       {/if}
     </div>
+
+    {#if timer}
+      <div class="clock">
+        <button
+          class="elapsed num"
+          class:running={timing?.phase === 'running'}
+          class:over
+          disabled={!room.canWrite || !isCurrent}
+          aria-label="Elapsed {fmtHMS(Math.floor(elapsed / 1000))}. Set the timer"
+          onclick={() => (ui.setElapsed = true)}
+          data-huds="text">{fmtHMS(Math.floor(elapsed / 1000))}</button
+        >
+        <span class="num">of {fmtHMS(line.estimateSec)}</span>
+      </div>
+    {/if}
 
     <dl class="facts">
       <div>
@@ -209,6 +230,7 @@
 
 <style>
   .now {
+    container: nowcard / inline-size;
     padding: 22px 24px;
     display: grid;
     gap: 14px;
@@ -377,7 +399,53 @@
     font-size: 28px;
     font-weight: 800;
   }
-  @media (max-width: 640px) {
+  /* ── Stage (tablet floor view) ──────────────────────────────────────── */
+  .stage {
+    gap: 18px;
+    padding: 26px 28px;
+  }
+  .stage h1 {
+    font-size: clamp(34px, 4.6vw, 60px);
+  }
+  .stage .cat {
+    font-size: 19px;
+  }
+  .stage .runner {
+    font-size: 17px;
+  }
+  .clock {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+  }
+  .clock .num:not(.elapsed) {
+    color: var(--muted);
+    font-size: 18px;
+  }
+  .elapsed {
+    padding: 0;
+    border: 0;
+    background: none;
+    font-size: clamp(64px, 9vw, 120px);
+    font-weight: 700;
+    line-height: 0.95;
+    letter-spacing: -0.04em;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .elapsed:disabled {
+    cursor: default;
+  }
+  .elapsed.running {
+    color: var(--accent);
+  }
+  .elapsed.over {
+    color: var(--warn);
+  }
+
+  /* Sized by the card, not the screen: it sits in a phone, an iPad pane or a desktop column. */
+  @container nowcard (max-width: 560px) {
     .facts {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -385,6 +453,8 @@
       margin-left: 0;
       width: 100%;
     }
+  }
+  @media (max-width: 640px) {
     .now {
       padding: 18px 16px;
     }

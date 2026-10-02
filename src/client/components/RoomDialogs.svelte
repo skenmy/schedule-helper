@@ -5,6 +5,7 @@
   import RunSheet from './dialogs/RunSheet.svelte';
   import SetElapsedDialog from './dialogs/SetElapsedDialog.svelte';
   import NewVersionPill from './NewVersionPill.svelte';
+  import OfflineBanner from './OfflineBanner.svelte';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
 </script>
 
@@ -15,3 +16,4 @@
 <HelpDialog />
 <ConfirmDialog />
 <NewVersionPill />
+<OfflineBanner />

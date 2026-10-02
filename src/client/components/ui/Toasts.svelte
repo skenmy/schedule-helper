@@ -38,16 +38,14 @@
 <style>
   .toasts {
     position: fixed;
-    right: 16px;
-    bottom: calc(16px + env(safe-area-inset-bottom));
+    right: calc(16px + var(--dock-right, 0px));
+    /* Clear of whatever bottom bar the layout has (--dock-space, base.css). */
+    bottom: calc(16px + var(--dock-space, 0px) + env(safe-area-inset-bottom));
     z-index: 1000;
     display: grid;
     gap: 8px;
     width: min(420px, calc(100vw - 32px));
     pointer-events: none;
-  }
-  :global(body.has-bottom-nav) .toasts {
-    bottom: calc(150px + env(safe-area-inset-bottom));
   }
   .toast {
     pointer-events: auto;
