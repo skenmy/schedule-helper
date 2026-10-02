@@ -40,8 +40,9 @@ Horaro schedule. Try it offline with the built-in demo marathon (`/demo/demo/mai
   mode (switch in the top bar, remembered per iPad) shows the live run, a big timer and one-tap
   Ready / Missing check-ins for the next runs. Hardware-keyboard shortcuts still work.
 - **Phone interface.** Bottom tab bar (Now / Up next / Schedule / Log / More), Start / Next under
-  your thumb, swipe between views, swipe-down-to-close sheets, haptics, screen wake lock while a run
-  is live. Landscape switches to a side rail with Start / Next on the right.
+  your thumb, one-tap runner check-ins in Up next, swipe between views, swipe-down-to-close sheets
+  and haptics. Landscape switches to a side rail with Start / Next on the right. Phones and iPads
+  keep the screen awake while the app is open.
 - **Installable, works without signal.** Add it to the Home Screen (Safari → Share → Add to Home
   Screen) and it opens full screen, back on the schedule you last had open. With no connection it
   still opens and shows the last state it saw, run timer ticking, with every control disabled until
