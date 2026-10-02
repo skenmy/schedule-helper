@@ -16,6 +16,8 @@ const FRAME_LIMIT = 3;
 
 export interface RoomClient {
   send(msg: ServerMessage): void;
+  /** Signed in with operator access (paid background work only runs for operators). */
+  readonly operator?: boolean;
 }
 
 export interface CaptureFrame {
@@ -241,7 +243,7 @@ export class Room {
 
   private commit(next: RoomState): void {
     // Whatever changed, a run-change suggestion the room has moved past goes.
-    reconcile(next, Date.now());
+    reconcile(next, this.schedule.lines, Date.now());
     const top = this.undoStack.at(-1);
     next.rev = this.state.rev + 1;
     next.updatedAt = Date.now();

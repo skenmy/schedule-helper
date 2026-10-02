@@ -42,6 +42,7 @@ export const EMPTY_STATE: RoomState = {
   captureBusy: false,
   tracking: { twitch: false, vision: false, autoApply: false },
   detection: null,
+  settled: null,
   stream: null,
   undo: null,
   updatedAt: 0,
@@ -208,8 +209,9 @@ export class Ops {
     this.send({ action: 'capture:run' });
   }
 
-  applyCapture(): void {
-    void this.withUndo('Applied the stream timer', { action: 'capture:apply' });
+  /** Applies the stream reading the operator is looking at (`id`), not a newer one. */
+  applyCapture(id: string): void {
+    void this.withUndo('Applied the stream timer', { action: 'capture:apply', id });
   }
 
   configureDrift(enabled: boolean, intervalMin: number, thresholdSec: number): void {

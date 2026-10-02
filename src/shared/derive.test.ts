@@ -65,6 +65,7 @@ function state(partial: Partial<RoomState> = {}): RoomState {
     captureBusy: false,
     tracking: { twitch: false, vision: false, autoApply: false },
     detection: null,
+    settled: null,
     stream: null,
     undo: null,
     updatedAt: 0,

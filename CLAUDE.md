@@ -118,15 +118,21 @@ ordinary undoable action that back-dates the start from a timer reading) or dism
 - **Never guess the live run, still.** Only the live run and the next `LOOKAHEAD` (3) runs can be
   suggested; a live run that's gone from the schedule stops detection. A detection is dropped as
   soon as the live run changes (`reconcile()` runs on every commit) or after 20 minutes unbacked.
-- **Sources are edge-triggered**: they signal when what they see changes, so a dismissed or undone
-  detection isn't raised again until the stream moves on. A source that now sees the live run
-  withdraws only its own signals.
-- **Auto-apply** (`tracking.autoApply`, off by default) needs `corroborated()`: two different
-  sources, or two timer readings ≥20 s apart implying the same start. It dispatches as
-  `Auto-tracking`, so it's logged and undoable.
+- **What's dealt with stays dealt with.** Accepting or dismissing records `state.settled`
+  (`{ runKey, kind, currentKey }`): the same suggestion isn't raised again while the live run is the
+  same (30 minutes at most), so an undo or a dismissal sticks however often the stream repeats
+  itself. Vision readings are level-triggered against that; Twitch only signals when the run its
+  category/title points at changes. A source that now sees the live run withdraws only its own
+  signals. A back-dated start before the live run's start (or the previous run's end) is treated as
+  a misread timer.
+- **Auto-apply** (`tracking.autoApply`, off by default) needs `corroborated()`: a trusted
+  stream-PC source (`TRUSTED_SOURCES`), two different sources, or two timer readings ≥20 s apart
+  implying the same start. It dispatches as `Auto-tracking`, so it's logged and undoable.
 - **Adding a source** (NodeCG speedcontrol, a stream-PC push): build a `Signal`, call `signal()`.
-- Vision reading reuses stream capture; `captureInterval()` decides the cadence (every minute near a
-  run's estimated end or between runs, every 10 otherwise, only while an operator is connected).
+- Vision reading reuses stream capture; `captureInterval()` decides the cadence: every minute while
+  a suggestion is pending or a change is due (near a run's estimated end, between runs), backing
+  off to every 10 after 30 minutes due, none while Twitch says offline, and only while an operator
+  (not a kiosk) is connected. `capture:apply` carries the reading's `id`.
   Set `STREAM_INFO_FILE` to fake Twitch locally; e2e does (`e2e/tracking.spec.ts`).
 
 ## Deployment

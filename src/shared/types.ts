@@ -157,6 +157,18 @@ export interface Detection {
   signals: DetectionSignal[];
 }
 
+/**
+ * A detection an operator (or auto-apply) already dealt with. While the live
+ * run is the same, the same suggestion isn't raised again, so a dismissal or
+ * an undo sticks even though the stream keeps showing the same thing.
+ */
+export interface SettledDetection {
+  runKey: RunKey;
+  kind: Detection['kind'];
+  currentKey: RunKey | null;
+  at: number;
+}
+
 /** The last thing a stream-info source (Twitch) reported for the room's channel. */
 export interface StreamInfo {
   live: boolean;
@@ -197,6 +209,7 @@ export interface RoomState {
   tracking: TrackingSettings;
   /** A run change the sources noticed, waiting for an operator (or auto-apply). */
   detection: Detection | null;
+  settled: SettledDetection | null;
   stream: StreamInfo | null;
   /** The action `undo` would revert, if any. */
   undo: UndoInfo | null;
