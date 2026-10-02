@@ -165,11 +165,20 @@ export function settle(s: RoomState, d: Detection, now: number): void {
  * operator advanced, perhaps to that very run), the run it says to start has
  * started, its run is no longer one a detection may point at (skipped,
  * re-ordered, removed), the marathon ended, or nothing has backed it for a
- * while. Also lets an old settled record lapse.
+ * while.
+ *
+ * Also lets a settled record go once the room is somewhere else entirely. It
+ * stays while the room is on either side of it: where it was dealt with, or the
+ * run it pointed at. Accepting moves the room to that run, so an undo (or a
+ * step back) lands where it was dealt with, and the same suggestion stays down.
  */
 export function reconcile(s: RoomState, lines: readonly ScheduleLine[], now: number): boolean {
   let changed = false;
-  if (s.settled && (s.settled.currentKey !== s.currentKey || now - s.settled.at >= SETTLED_MS)) {
+  const st = s.settled;
+  if (
+    st &&
+    ((st.currentKey !== s.currentKey && st.runKey !== s.currentKey) || now - st.at >= SETTLED_MS)
+  ) {
     s.settled = null;
     changed = true;
   }
