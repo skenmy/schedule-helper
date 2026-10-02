@@ -1,8 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { isIPad, parseLayoutPref, pickLayout } from './layout.ts';
 
-const touch = (width: number, height: number) => ({ width, height, touch: true });
-const mouse = (width: number, height: number) => ({ width, height, touch: false });
+/** A full-screen window unless the screen is given. */
+const touch = (width: number, height: number, screenShort = Math.min(width, height)) => ({
+  width,
+  height,
+  screenShort,
+  touch: true,
+});
+const mouse = (width: number, height: number) => ({
+  width,
+  height,
+  screenShort: 1080,
+  touch: false,
+});
 
 describe('pickLayout', () => {
   it('gives phones the phone layout in both orientations', () => {
@@ -20,10 +31,14 @@ describe('pickLayout', () => {
   });
 
   it('falls back to the phone layout in narrow iPad multitasking windows', () => {
-    expect(pickLayout(touch(320, 1024))).toBe('phone'); // Slide Over
-    expect(pickLayout(touch(507, 820))).toBe('phone'); // half Split View
-    expect(pickLayout(touch(694, 820))).toBe('phone'); // two-thirds on an 11"
-    expect(pickLayout(touch(981, 1024))).toBe('tablet'); // two-thirds on a 13"
+    expect(pickLayout(touch(320, 1024, 1024))).toBe('phone'); // Slide Over
+    expect(pickLayout(touch(507, 820, 820))).toBe('phone'); // half Split View
+    expect(pickLayout(touch(694, 820, 820))).toBe('phone'); // two-thirds on an 11"
+    expect(pickLayout(touch(981, 1024, 1024))).toBe('tablet'); // two-thirds on a 13"
+  });
+
+  it('keeps a landscape tablet a tablet when the keyboard squashes the window', () => {
+    expect(pickLayout(touch(1180, 420, 820))).toBe('tablet');
   });
 
   it('keeps desktop browsers on the old breakpoint', () => {

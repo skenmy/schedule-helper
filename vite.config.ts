@@ -10,6 +10,8 @@ const ROOT = path.resolve(import.meta.dirname, 'src/client');
 /** Files under `dir`, relative to it, with forward slashes. */
 function listFiles(dir: string, base = dir): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    // A stray .DS_Store isn't served (express.static skips dotfiles) and would fail the install.
+    if (entry.name.startsWith('.')) return [];
     const full = path.join(dir, entry.name);
     return entry.isDirectory()
       ? listFiles(full, base)
@@ -65,6 +67,10 @@ function serviceWorker(): Plugin {
 export default defineConfig({
   root: 'src/client',
   plugins: [svelte(), serviceWorker()],
+  // The client knows its own build, so a page served from the service worker's
+  // cache still notices when the server has moved on (lib/room.svelte.ts).
+  // Truncated exactly as the server does (src/server/config.ts).
+  define: { __BUILD__: JSON.stringify((process.env.BUILD_SHA || 'dev').slice(0, 12)) },
   build: {
     outDir: '../../dist/client',
     emptyOutDir: true,

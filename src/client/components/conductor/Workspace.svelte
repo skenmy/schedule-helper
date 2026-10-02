@@ -11,10 +11,11 @@
 
   /**
    * `pane`: the tablet's right-hand pane — the tab bar stays put and the
-   * panel scrolls on its own; the timeline becomes a tab. Otherwise the page
-   * scrolls and the tab bar sticks under the top bar.
+   * panel scrolls on its own. Otherwise the page scrolls and the tab bar
+   * sticks under the top bar.
+   * `timeline`: the timeline is a tab (tablets), not a strip above (desktop).
    */
-  let { pane = false }: { pane?: boolean } = $props();
+  let { pane = false, timeline = false }: { pane?: boolean; timeline?: boolean } = $props();
 
   const live = getLive();
   const TABS: { id: TabId; label: string }[] = [
@@ -25,9 +26,11 @@
     { id: 'kiosk', label: 'Kiosk' },
     { id: 'progress', label: 'Progress' },
   ];
-  const tabs = $derived(pane ? [{ id: 'timeline' as const, label: 'Timeline' }, ...TABS] : TABS);
+  const tabs = $derived(
+    timeline ? [{ id: 'timeline' as const, label: 'Timeline' }, ...TABS] : TABS,
+  );
   /** The desktop shows the timeline above, not as a tab. */
-  const active = $derived<TabId>(!pane && ui.tab === 'timeline' ? 'schedule' : ui.tab);
+  const active = $derived<TabId>(!timeline && ui.tab === 'timeline' ? 'schedule' : ui.tab);
   const counts = $derived<Partial<Record<TabId, number>>>({
     schedule: live.stats.runsTotal,
     log: live.state.log.length,

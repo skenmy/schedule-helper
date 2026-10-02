@@ -115,7 +115,8 @@
     </label>
     <label class="field">
       <span class="label">Layout on this device</span>
-      <select class="select" bind:value={prefs.layout}>
+      <!-- The new layout may have no More sheet; don't leave it open for the trip back. -->
+      <select class="select" bind:value={prefs.layout} onchange={() => (ui.moreOpen = false)}>
         {#each LAYOUT_PREFS as l (l.id)}<option value={l.id}>{l.name}</option>{/each}
       </select>
     </label>

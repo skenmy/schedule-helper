@@ -40,6 +40,14 @@
   let startAt = 0;
   let pointer = $state<number | null>(null);
 
+  // Closed mid-drag (Escape, a button, the header unmounting): start clean next time.
+  $effect(() => {
+    if (!open) {
+      drag = 0;
+      pointer = null;
+    }
+  });
+
   function dragStart(e: PointerEvent) {
     if (variant !== 'sheet' || e.pointerType === 'mouse') return;
     if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return;
@@ -58,8 +66,9 @@
     if (e.pointerId !== pointer) return;
     pointer = null;
     const speed = drag / Math.max(1, performance.now() - startAt);
+    // Closing leaves the sheet where the finger let go; the effect above resets it.
     if (drag > 110 || (drag > 30 && speed > 0.6)) open = false;
-    drag = 0;
+    else drag = 0;
   }
 </script>
 
@@ -85,6 +94,11 @@
         onpointermove={dragMove}
         onpointerup={dragEnd}
         onpointercancel={dragEnd}
+        onlostpointercapture={(e) => {
+          if (e.pointerId !== pointer) return;
+          pointer = null;
+          drag = 0;
+        }}
       >
         {#if variant === 'sheet'}<span class="grabber" aria-hidden="true"></span>{/if}
         <div class="titles">

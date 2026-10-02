@@ -43,6 +43,8 @@
   const viewer = $derived(room.auth != null && !room.isOperator);
   const undo = $derived(live.state.undo);
   const moreId = $props.id();
+  /** iOS before 17 has no popover: the dock then shows Set in place of the ⋯ menu. */
+  const popovers = typeof HTMLElement !== 'undefined' && 'popover' in HTMLElement.prototype;
 
   function press(run: () => void, strength = 12) {
     haptic(strength);
@@ -129,9 +131,15 @@
           aria-label={undo ? `Undo: ${undo.summary}` : 'Undo'}
           onclick={() => press(() => ops.undo())}><Undo2 size={17} /><span>Undo</span></button
         >
-        <button class="btn" aria-label="More timer actions" popovertarget={moreId}
-          ><Ellipsis size={18} /></button
-        >
+        {#if !popovers}
+          <button class="btn" disabled={disabled || complete} onclick={() => (ui.setElapsed = true)}
+            ><Timer size={17} /><span>Set</span></button
+          >
+        {:else}
+          <button class="btn" aria-label="More timer actions" popovertarget={moreId}
+            ><Ellipsis size={18} /></button
+          >
+        {/if}
         <div class="more" popover id={moreId}>
           <button
             class="btn"

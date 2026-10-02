@@ -10,6 +10,7 @@ import type {
 } from '../../shared/protocol.ts';
 import type { AuthInfo, RoomRef, RoomState, Schedule, UndoInfo } from '../../shared/types.ts';
 import { clock } from './clock.svelte.ts';
+import { EMPTY_STATE } from './live.svelte.ts';
 import { dropSnapshot, loadSnapshot, saveSnapshot } from './offline.ts';
 import { router } from './router.svelte.ts';
 import { toasts } from './toasts.svelte.ts';
@@ -22,10 +23,20 @@ export type ActionResult =
 const PING_MS = 30_000;
 /** Silence for this long on an "open" socket means it died without closing (iOS, Wi-Fi handover). */
 const DEAD_MS = 2 * PING_MS + 5_000;
+/** Back in the foreground or online: a socket that can't answer a ping this fast is replaced. */
+const PROBE_MS = 4_000;
+/** A socket still connecting after this long (captive portal, lossy Wi-Fi) is abandoned. */
+const OPEN_TIMEOUT_MS = 10_000;
+/** Retrying a join the server couldn't serve (upstream down) backs off up to this. */
+const JOIN_RETRY_MAX_MS = 60_000;
 /** Snapshots for offline use are written at most this often. */
 const SAVE_MS = 2_000;
-/** First build this tab saw; a different one later means a deploy landed. */
-let firstBuild: string | null = null;
+/**
+ * The build this code came from (or, in dev, the first one the server reports).
+ * A server on a different build means a deploy landed — or that the app shell
+ * came from the service worker's cache — so the operator is offered a reload.
+ */
+let firstBuild: string | null = __BUILD__ === 'dev' ? null : __BUILD__;
 
 export class RoomConnection {
   readonly ref: RoomRef;
@@ -63,8 +74,15 @@ export class RoomConnection {
   #closed = false;
   #listening = false;
   #lastMessageAt = 0;
+  #connectStartedAt = 0;
+  /** Set while a wake-up ping is unanswered: nothing is sent until the socket proves alive. */
+  #probeTimer: ReturnType<typeof setTimeout> | null = null;
+  #joinTimer: ReturnType<typeof setTimeout> | null = null;
+  #joinRetries = 0;
   #saveTimer: ReturnType<typeof setTimeout> | null = null;
   #lastSave = 0;
+  /** The server sent state that isn't in the offline snapshot yet. */
+  #dirty = false;
   /** Actions awaiting the server's verdict, by request id. Bookkeeping, not UI state. */
   // eslint-disable-next-line svelte/prefer-svelte-reactivity
   #pending = new Map<string, (result: ActionResult) => void>();
@@ -76,7 +94,8 @@ export class RoomConnection {
     const snap = loadSnapshot(ref);
     if (snap) {
       this.schedule = snap.schedule;
-      this.state = snap.state;
+      // Fields added since the snapshot was written get their defaults.
+      this.state = { ...EMPTY_STATE, ...snap.state };
       this.syncedAt = snap.savedAt;
       clock.adopt(snap.offset);
     }
@@ -89,9 +108,15 @@ export class RoomConnection {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const ws = new WebSocket(`${proto}://${location.host}/ws`);
     this.#ws = ws;
+    this.#connectStartedAt = Date.now();
     this.status = this.#retries ? 'reconnecting' : 'connecting';
+    // Closing a socket that's still connecting fails it, which retries with backoff.
+    const openTimer = setTimeout(() => {
+      if (ws.readyState === WebSocket.CONNECTING) ws.close();
+    }, OPEN_TIMEOUT_MS);
 
     ws.addEventListener('open', () => {
+      clearTimeout(openTimer);
       if (this.#ws !== ws) return;
       this.#retries = 0;
       this.#lastMessageAt = Date.now();
@@ -103,6 +128,9 @@ export class RoomConnection {
     ws.addEventListener('message', (e) => {
       if (this.#ws !== ws) return;
       this.#lastMessageAt = Date.now();
+      // Any message proves the socket alive.
+      if (this.#probeTimer) clearTimeout(this.#probeTimer);
+      this.#probeTimer = null;
       try {
         this.#handle(JSON.parse(e.data as string) as ServerMessage);
       } catch (err) {
@@ -110,6 +138,7 @@ export class RoomConnection {
       }
     });
     ws.addEventListener('close', () => {
+      clearTimeout(openTimer);
       // A socket we already replaced (see #reconnectNow) has nothing left to clean up.
       if (this.#ws !== ws) return;
       this.#detach('Disconnected');
@@ -150,7 +179,9 @@ export class RoomConnection {
   /** Forgets the current socket's session: timers, pending verdicts, freshness. */
   #detach(reason: string): void {
     if (this.#pingTimer) clearInterval(this.#pingTimer);
-    this.#pingTimer = null;
+    if (this.#probeTimer) clearTimeout(this.#probeTimer);
+    if (this.#joinTimer) clearTimeout(this.#joinTimer);
+    this.#pingTimer = this.#probeTimer = this.#joinTimer = null;
     this.#ws = null;
     this.fresh = false;
     // Anything awaiting a verdict won't get one from this socket.
@@ -169,9 +200,15 @@ export class RoomConnection {
     this.connect();
   }
 
+  /** Starts over now: a fresh socket and a fresh join (the "Try again" buttons). */
+  retry(): void {
+    this.#joinRetries = 0;
+    this.#reconnectNow();
+  }
+
   /**
    * Back online, or back in the foreground: don't sit out the retry backoff,
-   * and don't trust a socket that's been silent — iOS freezes background
+   * and don't trust an "open" socket until it answers — iOS freezes background
    * pages and their sockets often die without a close event.
    */
   #wake = (): void => {
@@ -181,10 +218,21 @@ export class RoomConnection {
       return;
     }
     if (this.status === 'reconnecting') this.#reconnectNow();
-    else if (this.status === 'open' && Date.now() - this.#lastMessageAt > PING_MS + 5_000)
-      this.#reconnectNow();
-    else if (this.status === 'open') this.#ping();
+    else if (this.status === 'connecting') {
+      // A first attempt that's been hanging gets restarted rather than waited out.
+      if (Date.now() - this.#connectStartedAt > 3_000) this.#reconnectNow();
+    } else if (this.status === 'open') this.#probe();
   };
+
+  /** Pings, and replaces the socket if no answer comes back within PROBE_MS. */
+  #probe(): void {
+    if (this.#probeTimer) return;
+    this.#probeTimer = setTimeout(() => {
+      this.#probeTimer = null;
+      this.#reconnectNow();
+    }, PROBE_MS);
+    this.#raw({ action: 'ping', t: Date.now() });
+  }
 
   /**
    * Sends an operator action. Returns false (and tells the user why) when it
@@ -221,7 +269,8 @@ export class RoomConnection {
 
   #canSend(action: ClientAction): boolean {
     if (action.action === 'join' || action.action === 'ping') return this.status === 'open';
-    if (!this.synced) {
+    // While a wake-up probe is out, the socket may be dead: sending would lose the action silently.
+    if (!this.synced || this.#probeTimer) {
       this.explainOffline();
       return false;
     }
@@ -232,16 +281,15 @@ export class RoomConnection {
     return true;
   }
 
-  /** Why an action can't be sent while disconnected or still syncing. */
+  /** Why an action can't be sent while disconnected, syncing or checking the connection. */
   explainOffline(): void {
-    toasts.push({
-      kind: 'error',
-      title: this.status === 'open' ? 'Still syncing' : 'Not connected',
-      body:
-        this.status === 'open'
-          ? 'Waiting for the latest state… that action wasn’t sent.'
-          : 'Reconnecting… that action wasn’t sent.',
-    });
+    const [title, body] =
+      this.status !== 'open'
+        ? ['Not connected', 'Reconnecting… that action wasn’t sent.']
+        : this.#probeTimer
+          ? ['Checking the connection', 'One moment… that action wasn’t sent.']
+          : ['Still syncing', 'Waiting for the latest state… that action wasn’t sent.'];
+    toasts.push({ kind: 'error', title, body });
   }
 
   /** Tells the operator why they can't act: offline, or no operator access. */
@@ -295,7 +343,10 @@ export class RoomConnection {
   #flush = (): void => {
     if (this.#saveTimer) clearTimeout(this.#saveTimer);
     this.#saveTimer = null;
-    if (!this.fresh || !this.schedule || !this.state) return;
+    // Only what the server sent (never the cache we painted from), including the
+    // last state before a drop.
+    if (!this.#dirty || !this.schedule || !this.state) return;
+    this.#dirty = false;
     this.#lastSave = Date.now();
     saveSnapshot(this.ref, {
       schedule: this.schedule,
@@ -304,6 +355,16 @@ export class RoomConnection {
       offset: clock.offset,
     });
   };
+
+  /** Upstream down or a server hiccup: ask again, backing off, on the same socket. */
+  #retryJoin(): void {
+    if (this.#joinTimer) return;
+    const delay = Math.min(JOIN_RETRY_MAX_MS, 5_000 * 2 ** this.#joinRetries++);
+    this.#joinTimer = setTimeout(() => {
+      this.#joinTimer = null;
+      this.#raw({ action: 'join', ref: this.ref });
+    }, delay);
+  }
 
   #handle(msg: ServerMessage): void {
     switch (msg.type) {
@@ -320,10 +381,15 @@ export class RoomConnection {
         break;
       case 'joined':
         this.fatal = null;
+        this.#joinRetries = 0;
         break;
       case 'schedule':
         this.schedule = msg.schedule;
-        if (this.fresh) this.#scheduleSave();
+        if (this.fresh) {
+          // A re-import; on join the state follows and saves both.
+          this.#dirty = true;
+          this.#scheduleSave();
+        }
         if (msg.by && this.refreshing) {
           toasts.push({
             kind: 'success',
@@ -337,6 +403,7 @@ export class RoomConnection {
         this.state = msg.state;
         this.fresh = true;
         this.syncedAt = Date.now();
+        this.#dirty = true;
         this.#scheduleSave();
         break;
       case 'presence':
@@ -352,12 +419,12 @@ export class RoomConnection {
         if (msg.action === 'join') {
           this.fatal = { code: msg.code, message: msg.message };
           if (msg.code === 'not_found') {
-            // Gone upstream: a cached copy would only mislead.
+            // Gone: a cached (or previous) copy would only mislead, so show the error page.
             dropSnapshot(this.ref);
-            if (!this.fresh) {
-              this.schedule = null;
-              this.state = null;
-            }
+            this.schedule = null;
+            this.state = null;
+          } else {
+            this.#retryJoin();
           }
         } else if (msg.code === 'signin_required' || msg.code === 'forbidden') {
           this.promptSignIn();

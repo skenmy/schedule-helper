@@ -38,6 +38,7 @@
         {#if room.fatal}{room.fatal.message}{/if}
         {#if since}· showing {since}{/if}
       </span>
+      <button class="btn sm" onclick={() => room.retry()}>Try again</button>
     {:else}
       <CloudOff size={16} />
       <span>
@@ -45,6 +46,7 @@
         {#if since}· last synced {since}{/if}
         · controls paused until reconnected
       </span>
+      <button class="btn sm" onclick={() => room.retry()}>Retry now</button>
     {/if}
   </div>
 {/if}
@@ -61,7 +63,7 @@
     gap: 10px;
     width: max-content;
     max-width: calc(100vw - 24px);
-    padding: 8px 16px 8px 12px;
+    padding: 6px 6px 6px 12px;
     border: 1px solid color-mix(in oklab, var(--warn) 45%, transparent);
     border-radius: 999px;
     background: color-mix(in oklab, var(--surface-2) 88%, var(--warn) 12%);

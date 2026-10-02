@@ -47,7 +47,7 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.startsWith('/api/') || url.pathname === '/ws') return;
 
   if (request.mode === 'navigate') event.respondWith(navigate(request));
-  else if (url.pathname.startsWith('/brand/')) event.respondWith(runtime(request));
+  else if (url.pathname.startsWith('/brand/')) event.respondWith(runtime(event, request));
   else event.respondWith(precached(request));
 });
 
@@ -74,11 +74,17 @@ async function precached(request: Request): Promise<Response> {
   return hit ?? fetch(request);
 }
 
-async function runtime(request: Request): Promise<Response> {
+/** Stale-while-revalidate: the cached copy now, a fresh one for next time. */
+async function runtime(event: FetchEvent, request: Request): Promise<Response> {
   const cache = await caches.open(RUNTIME_CACHE);
   const hit = await cache.match(request);
-  if (hit) return hit;
-  const response = await fetch(request);
-  if (response.ok) await cache.put(request, response.clone());
-  return response;
+  const update = fetch(request).then(async (response) => {
+    if (response.ok) await cache.put(request, response.clone());
+    return response;
+  });
+  if (hit) {
+    event.waitUntil(update.catch(() => {}));
+    return hit;
+  }
+  return update;
 }

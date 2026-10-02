@@ -18,6 +18,7 @@ class Layout {
       {
         width: innerWidth.current ?? window.innerWidth,
         height: innerHeight.current ?? window.innerHeight,
+        screenShort: Math.min(screen.width, screen.height),
         touch: this.touch,
       },
       prefs.layout,

@@ -66,13 +66,17 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
   connects, and keeps showing state after it drops. `room.canWrite` is operator access **and** a
   live socket with fresh state (`room.synced`); gate every control that sends an action on it. Use
   `room.isOperator` only for identity (role chip, "sign in" prompts). There is no offline queue.
+  After the app returns to the foreground nothing is sent until the socket answers a ping.
+  **Bump `VERSION` in `lib/offline.ts`** when `Schedule` or `RoomState` change shape in a way an
+  old snapshot would break (new optional `RoomState` fields are filled from `EMPTY_STATE`).
 - **Size components by their container, not the viewport.** Tabs and cards render in a phone view,
   an iPad pane and a desktop column, so their breakpoints are `@container panel` / `nowcard` /
   `timer` queries. Touch sizing hangs off `[data-touch]`; hover-only affordances need a
   `@media (hover: hover)` guard (hover sticks after a tap on iPad).
 - **The service worker never touches `/api` or `/ws`**, navigations are network-first, and the
   precache list comes from the build. Non-hashed static files are served `no-cache` so deploys
-  reach installed apps.
+  reach installed apps. The client is built with `__BUILD__` (`BUILD_SHA`), so a page served from
+  the cache still sees the server's newer build and offers a reload.
 
 ## Commands
 

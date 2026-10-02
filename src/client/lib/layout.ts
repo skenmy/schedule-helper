@@ -14,8 +14,15 @@ export const LAYOUT_PREFS: readonly { id: LayoutPref; name: string }[] = [
 ];
 
 export interface LayoutEnv {
+  /** Window size, which multitasking (Split View, Stage Manager) can shrink. */
   width: number;
   height: number;
+  /**
+   * The device screen's short side. Phones are told apart by this, not the
+   * window, so an on-screen keyboard that squashes the window can't turn a
+   * landscape tablet into a phone mid-typing.
+   */
+  screenShort: number;
   /** The primary pointer is a finger (`(pointer: coarse)`), or this is an iPad. */
   touch: boolean;
 }
@@ -30,7 +37,7 @@ const TABLET_MIN_WIDTH = 700;
 export function pickLayout(env: LayoutEnv, pref: LayoutPref = 'auto'): LayoutKind {
   if (pref !== 'auto') return pref;
   if (!env.touch) return env.width <= DESKTOP_PHONE_MAX ? 'phone' : 'desktop';
-  if (Math.min(env.width, env.height) < PHONE_SHORT_SIDE) return 'phone';
+  if (env.screenShort < PHONE_SHORT_SIDE) return 'phone';
   return env.width < TABLET_MIN_WIDTH ? 'phone' : 'tablet';
 }
 

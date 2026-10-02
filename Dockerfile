@@ -4,7 +4,10 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npm run build
+# Baked into the client too, so a page served from the service worker's cache
+# still notices a newer server and offers a reload.
+ARG BUILD_SHA=dev
+RUN BUILD_SHA=${BUILD_SHA} npm run build
 
 # ── Runtime ──────────────────────────────────────────────────────────────────
 FROM node:24-slim

@@ -78,9 +78,12 @@ export function sameDay(a: number, b: number): boolean {
  * `.` and `,` count as `:` for phone number pads. Returns null for anything malformed.
  */
 export function parseDurationInput(input: string): number | null {
-  // Phone number pads have no colon key, but do have a decimal separator.
+  // Phone number pads have no colon key, but do have a decimal separator. With
+  // one, minutes and seconds must be two digits, so `1.5` isn't read as 1:05.
+  const dotted = /[.,]/.test(input);
   const parts = input.trim().replace(/[.,]/g, ':').split(':');
   if (parts.length === 0 || parts.length > 3 || parts.some((p) => !/^\d+$/.test(p))) return null;
+  if (dotted && parts.slice(1).some((p) => p.length !== 2)) return null;
   const nums = parts.map(Number);
   if (nums.length === 3) {
     const [h = 0, m = 0, s = 0] = nums;

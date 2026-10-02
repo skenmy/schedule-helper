@@ -69,6 +69,27 @@ test.describe('iPad, landscape', () => {
   });
 });
 
+test.describe('iPad, rotating', () => {
+  test.use(device('iPad Pro 11 landscape'));
+
+  test('keeps a half-typed note when the iPad turns to portrait', async ({ page }) => {
+    await open(page);
+    await page.getByRole('tab', { name: /Event log/ }).click();
+    const note = page.getByPlaceholder('Add a note for the team…');
+    await note.fill('Runner mic is muted');
+    const { width, height } = page.viewportSize()!;
+    await page.setViewportSize({ width: height, height: width });
+    await expect(page.getByRole('region', { name: 'Timer controls' })).toHaveCSS(
+      'position',
+      'fixed',
+    );
+    await expect(note).toHaveValue('Runner mic is muted');
+    // The timeline stays a tab in portrait, too.
+    await page.getByRole('tab', { name: 'Timeline' }).click();
+    await expect(page.getByRole('region', { name: 'Timeline' })).toBeVisible();
+  });
+});
+
 test.describe('iPad, portrait', () => {
   test.use(device('iPad Pro 11'));
 

@@ -24,6 +24,10 @@
    * chrome and two panes that scroll on their own, with the run controls
    * pinned to the bottom of the live pane. Narrower ones scroll as a page
    * with the controls docked along the bottom.
+   *
+   * Both shapes are the same component tree, switched by CSS and props, so
+   * rotating the iPad (which crosses 1000px on most models) keeps whatever the
+   * operator was typing — an announcement, a log note, the schedule filter.
    */
   const wide = new MediaQuery('min-width: 1000px');
   const floor = $derived(prefs.tabletMode === 'floor');
@@ -42,107 +46,94 @@
   });
 </script>
 
-{#if wide.current}
-  <div class="shell">
-    <TopBar variant="tablet" />
-    <AnnouncementBanner />
-    <StatusStrip />
-    <div class="panes" class:floor>
-      <section class="pane live" aria-label="Live run">
-        <div class="scroll">
-          <NowCard stage={floor} />
-          {#if !floor}
-            <UpNext />
-            <MiniLog />
-          {/if}
-        </div>
-        <Transport variant={floor ? 'floor' : 'pane'} />
-      </section>
-      <section class="pane side" aria-label={floor ? 'Runners' : 'Tools'}>
-        {#if floor}
-          <div class="scroll">
-            <OnDeck />
-            <MiniLog />
-          </div>
-        {:else}
-          <Workspace pane />
-        {/if}
-      </section>
-    </div>
-  </div>
-{:else}
+<div class="tablet" class:wide={wide.current} class:floor>
   <TopBar variant="tablet" />
   <AnnouncementBanner />
   <StatusStrip />
-  <main class="stack" class:floor>
-    {#if floor}
-      <NowCard stage timer />
-      <OnDeck />
-      <MiniLog />
-    {:else}
-      <div class="pair">
-        <NowCard />
-        <UpNext />
+  <div class="panes">
+    <section class="pane live" aria-label="Live run">
+      <div class="scroll">
+        <!-- Narrow floor view: the timer rides in the card, the dock has no room for it. -->
+        <NowCard stage={floor} timer={floor && !wide.current} />
+        {#if !floor}
+          <UpNext />
+          <div class="log"><MiniLog /></div>
+        {/if}
       </div>
-    {/if}
-  </main>
-  {#if !floor}<Workspace />{/if}
-  <Transport variant="dock" readout={!floor} />
-{/if}
+      <Transport
+        variant={wide.current ? (floor ? 'floor' : 'pane') : 'dock'}
+        readout={wide.current || !floor}
+      />
+    </section>
+    <section class="pane side" aria-label={floor ? 'Runners' : 'Tools'}>
+      {#if floor}
+        <div class="scroll">
+          <OnDeck />
+          <MiniLog />
+        </div>
+      {:else}
+        <Workspace pane={wide.current} timeline />
+      {/if}
+    </section>
+  </div>
+</div>
 
 <MoreSheet />
 <RoomDialogs />
 <Shortcuts />
 
 <style>
+  .scroll {
+    display: grid;
+    align-content: start;
+    gap: 14px;
+    padding: 14px var(--gutter);
+  }
+
   /* ── Wide: an app shell with two independently scrolling panes ─────── */
-  .shell {
+  .wide {
     display: flex;
     flex-direction: column;
     height: 100dvh;
   }
-  .panes {
+  .wide .panes {
     flex: 1;
     min-height: 0;
     display: grid;
     grid-template-columns: minmax(360px, 0.62fr) minmax(0, 1fr);
   }
-  .panes.floor {
+  .wide.floor .panes {
     grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
   }
-  .pane {
+  .wide .pane {
     display: flex;
     flex-direction: column;
     min-height: 0;
     min-width: 0;
   }
-  .live {
+  .wide .live {
     border-right: 1px solid var(--border);
   }
-  .scroll {
+  .wide .scroll {
     flex: 1;
     min-height: 0;
-    display: grid;
-    align-content: start;
-    gap: 14px;
-    padding: 14px var(--gutter) 20px;
+    padding-bottom: 20px;
     overflow-y: auto;
     overscroll-behavior: contain;
   }
-  .side .scroll {
+  .wide .side .scroll {
     padding-bottom: calc(20px + env(safe-area-inset-bottom));
   }
 
   /* ── Narrow: a scrolling page with the controls docked ──────────────── */
-  .stack {
-    display: grid;
-    gap: 14px;
-    padding: 14px var(--gutter);
-  }
-  .pair {
-    display: grid;
+  .tablet:not(.wide):not(.floor) .live .scroll {
     grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
-    gap: 14px;
     align-items: start;
+  }
+  .tablet:not(.wide) .log {
+    display: none;
+  }
+  .tablet:not(.wide).floor .side .scroll {
+    padding-top: 0;
   }
 </style>
