@@ -1,11 +1,16 @@
 // Room state defaults and limits.
 
-import type { DriftSettings, RoomState } from '../../shared/types.ts';
+import type { DriftSettings, RoomState, TrackingSettings } from '../../shared/types.ts';
 
 export const LOG_LIMIT = 1_000;
 export const UNDO_LIMIT = 30;
 
 export const DEFAULT_DRIFT: DriftSettings = { enabled: false, intervalMin: 5, thresholdSec: 10 };
+export const DEFAULT_TRACKING: TrackingSettings = {
+  twitch: false,
+  vision: false,
+  autoApply: false,
+};
 
 export function initialState(twitchChannel = ''): RoomState {
   return {
@@ -21,6 +26,9 @@ export function initialState(twitchChannel = ''): RoomState {
     drift: { ...DEFAULT_DRIFT },
     capture: null,
     captureBusy: false,
+    tracking: { ...DEFAULT_TRACKING },
+    detection: null,
+    stream: null,
     undo: null,
     updatedAt: Date.now(),
   };

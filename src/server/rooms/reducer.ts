@@ -13,6 +13,7 @@ import {
 import type { MutatingAction } from '../../shared/protocol.ts';
 import { normalizeTwitchChannel } from '../../shared/sources.ts';
 import { fmtClock, fmtHM, fmtHMS } from '../../shared/time.ts';
+import { describe } from '../tracking/detect.ts';
 import type { LogKind, RoomState, RunKey, ScheduleLine } from '../../shared/types.ts';
 import { LOG_LIMIT } from './state.ts';
 
@@ -51,6 +52,7 @@ const UNDOABLE: ReadonlySet<ReducibleAction['action']> = new Set([
   'announcement:set',
   'announcement:clear',
   'capture:apply',
+  'detection:accept',
 ]);
 
 const LIVE_RUN_REMOVED =
@@ -361,6 +363,62 @@ function apply(s: RoomState, action: ReducibleAction, ctx: ReduceContext): strin
           : 'Auto drift check off',
       );
       return null;
+    }
+
+    case 'tracking:configure': {
+      const { twitch, vision, autoApply } = action;
+      const t = s.tracking;
+      if (t.twitch === twitch && t.vision === vision && t.autoApply === autoApply) {
+        throw new NoChange();
+      }
+      s.tracking = { twitch, vision, autoApply };
+      if (!twitch && !vision) s.detection = null;
+      const on = [twitch && 'Twitch', vision && 'stream reading'].filter(Boolean).join(' + ');
+      log(
+        on
+          ? `Auto-tracking on (${on}): ${autoApply ? 'acts when two signals agree' : 'asks first'}`
+          : 'Auto-tracking off',
+      );
+      return null;
+    }
+
+    case 'detection:dismiss': {
+      const d = s.detection;
+      if (!d || d.id !== action.id) throw new NoChange();
+      s.detection = null;
+      log(`✕ Dismissed: ${describe(d, lines)}`);
+      return null;
+    }
+
+    case 'detection:accept': {
+      const d = s.detection;
+      if (!d || d.id !== action.id) {
+        throw conflict('That suggestion has gone. The stream may have moved on; check the banner.');
+      }
+      // Built for one live run; following it from another would rewind or skip the marathon.
+      if (d.currentKey !== s.currentKey || s.finishedAt != null) {
+        throw conflict('The live run has changed since that was detected.');
+      }
+      const { line, index } = lineFor(d.runKey);
+      if (line.setupBlock) throw invalid('Setup blocks can’t be the current run.');
+      s.detection = null;
+      const via = [...new Set(d.signals.map((x) => x.source))].join(' + ');
+      if (d.kind === 'advance') {
+        // The previous run ended about when the stream first moved on, not now.
+        const prev = s.currentKey ? s.runs[s.currentKey] : undefined;
+        moveTo(index);
+        if (prev?.startedAt != null && prev.endedAt === now) {
+          prev.endedAt = Math.max(prev.startedAt, Math.min(now, d.firstAt));
+        }
+      }
+      const r = rec(line.key);
+      if (d.startedAt != null && runTiming(r, now).phase === 'setup') {
+        r.startedAt = Math.min(d.startedAt, now);
+        delete r.endedAt;
+      }
+      const started =
+        r.startedAt != null && d.startedAt != null ? `, started ${fmtClock(r.startedAt)}` : '';
+      return log(`⇢ Followed the stream (${via}) to ${lineTitle(line)}${started}`);
     }
 
     case 'capture:apply': {

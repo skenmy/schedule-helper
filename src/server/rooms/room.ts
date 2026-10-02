@@ -5,6 +5,7 @@ import type { MutatingAction, ServerMessage } from '../../shared/protocol.ts';
 import { roomKey } from '../../shared/sources.ts';
 import type { RoomRef, RoomState, Schedule, UndoInfo } from '../../shared/types.ts';
 import { logger } from '../logger.ts';
+import { reconcile } from '../tracking/detect.ts';
 import { appendLog, reduce } from './reducer.ts';
 import { UNDO_LIMIT, initialState, takeSnapshot, type UndoEntry } from './state.ts';
 import { ROOM_FILE_FORMAT, type RoomFile, type RoomStore } from './store.ts';
@@ -64,7 +65,8 @@ export class Room {
     this.ref = opts.ref;
     this.key = roomKey(opts.ref);
     this.schedule = opts.schedule;
-    this.state = { ...opts.state, captureBusy: false };
+    // Room files written before a field existed get its default.
+    this.state = { ...initialState(), ...opts.state, captureBusy: false };
     this.undoStack = opts.undo ?? [];
     this.store = opts.store;
     this.services = opts.services;
@@ -192,7 +194,7 @@ export class Room {
   /**
    * Back to a fresh start for the same schedule: no live run, no timings, skips
    * or check-ins, an empty log, no broadcasts, capture reading or undo history.
-   * The Twitch channel and drift settings stay. Not undoable, so the previous
+   * The Twitch channel, drift and tracking settings stay. Not undoable, so the previous
    * state is written aside first — and the reset is refused if that fails.
    */
   private reset(actor: string | null): DispatchResult {
@@ -212,6 +214,7 @@ export class Room {
     const prev = this.state;
     const next = initialState(prev.twitchChannel);
     next.drift = { ...prev.drift };
+    next.tracking = { ...prev.tracking };
     // A capture in flight still has to clear this when it finishes (and is then discarded).
     next.captureBusy = prev.captureBusy;
     next.logSeq = Math.max(prev.logSeq ?? 0, prev.log[0]?.id ?? 0);
@@ -237,6 +240,8 @@ export class Room {
   }
 
   private commit(next: RoomState): void {
+    // Whatever changed, a run-change suggestion the room has moved past goes.
+    reconcile(next, Date.now());
     const top = this.undoStack.at(-1);
     next.rev = this.state.rev + 1;
     next.updatedAt = Date.now();

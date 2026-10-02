@@ -38,6 +38,9 @@ export const EMPTY_STATE: RoomState = {
   drift: { enabled: false, intervalMin: 5, thresholdSec: 10 },
   capture: null,
   captureBusy: false,
+  tracking: { twitch: false, vision: false, autoApply: false },
+  detection: null,
+  stream: null,
   undo: null,
   updatedAt: 0,
 };

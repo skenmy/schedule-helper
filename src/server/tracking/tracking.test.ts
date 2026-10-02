@@ -1,0 +1,236 @@
+import { describe, expect, it } from 'vitest';
+import type { RoomState, ScheduleLine } from '../../shared/types.ts';
+import { reduce } from '../rooms/reducer.ts';
+import { initialState } from '../rooms/state.ts';
+import { corroborated, observe, reconcile, STALE_MS, type Signal } from './detect.ts';
+import { matchStream } from './match.ts';
+
+const T0 = Date.UTC(2026, 4, 24, 10, 0, 0);
+const MIN = 60_000;
+
+const mk = (key: string, game: string, runners: string[], extra: Partial<ScheduleLine> = {}) =>
+  ({
+    key,
+    game,
+    category: 'Any%',
+    console: 'PC',
+    type: 'SINGLE',
+    runners,
+    estimateSec: 1800,
+    setupSec: 600,
+    scheduledStart: null,
+    setupBlock: false,
+    setupBlockText: '',
+    ...extra,
+  }) satisfies ScheduleLine;
+
+const LINES: ScheduleLine[] = [
+  mk('z', 'The Legend of Zelda: Ocarina of Time', ['epona']),
+  mk('s1', 'Spyro the Dragon', ['gnasty']),
+  mk('i', '', [], { setupBlock: true, setupBlockText: 'Interview' }),
+  mk('s2', 'Spyro the Dragon', ['ripto']),
+  mk('h', 'Hades', ['zagreus']),
+  mk('t', 'Tetris Effect', ['zone']),
+  mk('far', 'Celeste', ['madeline']),
+];
+
+/** Zelda live and running since T0. */
+function live(): RoomState {
+  const s = initialState();
+  s.currentKey = 'z';
+  s.runs.z = { startedAt: T0 };
+  return s;
+}
+
+const twitch = (runKey: string, at = T0 + 30 * MIN): Signal => ({
+  runKey,
+  source: 'twitch',
+  at,
+  detail: 'category',
+  startedAt: null,
+});
+const vision = (runKey: string, at: number, startedAt: number): Signal => ({
+  runKey,
+  source: 'vision',
+  at,
+  detail: 'timer',
+  startedAt,
+});
+
+describe('matchStream', () => {
+  const s = live();
+
+  it('matches the category to an upcoming run', () => {
+    expect(matchStream(LINES, s, { game: 'Spyro the Dragon', title: null })?.key).toBe('s1');
+    expect(matchStream(LINES, s, { game: 'Hades', title: 'UKSG Winter' })?.key).toBe('h');
+  });
+
+  it('prefers the live run when the category is still its game', () => {
+    const m = matchStream(LINES, s, {
+      game: 'The Legend of Zelda: Ocarina of Time',
+      title: 'UKSG | OoT by epona',
+    });
+    expect(m?.key).toBe('z');
+  });
+
+  it('separates back-to-back runs of one game by the runner in the title', () => {
+    const s2 = live();
+    s2.currentKey = 's1';
+    const m = matchStream(LINES, s2, {
+      game: 'Spyro the Dragon',
+      title: 'UKSG Winter – Spyro 120% by ripto | !schedule',
+    });
+    expect(m?.key).toBe('s2');
+    expect(m?.detail).toContain('runner ripto');
+  });
+
+  it('reads the title when the category is generic', () => {
+    expect(
+      matchStream(LINES, s, { game: 'Retro', title: 'Next up: Hades Fresh File by zagreus' })?.key,
+    ).toBe('h');
+  });
+
+  it('only looks a few runs ahead and never back', () => {
+    expect(matchStream(LINES, s, { game: 'Celeste', title: 'madeline' })).toBeNull();
+    const later = live();
+    later.currentKey = 'h';
+    expect(matchStream(LINES, later, { game: 'Spyro the Dragon', title: null })).toBeNull();
+  });
+
+  it('matches runner names as whole words only', () => {
+    expect(matchStream(LINES, s, { game: 'Retro', title: 'Ozone layer chat' })).toBeNull();
+  });
+
+  it('stops when the live run is no longer on the schedule', () => {
+    const gone = live();
+    gone.currentKey = 'removed';
+    expect(matchStream(LINES, gone, { game: 'Spyro the Dragon', title: null })).toBeNull();
+  });
+});
+
+describe('observe', () => {
+  it('raises an advance for a later run and merges agreeing signals', () => {
+    const s = live();
+    expect(observe(s, LINES, twitch('s1'))).toBe(true);
+    expect(s.detection).toMatchObject({ runKey: 's1', kind: 'advance', currentKey: 'z' });
+    expect(corroborated(s.detection!, T0 + 31 * MIN)).toBe(false);
+
+    const start = T0 + 31 * MIN;
+    observe(s, LINES, vision('s1', T0 + 32 * MIN, start));
+    expect(s.detection?.signals).toHaveLength(2);
+    expect(s.detection?.startedAt).toBe(start);
+    expect(corroborated(s.detection!, T0 + 32 * MIN)).toBe(true);
+  });
+
+  it('raises a start when the live run is running on stream but not here', () => {
+    const s = initialState();
+    s.currentKey = 's1';
+    const start = T0 + 5 * MIN;
+    observe(s, LINES, vision('s1', T0 + 6 * MIN, start));
+    expect(s.detection).toMatchObject({ kind: 'start', runKey: 's1', startedAt: start });
+    // One frame read once isn't enough to act alone; two readings a minute apart are.
+    expect(corroborated(s.detection!, T0 + 6 * MIN)).toBe(false);
+    observe(s, LINES, vision('s1', T0 + 7 * MIN, start + 3_000));
+    expect(corroborated(s.detection!, T0 + 7 * MIN)).toBe(true);
+  });
+
+  it('does not count readings that imply different starts', () => {
+    const s = initialState();
+    s.currentKey = 's1';
+    observe(s, LINES, vision('s1', T0 + 6 * MIN, T0 + 5 * MIN));
+    observe(s, LINES, vision('s1', T0 + 7 * MIN, T0 + 2 * MIN));
+    expect(corroborated(s.detection!, T0 + 7 * MIN)).toBe(false);
+  });
+
+  it('lets a source take back what it said, without overruling another source', () => {
+    const s = live();
+    observe(s, LINES, twitch('s1'));
+    observe(s, LINES, vision('s1', T0 + 31 * MIN, T0 + 30 * MIN));
+    // The stream still shows Zelda's final moments: vision withdraws, Twitch stands.
+    observe(s, LINES, vision('z', T0 + 32 * MIN, T0));
+    expect(s.detection?.signals.map((x) => x.source)).toEqual(['twitch']);
+    observe(s, LINES, twitch('z', T0 + 33 * MIN));
+    expect(s.detection).toBeNull();
+  });
+
+  it('ignores setup blocks, unknown runs and runs out of reach', () => {
+    const s = live();
+    expect(observe(s, LINES, twitch('i'))).toBe(false);
+    expect(observe(s, LINES, twitch('nope'))).toBe(false);
+    expect(observe(s, LINES, twitch('far'))).toBe(false);
+    expect(s.detection).toBeNull();
+  });
+});
+
+describe('reconcile', () => {
+  it('drops a detection once the live run changes or it goes stale', () => {
+    const s = live();
+    observe(s, LINES, twitch('s1'));
+    expect(reconcile(s, T0 + 31 * MIN)).toBe(false);
+    s.currentKey = 's1';
+    expect(reconcile(s, T0 + 31 * MIN)).toBe(true);
+    expect(s.detection).toBeNull();
+
+    const t = live();
+    observe(t, LINES, twitch('s1'));
+    expect(reconcile(t, T0 + 30 * MIN + STALE_MS + 1)).toBe(true);
+  });
+});
+
+describe('reducer: detections', () => {
+  const ctx = (now: number) => ({ lines: LINES, now, actor: 'op' });
+
+  it('accepting an advance moves on, ends the old run when the stream did, and back-dates the start', () => {
+    const s = live();
+    observe(s, LINES, twitch('s1', T0 + 30 * MIN));
+    observe(s, LINES, vision('s1', T0 + 36 * MIN, T0 + 35 * MIN));
+    const res = reduce(s, { action: 'detection:accept', id: s.detection!.id }, ctx(T0 + 37 * MIN));
+    if (!res.ok) throw new Error(res.message);
+    expect(res.state.currentKey).toBe('s1');
+    expect(res.state.runs.z?.endedAt).toBe(T0 + 30 * MIN);
+    expect(res.state.runs.s1?.startedAt).toBe(T0 + 35 * MIN);
+    expect(res.state.detection).toBeNull();
+    expect(res.undo).toContain('Followed the stream (twitch + vision)');
+  });
+
+  it('refuses a detection that is out of date', () => {
+    const s = live();
+    observe(s, LINES, twitch('s1'));
+    const stale = reduce(s, { action: 'detection:accept', id: 'other' }, ctx(T0 + 31 * MIN));
+    expect(stale.ok).toBe(false);
+    const moved = structuredClone(s);
+    moved.currentKey = 'h';
+    const res = reduce(moved, { action: 'detection:accept', id: s.detection!.id }, ctx(T0));
+    expect(res.ok).toBe(false);
+  });
+
+  it('dismissing clears it without an undo entry', () => {
+    const s = live();
+    observe(s, LINES, twitch('s1'));
+    const res = reduce(s, { action: 'detection:dismiss', id: s.detection!.id }, ctx(T0));
+    if (!res.ok) throw new Error(res.message);
+    expect(res.state.detection).toBeNull();
+    expect(res.undo).toBeNull();
+    expect(res.state.log[0]?.text).toContain('Dismissed: Spyro the Dragon is on stream');
+  });
+
+  it('configures tracking, and turning every source off clears any detection', () => {
+    const s = live();
+    const on = reduce(
+      s,
+      { action: 'tracking:configure', twitch: true, vision: false, autoApply: false },
+      ctx(T0),
+    );
+    if (!on.ok) throw new Error(on.message);
+    expect(on.state.tracking.twitch).toBe(true);
+    observe(on.state, LINES, twitch('s1'));
+    const off = reduce(
+      on.state,
+      { action: 'tracking:configure', twitch: false, vision: false, autoApply: false },
+      ctx(T0),
+    );
+    if (!off.ok) throw new Error(off.message);
+    expect(off.state.detection).toBeNull();
+    expect(off.undo).toBeNull();
+  });
+});

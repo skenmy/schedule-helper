@@ -73,6 +73,16 @@ export const ClientActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('capture:run') }),
   z.object({ action: z.literal('capture:apply') }),
 
+  z.object({
+    action: z.literal('tracking:configure'),
+    twitch: z.boolean(),
+    vision: z.boolean(),
+    autoApply: z.boolean(),
+  }),
+  /** `id` names the detection the operator saw; a newer one is left alone. */
+  z.object({ action: z.literal('detection:accept'), id: z.string().max(64) }),
+  z.object({ action: z.literal('detection:dismiss'), id: z.string().max(64) }),
+
   z.object({ action: z.literal('schedule:refresh') }),
   /** Back to a fresh start: clears progress, log, broadcasts and undo; keeps settings. */
   z.object({ action: z.literal('room:reset') }),
