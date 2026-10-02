@@ -91,6 +91,8 @@ export const ClientActionSchema = z.discriminatedUnion('action', [
     twitch: z.boolean(),
     vision: z.boolean(),
     autoApply: z.boolean(),
+    /** Optional so older clients leave it as it is. */
+    nodecg: z.boolean().optional(),
   }),
   /** `id` names the detection the operator saw; a newer one is left alone. */
   z.object({ action: z.literal('detection:accept'), id: z.string().max(64) }),
@@ -159,6 +161,30 @@ const keyOf = (bytes: number) =>
     .max(128)
     .regex(/^[A-Za-z0-9_-]+=*$/)
     .refine((v) => v.replace(/=+$/, '').length === Math.ceil((bytes * 4) / 3), 'Wrong key length.');
+
+/** What the stream PC's speedcontrol says: its active run and timer (NodeCG bundle or bridge). */
+export const NodecgReportSchema = z.object({
+  t: z.string().max(64),
+  via: z.enum(['bundle', 'bridge']),
+  run: z
+    .object({
+      externalID: z.union([z.string().max(64), z.number()]).nullish(),
+      game: z.string().max(200).nullish(),
+      category: z.string().max(200).nullish(),
+      players: z.array(z.string().max(100)).max(32).default([]),
+    })
+    .nullable(),
+  timer: z
+    .object({
+      state: z.enum(['stopped', 'running', 'paused', 'finished']),
+      elapsedMs: z
+        .number()
+        .min(0)
+        .max(7 * 86_400_000),
+    })
+    .nullable(),
+});
+export type NodecgReport = z.infer<typeof NodecgReportSchema>;
 
 /** An operator turning alerts for a room on or off for this device. */
 export const PushFollowSchema = z.object({

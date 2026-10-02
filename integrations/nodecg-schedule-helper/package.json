@@ -1,0 +1,13 @@
+{
+  "name": "nodecg-schedule-helper",
+  "version": "1.0.0",
+  "description": "Tells Schedule Helper which run is on stream and what the speedcontrol timer is doing.",
+  "license": "MIT",
+  "private": true,
+  "nodecg": {
+    "compatibleRange": ">=1.8.0 <3.0.0",
+    "bundleDependencies": {
+      "nodecg-speedcontrol": ">=2.0.0"
+    }
+  }
+}

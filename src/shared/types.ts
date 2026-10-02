@@ -134,6 +134,8 @@ export interface TrackingSettings {
   vision: boolean;
   /** Act without asking when two independent signals agree. Off: always ask. */
   autoApply: boolean;
+  /** Listen to the stream PC's NodeCG speedcontrol (when it reports in). */
+  nodecg: boolean;
 }
 
 /**
@@ -183,6 +185,20 @@ export interface SettledDetection {
   at: number;
 }
 
+/** What the stream PC's NodeCG speedcontrol last reported (src/server/tracking/nodecg.ts). */
+export interface NodecgStatus {
+  /** When it last reported in. */
+  at: number;
+  /** The NodeCG bundle on the stream PC, or the bridge page in a browser there. */
+  via: 'bundle' | 'bridge';
+  game: string | null;
+  /** The run on our schedule that speedcontrol's active run matched, if any. */
+  runKey: RunKey | null;
+  timer: 'stopped' | 'running' | 'paused' | 'finished' | null;
+  /** The timer as of `at`. */
+  elapsedSec: number | null;
+}
+
 /** The last thing a stream-info source (Twitch) reported for the room's channel. */
 export interface StreamInfo {
   live: boolean;
@@ -225,6 +241,8 @@ export interface RoomState {
   detection: Detection | null;
   settled: SettledDetection | null;
   stream: StreamInfo | null;
+  /** The stream PC's speedcontrol, once it has reported in. */
+  nodecg: NodecgStatus | null;
   /** The action `undo` would revert, if any. */
   undo: UndoInfo | null;
   updatedAt: number;

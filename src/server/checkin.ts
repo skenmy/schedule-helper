@@ -38,6 +38,11 @@ function createAtomically(file: string, content: string): boolean {
   }
 }
 
+function same(expected: string, token: unknown): boolean {
+  if (typeof token !== 'string' || !TOKEN_PATTERN.test(token)) return false;
+  return timingSafeEqual(Buffer.from(expected), Buffer.from(token));
+}
+
 export class CheckInTokens {
   readonly #secret: string;
 
@@ -71,8 +76,22 @@ export class CheckInTokens {
   }
 
   verify(ref: RoomRef, key: RunKey, token: unknown): boolean {
-    if (typeof token !== 'string' || !TOKEN_PATTERN.test(token)) return false;
-    return timingSafeEqual(Buffer.from(this.token(ref, key)), Buffer.from(token));
+    return same(this.token(ref, key), token);
+  }
+
+  /**
+   * The stream PC's token for a room: lets NodeCG speedcontrol report what's on
+   * stream (tracking/nodecg.ts), and nothing else. Same secret, its own purpose.
+   */
+  sourceToken(ref: RoomRef): string {
+    return createHmac('sha256', this.#secret)
+      .update(`source:v1\n${roomKey(ref)}`)
+      .digest('base64url')
+      .slice(0, TOKEN_LENGTH);
+  }
+
+  verifySource(ref: RoomRef, token: unknown): boolean {
+    return same(this.sourceToken(ref), token);
   }
 }
 

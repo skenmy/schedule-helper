@@ -100,7 +100,7 @@ describe('captureInterval', () => {
     ...initialState(),
     ...patch,
   });
-  const vision = { twitch: false, vision: true, autoApply: false };
+  const vision = { twitch: false, vision: true, autoApply: false, nodecg: false };
 
   it('captures nothing with both features off', () => {
     expect(
@@ -156,7 +156,7 @@ describe('captureInterval', () => {
   it('stops reading while Twitch says the channel is offline', () => {
     const s = st({
       currentKey: 'b',
-      tracking: { twitch: true, vision: true, autoApply: false },
+      tracking: { twitch: true, vision: true, autoApply: false, nodecg: false },
       stream: { live: false, game: null, title: null, at: T0, error: null },
     });
     expect(captureInterval(s, timed, T0)).toBeNull();

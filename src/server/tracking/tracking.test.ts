@@ -226,7 +226,13 @@ describe('reducer: detections', () => {
     observe(on.state, LINES, twitch('s1'));
     const off = reduce(
       on.state,
-      { action: 'tracking:configure', twitch: false, vision: false, autoApply: false },
+      {
+        action: 'tracking:configure',
+        twitch: false,
+        vision: false,
+        autoApply: false,
+        nodecg: false,
+      },
       ctx(T0),
     );
     if (!off.ok) throw new Error(off.message);

@@ -10,6 +10,7 @@ export const DEFAULT_TRACKING: TrackingSettings = {
   twitch: false,
   vision: false,
   autoApply: false,
+  nodecg: true,
 };
 
 export function initialState(twitchChannel = ''): RoomState {
@@ -30,6 +31,7 @@ export function initialState(twitchChannel = ''): RoomState {
     detection: null,
     settled: null,
     stream: null,
+    nodecg: null,
     undo: null,
     updatedAt: Date.now(),
   };

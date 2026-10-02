@@ -40,10 +40,11 @@ export const EMPTY_STATE: RoomState = {
   drift: { enabled: false, intervalMin: 5, thresholdSec: 10 },
   capture: null,
   captureBusy: false,
-  tracking: { twitch: false, vision: false, autoApply: false },
+  tracking: { twitch: false, vision: false, autoApply: false, nodecg: true },
   detection: null,
   settled: null,
   stream: null,
+  nodecg: null,
   undo: null,
   updatedAt: 0,
 };
@@ -218,8 +219,8 @@ export class Ops {
     this.send({ action: 'drift:configure', enabled, intervalMin, thresholdSec });
   }
 
-  configureTracking(twitch: boolean, vision: boolean, autoApply: boolean): void {
-    this.send({ action: 'tracking:configure', twitch, vision, autoApply });
+  configureTracking(twitch: boolean, vision: boolean, autoApply: boolean, nodecg: boolean): void {
+    this.send({ action: 'tracking:configure', twitch, vision, autoApply, nodecg });
   }
 
   /** Follows the run change the stream showed (the exact detection the operator saw). */

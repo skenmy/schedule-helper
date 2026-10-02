@@ -146,7 +146,12 @@ ordinary undoable action that back-dates the start from a timer reading) or dism
 - **Auto-apply** (`tracking.autoApply`, off by default) needs `corroborated()`: a trusted
   stream-PC source (`TRUSTED_SOURCES`), two different sources, or two timer readings ≥20 s apart
   implying the same start. It dispatches as `Auto-tracking`, so it's logged and undoable.
-- **Adding a source** (NodeCG speedcontrol, a stream-PC push): build a `Signal`, call `signal()`.
+- **Adding a source**: build a `Signal`, call `signal()`. NodeCG speedcontrol is one
+  (`tracking/nodecg.ts`): the bundle in `integrations/nodecg-schedule-helper` (plain CommonJS, no
+  dependencies, tested from `nodecg-bundle.test.ts`) or the bridge page (`src/client/bridge.ts`, a
+  second Vite entry) POST reports authorised by the room's stream PC token
+  (`CheckInTokens.sourceToken`). It's trusted (`TRUSTED_SOURCES`) and `tracking.nodecg` switches
+  it off (undefined counts as on for rooms saved before it existed).
 - Vision reading reuses stream capture; `captureInterval()` decides the cadence: every minute while
   a suggestion is pending or a change is due (near a run's estimated end, between runs), backing
   off to every 10 after 30 minutes due, none while Twitch says offline, and only while an operator

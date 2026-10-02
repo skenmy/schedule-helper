@@ -427,6 +427,49 @@ describe('runner self check-in', () => {
   });
 });
 
+describe('stream PC (NodeCG speedcontrol)', () => {
+  const base = () => `http://localhost:${server.port}/api/rooms/oengus/testmarathon/main`;
+  const report = (body: unknown) =>
+    fetch(`${base()}/nodecg`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  it('takes reports with the room’s stream PC token, and shows them', async () => {
+    const c = await connect();
+    await c.join();
+    const { token } = (await (await fetch(`${base()}/source-token`)).json()) as { token: string };
+    const shown = c.nextState((s) => s.nodecg != null);
+    const res = await report({
+      t: token,
+      via: 'bundle',
+      run: { game: 'Celeste', players: [] },
+      timer: { state: 'stopped', elapsedMs: 0 },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, listening: true });
+    expect((await shown).nodecg).toMatchObject({
+      via: 'bundle',
+      game: 'Celeste',
+      timer: 'stopped',
+    });
+  });
+
+  it('refuses other tokens and anything that isn’t a report', async () => {
+    const run = { game: 'Celeste', players: [] };
+    expect((await report({ t: 'A'.repeat(22), via: 'bundle', run, timer: null })).status).toBe(403);
+    expect((await report({ t: 'A'.repeat(22), via: 'email', run, timer: null })).status).toBe(400);
+    // A check-in token is no use here, and vice versa.
+    const links = (await (await fetch(`${base()}/checkin-links`)).json()) as {
+      tokens: Record<string, string>;
+    };
+    expect((await report({ t: links.tokens.d3, via: 'bundle', run, timer: null })).status).toBe(
+      403,
+    );
+  });
+});
+
 describe('push notifications', () => {
   const keys = {
     p256dh:

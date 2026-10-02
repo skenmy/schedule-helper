@@ -108,3 +108,51 @@ export function matchStream(
   const { key, why } = best;
   return { key, detail: why.join(', ') };
 }
+
+/** What speedcontrol says about its active run (a subset of its RunData). */
+export interface RunData {
+  /** The run's ID in the schedule speedcontrol imported (Oengus line ID). */
+  externalID?: string | number | null;
+  game?: string | null;
+  category?: string | null;
+  players?: string[];
+}
+
+/**
+ * Which of our runs speedcontrol's active run is. Its own import from Oengus
+ * keeps the line ID, which names the run exactly (our keys are `o{id}`);
+ * otherwise the game must match, with the category and runners breaking ties
+ * between runs of the same game. Only the live run and the next few count.
+ */
+export function matchRunData(
+  lines: readonly ScheduleLine[],
+  state: Pick<RoomState, 'currentKey' | 'runs' | 'finishedAt'>,
+  run: RunData,
+): StreamMatch | null {
+  const candidates = candidateIndexes(lines, state).map((i) => lines[i]!);
+  const id = run.externalID == null ? '' : String(run.externalID).trim();
+  if (id) {
+    const byId = candidates.find((l) => l.key === `o${id}`);
+    if (byId) return { key: byId.key, detail: 'speedcontrol run ID' };
+  }
+  const game = squash(run.game ?? '');
+  if (!game) return null;
+  const category = squash(run.category ?? '');
+  const players = new Set((run.players ?? []).map(squash).filter(Boolean));
+  let best: { score: number; key: RunKey } | null = null;
+  for (const line of candidates) {
+    const ours = squash(line.game);
+    if (!ours) continue;
+    let score =
+      ours === game
+        ? 4
+        : ours.length >= 4 && game.length >= 4 && (ours.includes(game) || game.includes(ours))
+          ? 2
+          : 0;
+    if (!score) continue;
+    if (category && squash(line.category) === category) score += 1;
+    score += 2 * line.runners.filter((r) => players.has(squash(r))).length;
+    if (!best || score > best.score) best = { score, key: line.key };
+  }
+  return best && { key: best.key, detail: `speedcontrol: ${run.game}` };
+}

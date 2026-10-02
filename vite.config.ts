@@ -75,6 +75,10 @@ export default defineConfig({
     outDir: '../../dist/client',
     emptyOutDir: true,
     sourcemap: true,
+    rollupOptions: {
+      // The app, and the NodeCG bridge for stream PCs (src/client/bridge.ts).
+      input: { main: path.join(ROOT, 'index.html'), bridge: path.join(ROOT, 'bridge.html') },
+    },
   },
   server: {
     port: 5173,

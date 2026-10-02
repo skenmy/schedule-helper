@@ -418,12 +418,20 @@ function apply(s: RoomState, action: ReducibleAction, ctx: ReduceContext): strin
     case 'tracking:configure': {
       const { twitch, vision, autoApply } = action;
       const t = s.tracking;
-      if (t.twitch === twitch && t.vision === vision && t.autoApply === autoApply) {
+      const nodecg = action.nodecg ?? t.nodecg;
+      if (
+        t.twitch === twitch &&
+        t.vision === vision &&
+        t.autoApply === autoApply &&
+        t.nodecg === nodecg
+      ) {
         throw new NoChange();
       }
-      s.tracking = { twitch, vision, autoApply };
-      if (!twitch && !vision) s.detection = null;
-      const on = [twitch && 'Twitch', vision && 'stream reading'].filter(Boolean).join(' + ');
+      s.tracking = { twitch, vision, autoApply, nodecg };
+      if (!twitch && !vision && !nodecg) s.detection = null;
+      const on = [twitch && 'Twitch', vision && 'stream reading', nodecg && 'NodeCG']
+        .filter(Boolean)
+        .join(' + ');
       log(
         on
           ? `Auto-tracking on (${on}): ${autoApply ? 'acts when two signals agree' : 'asks first'}`

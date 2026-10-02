@@ -6,6 +6,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  NodecgReportSchema,
   PushEndpointSchema,
   PushFollowSchema,
   SelfCheckInSchema,
@@ -19,6 +20,7 @@ import { LinkThrottle, type CheckInTokens } from './checkin.ts';
 import { FollowRefused, type PushService } from './push/service.ts';
 import { config } from './config.ts';
 import { buildFeed } from './feed.ts';
+import { nodecgReport } from './tracking/nodecg.ts';
 import { logger } from './logger.ts';
 import type { RoomRegistry } from './rooms/registry.ts';
 import { UpstreamError, fetchEventListing } from './sources/index.ts';
@@ -253,6 +255,56 @@ export function createApp(
           return;
         }
         res.json({ ok: true });
+      } catch (err) {
+        sendError(res, err);
+      }
+    },
+  );
+
+  // ── Stream PC: NodeCG speedcontrol (tracking/nodecg.ts) ─────────────────────
+
+  // The token the stream PC's bundle or bridge page uses for this room.
+  app.get('/api/rooms/:source/:event/:slug/source-token', async (req, res) => {
+    const ref = refFrom(req);
+    res.setHeader('cache-control', 'no-store');
+    if (!ref) {
+      res.status(400).json({ error: 'Invalid room' });
+      return;
+    }
+    if (!(await requireOperator(req, res, 'set up the stream PC'))) return;
+    res.json({ token: checkins.sourceToken(ref) });
+  });
+
+  // Speedcontrol reports on every run or timer change and every 15 s (a burst
+  // of changes is normal). Plenty of room for that, not for a flood.
+  const sourceThrottle = new LinkThrottle({ gapMs: 0, perHour: 3_600 });
+  app.post(
+    '/api/rooms/:source/:event/:slug/nodecg',
+    express.json({ limit: '8kb' }),
+    async (req, res) => {
+      const ref = refFrom(req);
+      res.setHeader('cache-control', 'no-store');
+      const body = NodecgReportSchema.safeParse(req.body);
+      if (!ref || !body.success) {
+        res
+          .status(400)
+          .json({ error: 'That isn’t a speedcontrol report this server understands.' });
+        return;
+      }
+      const { t, ...report } = body.data;
+      if (!checkins.verifySource(ref, t)) {
+        res.status(403).json({ error: 'That stream PC token isn’t valid for this schedule.' });
+        return;
+      }
+      if (!sourceThrottle.allow(roomKey(ref))) {
+        res.status(429).json({ error: 'Too many reports. Slow down.' });
+        return;
+      }
+      try {
+        const room = await registry.open(ref);
+        nodecgReport(room, report);
+        const s = room.state.nodecg;
+        res.json({ ok: true, matched: s?.runKey ?? null, listening: room.state.tracking.nodecg });
       } catch (err) {
         sendError(res, err);
       }

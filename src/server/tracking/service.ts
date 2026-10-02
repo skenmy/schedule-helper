@@ -32,7 +32,11 @@ export function channelOf(room: Room): string {
 
 /** Whether a source is switched on for the room (stream-PC sources are on when they post). */
 function enabled(t: TrackingSettings, source: SignalSource): boolean {
-  return source === 'twitch' ? t.twitch : source === 'vision' ? t.vision : true;
+  if (source === 'twitch') return t.twitch;
+  if (source === 'vision') return t.vision;
+  // Rooms saved before the setting existed have no value: on.
+  if (source === 'nodecg') return t.nodecg !== false;
+  return true;
 }
 
 /** Feeds one signal to a room's detection, then acts on it if allowed. */
