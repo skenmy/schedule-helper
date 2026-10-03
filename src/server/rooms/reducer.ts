@@ -14,7 +14,7 @@ import type { MutatingAction } from '../../shared/protocol.ts';
 import { normalizeTwitchChannel } from '../../shared/sources.ts';
 import { fmtClock, fmtHM, fmtHMS } from '../../shared/time.ts';
 import { describe, isReachable, settle, startFloor } from '../tracking/detect.ts';
-import type { LogKind, RoomState, RunKey, ScheduleLine } from '../../shared/types.ts';
+import type { LogKind, RoomState, RunKey, RunRecord, ScheduleLine } from '../../shared/types.ts';
 import { LOG_LIMIT } from './state.ts';
 
 /** Actions handled by the reducer; the rest need I/O and live on Room. */
@@ -128,6 +128,17 @@ function apply(s: RoomState, action: ReducibleAction, ctx: ReduceContext): strin
     if (r?.skipped) throw conflict('That run was taken off the schedule. Talk to an organiser.');
     if (s.finishedAt != null) throw conflict('The marathon is over.');
     if (r?.startedAt != null) throw conflict('That run has already started.');
+  };
+  /** A runner can take back what they said from their link, not what an organiser set. */
+  const runnerMayClear = (r: RunRecord) => {
+    if (r.checkIn == null && !r.late) throw new NoChange();
+    if (r.selfAt == null) {
+      throw conflict(
+        r.checkIn === 'missing'
+          ? 'The organisers are looking for you. Tell them you’re here, or that you’re running late.'
+          : 'An organiser set this, so only they can change it.',
+      );
+    }
   };
 
   /** The current line, selecting the first run if the marathon hasn't started. */
@@ -303,6 +314,7 @@ function apply(s: RoomState, action: ReducibleAction, ctx: ReduceContext): strin
       if (line.setupBlock) throw invalid('Setup blocks have no runners.');
       if (ctx.runner) runnerMayCheckIn(line.key);
       const r = rec(line.key);
+      if (ctx.runner && action.status == null) runnerMayClear(r);
       if ((r.checkIn ?? null) === action.status && !r.late) throw new NoChange();
       if (action.status) r.checkIn = action.status;
       else delete r.checkIn;
@@ -316,7 +328,9 @@ function apply(s: RoomState, action: ReducibleAction, ctx: ReduceContext): strin
           ? `✓ ${who} checked in for ${lineTitle(line)}${ctx.runner ? ' (from their link)' : ''}`
           : action.status === 'missing'
             ? `⚠ ${who} missing for ${lineTitle(line)}`
-            : `Cleared check-in for ${lineTitle(line)}`;
+            : ctx.runner
+              ? `${who} cleared their check-in for ${lineTitle(line)} (from their link)`
+              : `Cleared check-in for ${lineTitle(line)}`;
       return log(text, action.status === 'missing' ? 'warning' : 'runner', line.key);
     }
 

@@ -409,6 +409,28 @@ describe('runner self check-in', () => {
     expect((await post('d4', { t: t.d4, status: 'ready' })).status).toBe(200);
   });
 
+  it('lets a runner clear their own check-in, but not an organiser’s', async () => {
+    const c = await connect();
+    await c.join();
+    const t = await tokens();
+    expect(t.d7).toBeDefined();
+    const pause = () => new Promise((r) => setTimeout(r, 1_100)); // a link's once-a-second limit
+
+    const missing = c.nextState((st) => st.runs.d7?.checkIn === 'missing');
+    c.send({ action: 'runner:checkin', key: 'd7', status: 'missing' });
+    await missing;
+    const refused = await post('d7', { t: t.d7, status: 'clear' });
+    expect(refused.status).toBe(409);
+    expect(((await refused.json()) as { error: string }).error).toMatch(/looking for you/);
+
+    await pause();
+    expect((await post('d7', { t: t.d7, status: 'ready' })).status).toBe(200);
+    await pause();
+    const cleared = c.nextState((st) => st.runs.d7?.selfAt != null && !st.runs.d7?.checkIn);
+    expect((await post('d7', { t: t.d7, status: 'clear' })).status).toBe(200);
+    expect((await cleared).log[0]?.text).toMatch(/cleared their check-in .*\(from their link\)$/);
+  });
+
   it('leaves a runner’s check-in alone when an operator undoes their own change', async () => {
     const c = await connect();
     await c.join();

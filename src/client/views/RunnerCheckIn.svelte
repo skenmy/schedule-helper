@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Check, Clock, CloudOff, TriangleAlert } from '@lucide/svelte';
+  import { Check, Clock, CloudOff, TriangleAlert, X } from '@lucide/svelte';
   import { tick, untrack } from 'svelte';
   import { indexOfKey, lineTitle } from '../../shared/derive.ts';
   import { etaText, linkIsValid, selfCheckIn } from '../lib/checkin.ts';
@@ -10,7 +10,8 @@
 
   /**
    * The page behind a runner's check-in link: their run, when it's expected to
-   * start, and two buttons — "I'm here" and "Running late". Runners aren't
+   * start, and two buttons — "I'm here" and "Running late" — plus a way to take
+   * back what they said (not what an organiser set). Runners aren't
    * operators: the link's token is what lets them post (lib/checkin.ts), and only
    * for this run. The rest of the page is the same live state any viewer sees.
    */
@@ -68,6 +69,8 @@
   let busy = $state(false);
   let error = $state<string | null>(null);
   const canSend = $derived(room.synced && valid !== false && !busy && stage === 'upcoming');
+  /** What they said themselves can be taken back; what an organiser set (no `selfAt`) can't. */
+  const canClear = $derived((ci === 'ready' || ci === 'late') && rec?.selfAt != null);
 
   async function startLate() {
     // Seed the form from what they said last time, without tracking later broadcasts.
@@ -96,7 +99,9 @@
       announcement =
         body.status === 'ready'
           ? 'You’re checked in.'
-          : 'Thanks. The organisers know you’re running late.';
+          : body.status === 'clear'
+            ? 'Your check-in is cleared.'
+            : 'Thanks. The organisers know you’re running late.';
       // The button pressed is gone now; don't leave focus nowhere.
       await tick();
       runHeading?.focus();
@@ -159,6 +164,17 @@
         </dl>
       {/if}
     </section>
+
+    {#if stage === 'upcoming' && !telling}
+      <section class="card how" aria-label="How it works">
+        <span class="label">How it works</span>
+        <ul>
+          <li>Check in here 1–2 hours before your run, once you’re ready to go.</li>
+          <li>Running late? Tell the organisers roughly how far away you are.</li>
+          <li>Checked in too early, or by mistake? Clear it and check in again later.</li>
+        </ul>
+      </section>
+    {/if}
 
     {#if stage === 'live'}
       <section class="card notice ok">
@@ -269,6 +285,15 @@
               ? 'Actually, I’m running late'
               : 'Running late'}
         </button>
+        {#if canClear}
+          <button
+            class="btn ghost lg"
+            disabled={!canSend}
+            onclick={() => send({ t: token, status: 'clear' })}
+          >
+            <X size={18} /> Clear my check-in
+          </button>
+        {/if}
       </div>
     {/if}
 
@@ -314,6 +339,20 @@
     display: grid;
     gap: 6px;
     padding: 18px;
+  }
+  .how {
+    display: grid;
+    gap: 6px;
+    padding: 14px 18px;
+    box-shadow: none;
+  }
+  .how ul {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+    padding-left: 18px;
+    color: var(--text-2);
+    font-size: 14px;
   }
   .run h2 {
     font-size: 22px;
