@@ -75,8 +75,9 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
 - Mutating actions are auth-gated in `ws.ts`; `join`/`ping` and all HTTP reads are public, except
   `checkin-links` and the `push` routes (operators only). The one HTTP write is a runner's check-in, authorised by its
   link's token for that run alone (throttled per link), and runs through the reducer with
-  `{ runner: true }`: refusals for started/skipped runs live there, and it never goes on the undo
-  stack (`Room.undo` carries forward runs whose `selfAt` is newer). **A runner's late note is free
+  `{ runner: true }`: refusals for started/skipped runs live there (and a runner clearing what an
+  organiser set: only `selfAt` marks it as theirs), and it never goes on the undo stack
+  (`Room.undo` carries forward runs whose `selfAt` is newer). **A runner's late note is free
   text from outside**: render it as text, never as HTML, keep it out of anything that runs
   (formulas, URLs) and out of the public overlay feed.
 - **The operator cookie only counts from our own pages.** `isOwnOrigin` (`auth.ts`) refuses a `/ws`

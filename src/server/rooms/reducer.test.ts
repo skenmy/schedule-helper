@@ -220,6 +220,42 @@ describe('edits and check-ins', () => {
     expect(fail(s, { action: 'runner:late', key: 's', minutes: 5, note: '' }).code).toBe('invalid');
   });
 
+  it('lets a runner clear what they said from their link, but not what an organiser set', () => {
+    const asRunner = (state: RoomState, action: ReducibleAction, now = T0) =>
+      reduce(state, action, { lines: LINES, now, actor: 'rb (check-in link)', runner: true });
+    const clear = { action: 'runner:checkin', key: 'b', status: null } as const;
+
+    // Nothing said yet: nothing to clear.
+    expect(asRunner(initialState(), clear)).toMatchObject({ ok: true, changed: false });
+
+    // Their own "I'm here", taken back: logged, not on the operators' undo stack.
+    let res = asRunner(initialState(), { action: 'runner:checkin', key: 'b', status: 'ready' });
+    if (!res.ok) throw new Error(res.message);
+    res = asRunner(res.state, clear, T0 + MIN);
+    if (!res.ok) throw new Error(res.message);
+    expect(res.state.runs.b).toEqual({ selfAt: T0 + MIN });
+    expect(res.undo).toBeNull();
+    expect(res.state.log[0]?.text).toBe('rb cleared their check-in for Game b (from their link)');
+
+    // Their own "running late" too.
+    res = asRunner(initialState(), { action: 'runner:late', key: 'b', minutes: 10, note: '' });
+    if (!res.ok) throw new Error(res.message);
+    res = asRunner(res.state, clear, T0 + MIN);
+    expect(res).toMatchObject({ ok: true, changed: true });
+    if (res.ok) expect(res.state.runs.b?.late).toBeUndefined();
+
+    // An organiser's ready, missing or late stands.
+    for (const set of [
+      { action: 'runner:checkin', key: 'b', status: 'ready' },
+      { action: 'runner:checkin', key: 'b', status: 'missing' },
+      { action: 'runner:late', key: 'b', minutes: null, note: '' },
+    ] as const) {
+      const s = run(initialState(), set).state;
+      expect(asRunner(s, clear)).toMatchObject({ ok: false, code: 'conflict' });
+      expect(run(s, clear).changed).toBe(true);
+    }
+  });
+
   it('refuses a runner’s link once their run has started, been skipped, or the marathon ended', () => {
     const asRunner = (state: RoomState, key: string) =>
       reduce(

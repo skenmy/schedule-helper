@@ -36,8 +36,10 @@ Horaro schedule. Try it offline with the built-in demo marathon (`/demo/demo/mai
 - **Runner check-ins** per run (ready / missing), summarised for the next five runs.
 - **Runner self check-in.** Every run has its own link (a QR code in the run's sheet, or
   **Copy runner check-in links** in the command palette for all of them at once). A runner opens it
-  on their phone, sees when their run is expected to start, and taps **I'm here** or **Running
-  late** (how far away, plus an optional note). It shows on every operator's screen as it happens:
+  on their phone, sees when their run is expected to start and how it works (check in 1–2 hours
+  before your run, once you're ready to go), and taps **I'm here** or **Running late** (how far
+  away, plus an optional note). **Clear my check-in** takes back what they said, but never what an
+  organiser set. It shows on every operator's screen as it happens:
   an amber "late" state with the ETA in Up next, On deck, the schedule and kiosks, and a warning in
   the log. Runners need no account; a link can only check in its own run. Operator check-ins still
   work as before and replace whatever the runner said.
@@ -241,9 +243,10 @@ access log.
   tools.skenmy.com cookie check as the socket).
 - `GET /api/rooms/{ref}/checkin/{key}` with `x-checkin-token` — 200 if the link is good, 403 if
   not.
-- `POST /api/rooms/{ref}/checkin/{key}` with `{ t, status: 'ready' }` or
-  `{ t, status: 'late', minutes: 1–240 | null, note }` — dispatches `runner:checkin` /
-  `runner:late` as `{runners} (check-in link)`. Logged, but not on the operators' undo stack: an
+- `POST /api/rooms/{ref}/checkin/{key}` with `{ t, status: 'ready' }`,
+  `{ t, status: 'late', minutes: 1–240 | null, note }` or `{ t, status: 'clear' }` — dispatches
+  `runner:checkin` / `runner:late` as `{runners} (check-in link)`. `clear` is refused (409) when an
+  organiser set the current status. Logged, but not on the operators' undo stack: an
   operator's undo reverts their own change and keeps whatever runners said since. Refused once the
   run has started, been skipped, or left the schedule, or when a link is used more than once a
   second or 20 times an hour. The note is plain text (control characters stripped) and isn't in

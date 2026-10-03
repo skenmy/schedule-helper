@@ -120,6 +120,9 @@ test('a runner checks in from their own link', async ({ browser }) => {
   const runner = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true });
   await runner.goto(url);
   await expect(runner.getByRole('region', { name: 'Your run' })).toContainText('Hades');
+  await expect(runner.getByRole('region', { name: 'How it works' })).toContainText(
+    'Check in here 1–2 hours before your run',
+  );
   await runner.getByRole('button', { name: 'Running late' }).click();
   await runner.getByRole('radio', { name: '10 min' }).click();
   await runner.getByLabel('Anything to add? (optional)').fill('Bus is slow');
@@ -139,6 +142,18 @@ test('a runner checks in from their own link', async ({ browser }) => {
   await expect(runner.getByRole('heading', { name: 'Hades' })).toBeFocused();
   await expect(runner.getByRole('status').first()).toHaveText('You’re checked in.');
   await expect(sheet.getByRole('radio', { name: 'Ready' })).toHaveAttribute('aria-checked', 'true');
+
+  // What they said themselves, they can take back.
+  await runner.waitForTimeout(1_100);
+  await runner.getByRole('button', { name: 'Clear my check-in' }).click();
+  await expect(runner.getByRole('status').first()).toHaveText('Your check-in is cleared.');
+  await expect(runner.getByRole('heading', { name: 'You’re checked in' })).toHaveCount(0);
+  await expect(runner.getByRole('button', { name: 'I’m here', exact: true })).toBeVisible();
+  await expect(sheet.getByRole('radio', { name: 'Ready' })).toHaveAttribute(
+    'aria-checked',
+    'false',
+  );
+  await expect(runner.getByRole('button', { name: 'Clear my check-in' })).toHaveCount(0);
 
   // Someone else's (or a mangled) link gets nowhere.
   await runner.goto(url.replace(/t=[\w-]+$/, 't=AAAAAAAAAAAAAAAAAAAAAA'));

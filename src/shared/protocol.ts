@@ -105,10 +105,14 @@ export const ClientActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('undo'), id: z.number().int().optional() }),
 ]);
 
-/** A runner's own check-in, posted from their link over HTTP (runners aren't operators). */
+/**
+ * A runner's own check-in, posted from their link over HTTP (runners aren't operators).
+ * `clear` takes back what they said (not what an organiser set).
+ */
 export const SelfCheckInSchema = z.discriminatedUnion('status', [
   z.object({ t: z.string().max(64), status: z.literal('ready') }),
   z.object({ t: z.string().max(64), status: z.literal('late'), ...lateFields }),
+  z.object({ t: z.string().max(64), status: z.literal('clear') }),
 ]);
 export type SelfCheckIn = z.infer<typeof SelfCheckInSchema>;
 

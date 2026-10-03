@@ -251,9 +251,13 @@ export function createApp(
         const line = room.schedule.lines.find((l) => l.key === key);
         // The reducer refuses runs that have started, been skipped or left the schedule.
         const action: MutatingAction =
-          body.data.status === 'ready'
-            ? { action: 'runner:checkin', key, status: 'ready' }
-            : { action: 'runner:late', key, minutes: body.data.minutes, note: body.data.note };
+          body.data.status === 'late'
+            ? { action: 'runner:late', key, minutes: body.data.minutes, note: body.data.note }
+            : {
+                action: 'runner:checkin',
+                key,
+                status: body.data.status === 'ready' ? 'ready' : null,
+              };
         const actor = `${line?.runners.join(', ') || 'Runner'} (check-in link)`;
         const result = room.dispatch(action, actor, undefined, { runner: true });
         if (!result.ok) {
