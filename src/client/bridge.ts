@@ -28,6 +28,11 @@ type Io = (url: string, opts?: Record<string, unknown>) => Socket;
 
 const POLL_MS = 1_000;
 const HEARTBEAT_MS = 15_000;
+/**
+ * A report that hasn't been answered by then is given up on. Reports go one at
+ * a time, so one stalled on venue Wi-Fi would otherwise hold up every report after it.
+ */
+const REQUEST_TIMEOUT_MS = 10_000;
 const MAX_BACKOFF_MS = 30_000;
 const NAMESPACE = 'nodecg-speedcontrol';
 
@@ -127,16 +132,22 @@ async function main() {
       );
       const changeKey = JSON.stringify([report.run, report.timer?.state]);
       if (changeKey === lastKey && Date.now() - lastSent < HEARTBEAT_MS) return;
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ t: token, ...report }),
-      });
-      const body = (await res.json().catch(() => null)) as {
-        error?: string;
-        matched?: string | null;
-        listening?: boolean;
-      } | null;
+      // AbortController rather than AbortSignal.timeout: older OBS browser sources lack it.
+      const abort = new AbortController();
+      const timeout = setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS);
+      let res: Response;
+      let body: { error?: string; matched?: string | null; listening?: boolean } | null;
+      try {
+        res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ t: token, ...report }),
+          signal: abort.signal,
+        });
+        body = (await res.json().catch(() => null)) as typeof body;
+      } finally {
+        clearTimeout(timeout);
+      }
       if (!res.ok) throw new Error(body?.error ?? `Refused (${res.status})`);
       lastKey = changeKey;
       lastSent = Date.now();
@@ -158,7 +169,11 @@ async function main() {
       backoff = Math.min(MAX_BACKOFF_MS, backoff * 2);
       retryAt = Date.now() + backoff;
       const reason =
-        err instanceof TypeError ? 'Can’t reach Schedule Helper' : (err as Error).message;
+        (err as Error).name === 'AbortError'
+          ? 'Schedule Helper didn’t answer in time'
+          : err instanceof TypeError
+            ? 'Can’t reach Schedule Helper'
+            : (err as Error).message;
       show('report', `${reason}. Retrying in ${Math.round(backoff / 1000)} s…`, 'bad');
     } finally {
       busy = false;
