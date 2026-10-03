@@ -284,6 +284,78 @@ describe('finish', () => {
     expect(off.state.detection).toMatchObject({ kind: 'advance', endedAt: null });
   });
 
+  it('stays dealt with when ours was stopped by hand and then resumed', () => {
+    const s = live();
+    observe(s, LINES, nodecg('z', end + 5_000, { endedAt: end }));
+    // The operator stops ours themselves, a few seconds after the stream's finish…
+    let res = reduce(s, { action: 'timer:stop' }, ctx(end + 10_000));
+    if (!res.ok) throw new Error(res.message);
+    reconcile(res.state, LINES, end + 10_000);
+    expect(res.state.detection).toBeNull();
+    expect(res.state.settled).toMatchObject({ kind: 'finish', runKey: 'z' });
+    // …then resumes it: the runner wasn't done. Speedcontrol still says finished.
+    res = reduce(res.state, { action: 'timer:start' }, ctx(end + 30_000));
+    if (!res.ok) throw new Error(res.message);
+    const resumed = res.state;
+    expect(observe(resumed, LINES, nodecg('z', end + 31_000, { endedAt: end }))).toBe(false);
+    // A finish that happens after that is new.
+    const later = end + 10 * MIN;
+    expect(observe(resumed, LINES, nodecg('z', later + 1_000, { endedAt: later }))).toBe(true);
+    expect(resumed.detection).toMatchObject({ kind: 'finish', endedAt: later });
+  });
+
+  it('ignores a finish speedcontrol was already showing when ours was (re)started', () => {
+    const s = live();
+    s.runs.z!.endedAt = end - 10_000; // stopped by hand just before the stream's finish
+    s.nodecg = {
+      at: end,
+      via: 'bridge',
+      game: 'The Legend of Zelda: Ocarina of Time',
+      runKey: 'z',
+      timer: 'finished',
+      elapsedSec: 38 * 60,
+      startedAt: T0,
+      endedAt: end,
+    };
+    const res = reduce(s, { action: 'timer:start' }, ctx(end + 30_000));
+    if (!res.ok) throw new Error(res.message);
+    expect(observe(res.state, LINES, nodecg('z', end + 31_000, { endedAt: end }))).toBe(false);
+  });
+
+  it('doesn’t raise an old finish, or time an advance by one', () => {
+    const s = live();
+    // A finish from long ago: whatever it was, somebody has dealt with it since.
+    expect(observe(s, LINES, nodecg('z', end + 7 * MIN, { endedAt: end }))).toBe(false);
+    observe(s, LINES, twitch('s1', end + 7 * MIN));
+    expect(observe(s, LINES, nodecg('z', end + 7 * MIN + 15_000, { endedAt: end }))).toBe(false);
+    expect(s.detection).toMatchObject({ kind: 'advance' });
+    expect(s.detection?.endedAt).toBeUndefined();
+  });
+
+  it('refuses a finish from before our start, and an advance falls back to the stream moving on', () => {
+    const s = live();
+    observe(s, LINES, nodecg('z', end + 5_000, { endedAt: end }));
+    // Someone sets our timer after the finish was raised, moving our start past it.
+    const moved = structuredClone(s);
+    moved.runs.z!.startedAt = end + 20_000;
+    const refused = reduce(
+      moved,
+      { action: 'detection:accept', id: s.detection!.id },
+      ctx(end + 30_000),
+    );
+    expect(refused).toMatchObject({ ok: false, code: 'conflict' });
+
+    observe(moved, LINES, twitch('s1', end + MIN));
+    expect(moved.detection).toMatchObject({ kind: 'advance', endedAt: end });
+    const res = reduce(
+      moved,
+      { action: 'detection:accept', id: moved.detection!.id },
+      ctx(end + 2 * MIN),
+    );
+    if (!res.ok) throw new Error(res.message);
+    expect(res.state.runs.z?.endedAt).toBe(end + MIN);
+  });
+
   it('never stops our timer in the future or before it started, and refuses once stopped', () => {
     const s = live();
     observe(s, LINES, nodecg('z', T0 + 39 * MIN, { endedAt: T0 + 50 * MIN }));

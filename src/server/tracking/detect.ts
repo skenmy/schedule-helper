@@ -49,6 +49,12 @@ export const TRUSTED_SOURCES: ReadonlySet<SignalSource> = new Set(['nodecg', 'pu
  * next, back) settles before anything moves. The start is back-dated anyway.
  */
 export const TRUSTED_SETTLE_MS = 10_000;
+/**
+ * A finish is news when it's reported: the stream PC reports on every change.
+ * One older than this is one somebody already dealt with (stopped our timer by
+ * hand, then resumed it), not a reason to stop ours again.
+ */
+export const FINISH_FRESH_MS = 2 * 60_000;
 const MAX_SIGNALS = 8;
 
 const median = (xs: number[]) => {
@@ -127,16 +133,18 @@ export function observe(s: RoomState, lines: readonly ScheduleLine[], signal: Si
     settled.runKey === runKey &&
     settled.kind === kind &&
     settled.currentKey === s.currentKey &&
-    signal.at - settled.at < SETTLED_MS
+    // A finish dealt with stays dealt with; one that happened since is new.
+    (kind === 'finish' ? entry.endedAt! <= settled.at : signal.at - settled.at < SETTLED_MS)
   ) {
     return false;
   }
 
   const d = s.detection;
   const sameLive = d != null && d.currentKey === s.currentKey;
+  const fresh = kind !== 'finish' || signal.at - entry.endedAt! <= FINISH_FRESH_MS;
   if (kind === 'finish' && sameLive && d.kind === 'advance') {
     // Not backing the advance (a finish doesn't say what's next), just timing the end.
-    if (d.endedAt === entry.endedAt) return false;
+    if (!fresh || d.endedAt === entry.endedAt) return false;
     s.detection = { ...d, endedAt: entry.endedAt ?? null };
     return true;
   }
@@ -160,6 +168,7 @@ export function observe(s: RoomState, lines: readonly ScheduleLine[], signal: Si
     };
     return true;
   }
+  if (!fresh) return false;
   s.detection = {
     id: idFor(entry),
     runKey,
@@ -186,7 +195,7 @@ const idFor = (x: DetectionSignal) => `${x.source}-${x.at.toString(36)}`;
 function retract(s: RoomState, source: Signal['source']): boolean {
   const d = s.detection;
   if (!d) return false;
-  const unfinish = d.kind === 'advance' && d.endedAt != null && TRUSTED_SOURCES.has(source);
+  const unfinish = d.kind === 'advance' && d.endedAt != null && source === 'nodecg';
   if (!unfinish && !d.signals.some((x) => x.source === source)) return false;
   const left = d.signals.filter((x) => x.source !== source);
   s.detection = left.length
@@ -231,6 +240,8 @@ export function reconcile(s: RoomState, lines: readonly ScheduleLine[], now: num
   const stopped = d.kind === 'finish' && phase !== 'running';
   const gone = !reachable(s, lines, indexOfKey(lines, d.runKey));
   if (!moved && !started && !stopped && !gone && now - last <= STALE_MS) return changed;
+  // Our timer stopped by hand: that finish is dealt with, and stays so if it's resumed.
+  if (stopped) settle(s, d, now);
   s.detection = null;
   return true;
 }

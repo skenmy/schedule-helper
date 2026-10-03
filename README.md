@@ -223,7 +223,9 @@ is the finish. If our live run is still running, that's a `finish` suggestion; a
 timer at that moment (never before it started, never in the future). If the stream has already
 moved on (Twitch, a stream reading or speedcontrol shows the next run), that suggestion stays, and
 accepting it ends the previous run at speedcontrol's finish. A bridge or bundle that only connected
-after the finish has no start to go on, so it offers nothing.
+after the finish has no start to go on, so it offers nothing. Stopping our timer by hand deals with
+the finish: resume it and the same finish isn't raised again, and neither is one more than two
+minutes old.
 
 ## Push alerts
 

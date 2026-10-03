@@ -41,7 +41,12 @@ export function readReport(
   let endedAt: number | null = null;
   if (timer?.state === 'running' && timer.elapsedMs > 0) {
     startedAt = Math.round(now - timer.elapsedMs);
-  } else if (sameRun && (timer?.state === 'paused' || timer?.state === 'finished')) {
+  } else if (
+    sameRun &&
+    timer != null &&
+    timer.state !== 'running' &&
+    (timer.state !== 'stopped' || prev.endedAt != null)
+  ) {
     startedAt = prev.startedAt ?? null;
     if (timer.state === 'finished') {
       // Kept from the first report after it finished, so heartbeats don't move it.
@@ -51,6 +56,9 @@ export function readReport(
           : startedAt != null
             ? startedAt + timer.elapsedMs
             : null;
+    } else if (timer.state === 'stopped') {
+      // Reset after finishing (tidying up before the next run): it still finished then.
+      endedAt = prev.endedAt ?? null;
     }
   }
   const status: NodecgStatus = {
@@ -74,8 +82,8 @@ export function readReport(
       at: now,
       detail: running
         ? `${match.detail}${via}, timer ${fmtHMS(timer.elapsedMs / 1000)}`
-        : endedAt != null
-          ? `${match.detail}${via}, finished in ${fmtHMS(timer!.elapsedMs / 1000)}`
+        : endedAt != null && startedAt != null
+          ? `${match.detail}${via}, finished in ${fmtHMS((endedAt - startedAt) / 1000)}`
           : `${match.detail}${via}`,
       // Only a running timer says when a run started: a finished one on a later run
       // mustn't start it here.
