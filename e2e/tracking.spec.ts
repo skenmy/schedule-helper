@@ -150,6 +150,40 @@ test('stops our timer when speedcontrol’s finishes, at the moment it did', asy
   );
 });
 
+test('a report that never gets an answer doesn’t stop the bridge reporting', async ({
+  page,
+  context,
+}) => {
+  await page.goto(DEMO);
+  await page.getByRole('tab', { name: 'Stream capture' }).click();
+  await page.getByRole('button', { name: 'Set up the stream PC' }).click();
+  const address = await page
+    .getByRole('region', { name: 'Bridge page' })
+    .locator('code.url')
+    .innerText();
+  const bridge = await context.newPage();
+  await bridge.route('http://localhost:9090/socket.io/socket.io.js', (route) =>
+    route.fulfill({
+      contentType: 'application/javascript',
+      body: fakeNodecg('A game not on this schedule'),
+    }),
+  );
+  // Venue Wi-Fi: the first report goes out and nothing ever comes back.
+  let stalled = false;
+  await bridge.route('**/api/rooms/**/nodecg', async (route) => {
+    if (!stalled) {
+      stalled = true;
+      return;
+    }
+    await route.continue();
+  });
+  await bridge.goto(address);
+  await expect(bridge.locator('#report')).toHaveText(/didn’t answer in time/, {
+    timeout: 15_000,
+  });
+  await expect(bridge.locator('#report')).toHaveText(/Reported at/, { timeout: 10_000 });
+});
+
 test('a bridge address pointing at a hostile "NodeCG" gets nothing of the app’s', async ({
   context,
 }) => {
