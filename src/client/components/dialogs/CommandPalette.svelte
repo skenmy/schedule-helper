@@ -228,7 +228,7 @@
         id: 'catch-up',
         group: 'Go to',
         label: 'How to catch up',
-        hint: 'Setup buffers and interludes that would give time back',
+        hint: 'Setup buffers that would give time back',
         run: () => ui.openTab('progress'),
       });
     }

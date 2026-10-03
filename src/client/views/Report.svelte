@@ -290,7 +290,9 @@
     <p class="foot muted">
       Generated {fmtWhen(report.generatedAt, now)} · times are local to this device · “Start” compares
       each run’s start with the schedule; changeovers run from a run’s end to the start of the run played
-      next, against its setup time plus any interlude between (gaps over 90 minutes count as breaks).
+      next, against its setup time plus any interlude between. Gaps over 90 minutes count as breaks, and
+      so do gaps across an interlude, which flexes to start the next run on time; neither counts towards
+      the median.
     </p>
   </main>
 </div>

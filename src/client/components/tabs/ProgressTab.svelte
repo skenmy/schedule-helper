@@ -76,7 +76,7 @@
         <b>{fmtWhen(plan.projectedEnd, live.now)}</b>{pace ? ' at this event’s pace' : ''}, against
         {fmtWhen(plan.scheduledEnd, live.now)} on the schedule.
         {#if plan.options.length}Here’s what could give time back, least visible first.{:else}There’s
-          no setup buffer or interlude left to trim.{/if}
+          no setup buffer left to trim.{/if}
       </p>
     </header>
     {#if plan.options.length}
@@ -84,9 +84,7 @@
         {#each shown as o, i (o.kind + o.key)}
           <li class:dim={plan.enoughAt >= 0 && i > plan.enoughAt}>
             <span class="what">
-              {o.kind === 'setup'
-                ? `Trim the setup after ${live.titleOf(o.key)} to ${MIN_SETUP_SEC / 60}m`
-                : `Cut ${live.titleOf(o.key)}`}
+              Trim the setup after {live.titleOf(o.key)} to {MIN_SETUP_SEC / 60}m
               <small class="num">{fmtClock(o.at)}</small>
             </span>
             <span class="save num">−{fmtDuration(o.savesSec)}</span>
