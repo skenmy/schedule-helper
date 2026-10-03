@@ -14,7 +14,10 @@
 import {
   ackValue,
   buildReport,
+  isNews,
+  NAMESPACE,
   parseBridgeParams,
+  REPLICANTS,
   type RunData,
   type Timer,
 } from './lib/nodecg-report.ts';
@@ -34,7 +37,6 @@ const HEARTBEAT_MS = 15_000;
  */
 const REQUEST_TIMEOUT_MS = 10_000;
 const MAX_BACKOFF_MS = 30_000;
-const NAMESPACE = 'nodecg-speedcontrol';
 
 function show(id: string, text: string, tone: 'ok' | 'warn' | 'bad' | '' = '') {
   const el = document.getElementById(id);
@@ -96,7 +98,15 @@ async function main() {
     transports: ['websocket', 'polling'],
     ...(key ? { query: { token: key } } : {}),
   });
-  socket.on('connect', () => show('nodecg', `Connected to ${nodecg}`, 'ok'));
+  socket.on('connect', () => {
+    show('nodecg', `Connected to ${nodecg}`, 'ok');
+    // Have NodeCG push speedcontrol's changes as they happen (it sends a room's
+    // `replicant:operations` to the sockets that joined it). A background tab's timers
+    // run once a minute at best; a socket event still arrives at once. Rejoined on
+    // every reconnect.
+    for (const name of REPLICANTS)
+      socket.emit('joinRoom', `replicant:${NAMESPACE}:${name}`, () => {});
+  });
   socket.on('disconnect', () => show('nodecg', `Disconnected from ${nodecg}, retrying…`, 'warn'));
   socket.on('connect_error', () =>
     show(
@@ -110,12 +120,18 @@ async function main() {
   let lastKey = '';
   let lastSent = 0;
   let busy = false;
+  /** A change was pushed while a report was going out: read again once it's done. */
+  let again = false;
   let retryAt = 0;
   let backoff = POLL_MS;
 
-  async function tick() {
+  async function tick(pushed = false) {
     // One at a time: a slow NodeCG or server mustn't pile requests up.
-    if (busy || !socket.connected || Date.now() < retryAt) return;
+    if (busy) {
+      again ||= pushed;
+      return;
+    }
+    if (!socket.connected || Date.now() < retryAt) return;
     busy = true;
     try {
       const [run, timer] = await Promise.all([
@@ -177,9 +193,17 @@ async function main() {
       show('report', `${reason}. Retrying in ${Math.round(backoff / 1000)} s…`, 'bad');
     } finally {
       busy = false;
+      if (again) {
+        again = false;
+        void tick();
+      }
     }
   }
 
+  // Speedcontrol's run or timer state changed: report it now, not at the next poll.
+  socket.on('replicant:operations', (data) => {
+    if (isNews(data)) void tick(true);
+  });
   setInterval(() => void tick(), POLL_MS);
 }
 

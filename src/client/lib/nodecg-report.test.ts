@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ackValue, buildReport, parseBridgeParams } from './nodecg-report.ts';
+import { ackValue, buildReport, isNews, parseBridgeParams } from './nodecg-report.ts';
 
 const TOKEN = 'AbCdEfGhIjKlMnOpQrSt_-';
 
@@ -65,5 +65,31 @@ describe('parseBridgeParams', () => {
       expect(typeof parseBridgeParams(search, ok), search).toBe('string');
     }
     expect(typeof parseBridgeParams('?room=oengus/uksg/main', '#t=short')).toBe('string');
+  });
+});
+
+describe('isNews', () => {
+  const ns = 'nodecg-speedcontrol';
+  const timer = (...operations: unknown[]) => ({ name: 'timer', namespace: ns, operations });
+
+  it('reports a change of run, or of the timer’s state, at once', () => {
+    expect(isNews({ name: 'runDataActiveRun', namespace: ns, operations: [] })).toBe(true);
+    expect(
+      isNews(timer({ path: '/', method: 'update', args: { prop: 'state', newValue: 'running' } })),
+    ).toBe(true);
+    expect(isNews(timer({ path: '/', method: 'overwrite', args: { newValue: {} } }))).toBe(true);
+  });
+
+  it('leaves the timer ticking over, other bundles and junk to the poll', () => {
+    const tick = { path: '/', method: 'update', args: { prop: 'milliseconds', newValue: 1_100 } };
+    expect(isNews(timer(tick, { ...tick, args: { prop: 'time', newValue: '00:00:01' } }))).toBe(
+      false,
+    );
+    expect(isNews({ name: 'runDataActiveRun', namespace: 'another-bundle', operations: [] })).toBe(
+      false,
+    );
+    expect(isNews({ name: 'timer', namespace: ns })).toBe(false);
+    expect(isNews(null)).toBe(false);
+    expect(isNews('replicant')).toBe(false);
   });
 });
