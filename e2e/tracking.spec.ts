@@ -41,8 +41,12 @@ test('follows the stream to the next run when Twitch says it moved on', async ({
   );
 });
 
-/** Stands in for NodeCG's socket.io client: speedcontrol has `game` up, timer stopped. */
-const fakeNodecg = (game: string) => `
+/**
+ * Stands in for NodeCG's socket.io client: speedcontrol has `game` up, and its
+ * timer is `window.timerValue` (stopped unless a test changes it).
+ */
+const fakeNodecg = (game: string, elapsedMs = 0, state = 'stopped') => `
+  window.timerValue = { state: ${JSON.stringify(state)}, milliseconds: ${elapsedMs}, timestamp: Date.now() };
   window.io = () => {
     const socket = {
       connected: true,
@@ -50,7 +54,7 @@ const fakeNodecg = (game: string) => `
       emit(event, payload, ack) {
         const values = {
           runDataActiveRun: { game: ${JSON.stringify(game)}, teams: [] },
-          timer: { state: 'stopped', milliseconds: 0, timestamp: Date.now() },
+          timer: window.timerValue,
         };
         setTimeout(() => ack(null, { value: values[payload.name] }), 0);
       },
@@ -91,6 +95,59 @@ test('follows NodeCG speedcontrol through the bridge page', async ({ page, conte
   await expect(page.getByText(/Speedcontrol \(bridge\)/)).toBeVisible();
   await banner.getByRole('button', { name: 'Not now' }).click();
   await expect(banner).toHaveCount(0);
+});
+
+test('stops our timer when speedcontrol’s finishes, at the moment it did', async ({
+  page,
+  context,
+}) => {
+  await page.goto(DEMO);
+  const title = (await page.locator('article.now h1').innerText()).trim();
+  const timer = page.getByRole('region', { name: 'Timer controls' });
+  // Our timer running for ten minutes, whatever earlier tests left behind.
+  const resume = timer.getByRole('button', { name: /^Resume/ });
+  if (await resume.isVisible()) await resume.click();
+  await timer.getByRole('button', { name: 'Set time' }).click();
+  await page.getByLabel('Elapsed time').fill('10:00');
+  await page.getByRole('button', { name: 'Set timer' }).click();
+  await expect(timer.getByRole('button', { name: /^Stop/ })).toBeVisible();
+
+  await page.getByRole('tab', { name: 'Stream capture' }).click();
+  await page.getByRole('button', { name: 'Set up the stream PC' }).click();
+  const address = await page
+    .getByRole('region', { name: 'Bridge page' })
+    .locator('code.url')
+    .innerText();
+  const bridge = await context.newPage();
+  // Speedcontrol's timer started five minutes ago, after ours…
+  await bridge.route('http://localhost:9090/socket.io/socket.io.js', (route) =>
+    route.fulfill({
+      contentType: 'application/javascript',
+      body: fakeNodecg(title, 5 * 60_000, 'running'),
+    }),
+  );
+  await bridge.goto(address);
+  await expect(bridge.locator('#report')).toHaveText(/Reported at/);
+  // …and finished at 4:00, so a minute ago.
+  await bridge.evaluate(() => {
+    (window as unknown as { timerValue: object }).timerValue = {
+      state: 'finished',
+      milliseconds: 4 * 60_000,
+      timestamp: Date.now(),
+    };
+  });
+
+  const banner = page.getByRole('region', { name: 'Run change detected' });
+  await expect(banner).toContainText(`${title} has finished on stream`);
+  await banner.getByRole('button', { name: 'Stop timer' }).click();
+  await expect(banner).toHaveCount(0);
+  await expect(timer.getByRole('button', { name: /^Resume/ })).toBeVisible();
+  // Ours ran from ten minutes ago to the stream's finish a minute ago: about nine minutes.
+  await expect(page.getByRole('region', { name: 'Recent activity' })).toContainText(
+    new RegExp(
+      `Finished ${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} in 00:0[89]:\\d\\d, when the stream \\(nodecg\\) did`,
+    ),
+  );
 });
 
 test('a bridge address pointing at a hostile "NodeCG" gets nothing of the app’s', async ({

@@ -1,4 +1,5 @@
-// Turns signals from the stream ("it looks like run X, started at T") into one
+// Turns signals from the stream ("it looks like run X, started at T", "run X
+// finished at T") into one
 // detection the operators can accept. Pure functions over a state draft, so
 // every rule is unit-tested; the sources and timers live in service.ts.
 //
@@ -82,6 +83,10 @@ export function startFloor(
  * Folds a signal into `s.detection`. Returns whether anything changed.
  *
  * - A later run (within the lookahead) on stream → an `advance` detection.
+ * - The live run's timer finished on stream while ours still runs → a `finish`
+ *   detection (only the stream PC's timer can say when). Moving on wins: while
+ *   an `advance` is pending, a finish only tells it when the live run ended
+ *   (`endedAt`), and an `advance` replacing a `finish` keeps that time.
  * - The live run on stream with its timer running while ours hasn't started →
  *   a `start` detection.
  * - The live run on stream otherwise → that source no longer backs any
@@ -93,15 +98,23 @@ export function observe(s: RoomState, lines: readonly ScheduleLine[], signal: Si
 
   let kind: Detection['kind'];
   if (signal.runKey === s.currentKey) {
-    const notStarted = runTiming(s.runs[signal.runKey], signal.at).phase === 'setup';
-    if (!notStarted || signal.startedAt == null) return retract(s, signal.source);
-    kind = 'start';
+    const ours = runTiming(s.runs[signal.runKey], signal.at);
+    if (ours.phase === 'running' && signal.endedAt != null) {
+      // Finished before ours started: not this run's finish (a stale or wrong report).
+      if (signal.endedAt < ours.startedAt!) return retract(s, signal.source);
+      kind = 'finish';
+    } else if (ours.phase === 'setup' && signal.startedAt != null) {
+      kind = 'start';
+    } else {
+      return retract(s, signal.source);
+    }
   } else {
     kind = 'advance';
   }
 
-  const { runKey, ...rest } = signal;
-  const entry: DetectionSignal = { ...rest };
+  const { runKey, endedAt, ...rest } = signal;
+  // A finish time only means something for `finish`; elsewhere it would be noise.
+  const entry: DetectionSignal = kind === 'finish' ? { ...rest, endedAt } : { ...rest };
   if (entry.startedAt != null && entry.startedAt < startFloor(s, lines, kind)) {
     // Implausible as a start: keep what the source saw, without the time.
     entry.startedAt = null;
@@ -120,6 +133,13 @@ export function observe(s: RoomState, lines: readonly ScheduleLine[], signal: Si
   }
 
   const d = s.detection;
+  const sameLive = d != null && d.currentKey === s.currentKey;
+  if (kind === 'finish' && sameLive && d.kind === 'advance') {
+    // Not backing the advance (a finish doesn't say what's next), just timing the end.
+    if (d.endedAt === entry.endedAt) return false;
+    s.detection = { ...d, endedAt: entry.endedAt ?? null };
+    return true;
+  }
   if (d && d.runKey === runKey && d.kind === kind && d.currentKey === s.currentKey) {
     // Twitch says the same thing each time; keep its latest word. Timer readings
     // are kept apart, since two that agree corroborate each other.
@@ -127,8 +147,10 @@ export function observe(s: RoomState, lines: readonly ScheduleLine[], signal: Si
     const signals = [...keep, entry].slice(-MAX_SIGNALS);
     const timed = signals.filter((x) => x.startedAt != null).map((x) => x.startedAt!);
     const startedAt = timed.length ? median(timed) : null;
+    const ended = signals.filter((x) => x.endedAt != null).map((x) => x.endedAt!);
     s.detection = {
       ...d,
+      ...(kind === 'finish' ? { endedAt: ended.length ? median(ended) : null } : {}),
       // A start time appearing changes what accepting does: a fresh id, so a tap
       // on the old banner can't back-date a run the operator didn't see a time for.
       id: d.startedAt == null && startedAt != null ? idFor(entry) : d.id,
@@ -144,6 +166,11 @@ export function observe(s: RoomState, lines: readonly ScheduleLine[], signal: Si
     kind,
     currentKey: s.currentKey,
     startedAt: entry.startedAt,
+    ...(kind === 'finish'
+      ? { endedAt: entry.endedAt ?? null }
+      : kind === 'advance' && sameLive && d.endedAt != null
+        ? { endedAt: d.endedAt }
+        : {}),
     firstAt: entry.at,
     signals: [entry],
   };
@@ -152,12 +179,19 @@ export function observe(s: RoomState, lines: readonly ScheduleLine[], signal: Si
 
 const idFor = (x: DetectionSignal) => `${x.source}-${x.at.toString(36)}`;
 
-/** A source now sees the live run: it no longer backs the detection. */
+/**
+ * A source now sees the live run: it no longer backs the detection. A stream PC
+ * timer that isn't finished any more also takes back the finish time it gave.
+ */
 function retract(s: RoomState, source: Signal['source']): boolean {
   const d = s.detection;
-  if (!d || !d.signals.some((x) => x.source === source)) return false;
+  if (!d) return false;
+  const unfinish = d.kind === 'advance' && d.endedAt != null && TRUSTED_SOURCES.has(source);
+  if (!unfinish && !d.signals.some((x) => x.source === source)) return false;
   const left = d.signals.filter((x) => x.source !== source);
-  s.detection = left.length ? { ...d, signals: left } : null;
+  s.detection = left.length
+    ? { ...d, signals: left, ...(unfinish ? { endedAt: null } : {}) }
+    : null;
   return true;
 }
 
@@ -169,7 +203,7 @@ export function settle(s: RoomState, d: Detection, now: number): void {
 /**
  * Drops a detection the room has moved past: the live run changed (an
  * operator advanced, perhaps to that very run), the run it says to start has
- * started, its run is no longer one a detection may point at (skipped,
+ * started (or to stop has stopped), its run is no longer one a detection may point at (skipped,
  * re-ordered, removed), the marathon ended, or nothing has backed it for a
  * while.
  *
@@ -192,9 +226,11 @@ export function reconcile(s: RoomState, lines: readonly ScheduleLine[], now: num
   if (!d) return changed;
   const last = Math.max(...d.signals.map((x) => x.at), d.firstAt);
   const moved = d.currentKey !== s.currentKey || s.finishedAt != null;
-  const started = d.kind === 'start' && runTiming(s.runs[d.runKey], now).phase !== 'setup';
+  const phase = runTiming(s.runs[d.runKey], now).phase;
+  const started = d.kind === 'start' && phase !== 'setup';
+  const stopped = d.kind === 'finish' && phase !== 'running';
   const gone = !reachable(s, lines, indexOfKey(lines, d.runKey));
-  if (!moved && !started && !gone && now - last <= STALE_MS) return changed;
+  if (!moved && !started && !stopped && !gone && now - last <= STALE_MS) return changed;
   s.detection = null;
   return true;
 }
@@ -220,11 +256,13 @@ export function corroborated(d: Detection, now: number): boolean {
   );
 }
 
-/** "Spyro the Dragon is on stream" / "Spyro the Dragon has started on stream". */
+/** "Spyro the Dragon is on stream" / "… has started on stream" / "… has finished on stream". */
 export function describe(d: Detection, lines: readonly ScheduleLine[]): string {
   const line = lines[indexOfKey(lines, d.runKey)];
   const title = line ? lineTitle(line) : 'A later run';
-  return d.kind === 'start' ? `${title} has started on stream` : `${title} is on stream`;
+  if (d.kind === 'start') return `${title} has started on stream`;
+  if (d.kind === 'finish') return `${title} has finished on stream`;
+  return `${title} is on stream`;
 }
 
 export { reachable as isReachable };

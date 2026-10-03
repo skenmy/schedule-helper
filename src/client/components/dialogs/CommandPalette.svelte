@@ -237,8 +237,16 @@
       items.unshift({
         id: 'detection',
         group: 'Actions',
-        label: `Follow the stream to ${live.titleOf(detection.runKey)}`,
-        hint: detection.kind === 'start' ? 'Start it from the stream timer' : 'Detected run change',
+        label:
+          detection.kind === 'finish'
+            ? `Stop ${live.titleOf(detection.runKey)}: it finished on stream`
+            : `Follow the stream to ${live.titleOf(detection.runKey)}`,
+        hint:
+          detection.kind === 'start'
+            ? 'Start it from the stream timer'
+            : detection.kind === 'finish'
+              ? 'Stop the timer when the stream’s did'
+              : 'Detected run change',
         write: true,
         run: () => ops.acceptDetection(detection.id),
       });

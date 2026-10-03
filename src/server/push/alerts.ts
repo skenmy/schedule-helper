@@ -51,8 +51,10 @@ export function changeAlerts(
       });
     } else if (entry.actor === AUTO_ACTOR) {
       out.push({
-        title: 'Auto-tracking moved on',
-        body: `${entry.text.replace(/^⇢\s*/u, '')}. Undo it in the app if that’s wrong.`,
+        title: entry.text.startsWith('■')
+          ? 'Auto-tracking stopped the timer'
+          : 'Auto-tracking moved on',
+        body: `${entry.text.replace(/^[⇢■]\s*/u, '')}. Undo it in the app if that’s wrong.`,
         tag: `log-${entry.id}`,
         actor: null,
       });
@@ -64,7 +66,7 @@ export function changeAlerts(
   const was = prev.detection;
   if (d && !(was && was.runKey === d.runKey && was.kind === d.kind)) {
     out.push({
-      title: 'Run change on stream',
+      title: d.kind === 'finish' ? 'Run finished on stream' : 'Run change on stream',
       body: `${describe(d, lines)}. Open the app to accept or dismiss.`,
       // Per run, so a second run change sounds again instead of silently replacing the first.
       tag: `detection-${d.runKey}`,

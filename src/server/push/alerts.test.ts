@@ -57,6 +57,38 @@ describe('changeAlerts', () => {
     ]);
   });
 
+  it('says when the stream finished the live run, and when auto-tracking stopped the timer', () => {
+    const finish = {
+      id: 'nodecg-1',
+      runKey: 'a',
+      kind: 'finish' as const,
+      currentKey: 'a',
+      startedAt: null,
+      endedAt: T0,
+      firstAt: T0,
+      signals: [],
+    };
+    expect(changeAlerts(live(), live({ detection: finish }), LINES)).toMatchObject([
+      {
+        title: 'Run finished on stream',
+        body: expect.stringContaining('Game a has finished on stream'),
+      },
+    ]);
+    const prev = live();
+    const next = withLog(
+      prev,
+      'system',
+      '■ Finished Game a in 00:30:00, when the stream (nodecg) did',
+      AUTO_ACTOR,
+    );
+    expect(changeAlerts(prev, next, LINES)).toMatchObject([
+      {
+        title: 'Auto-tracking stopped the timer',
+        body: 'Finished Game a in 00:30:00, when the stream (nodecg) did. Undo it in the app if that’s wrong.',
+      },
+    ]);
+  });
+
   it('raises a run change on stream once, not again as more signals agree', () => {
     const detection = {
       id: 'twitch-1',
