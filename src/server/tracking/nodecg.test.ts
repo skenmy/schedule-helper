@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { RoomRef, RoomState, Schedule, ScheduleLine } from '../../shared/types.ts';
 import { Room } from '../rooms/room.ts';
 import { initialState } from '../rooms/state.ts';
@@ -218,6 +218,41 @@ describe('nodecgReport', () => {
     expect(r.state.currentKey).toBe('o102');
     expect(r.state.runs.o102?.startedAt).toBeGreaterThan(Date.now() - 31_000);
     expect(r.state.log[0]?.text).toContain('Followed the stream (nodecg)');
+  });
+
+  it('acts 3 s after a single report, without waiting for the next one', () => {
+    vi.useFakeTimers();
+    try {
+      const r = room(true);
+      // A throttled bridge tab may not report again for a minute: that mustn't hold it up.
+      nodecgReport(r, next, Date.now());
+      vi.advanceTimersByTime(2_000);
+      expect(r.state.currentKey).toBe('o101');
+      vi.advanceTimersByTime(1_100);
+      expect(r.state.currentKey).toBe('o102');
+      expect(r.state.log[0]).toMatchObject({ actor: 'Auto-tracking' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('still lets a quick misclick settle before moving anything', () => {
+    vi.useFakeTimers();
+    try {
+      const r = room(true);
+      const at = (id: string) => ({ ...next, run: { externalID: id, game: '', players: [] } });
+      nodecgReport(r, at('102'), Date.now());
+      vi.advanceTimersByTime(1_000);
+      nodecgReport(r, at('103'), Date.now());
+      vi.advanceTimersByTime(1_000);
+      nodecgReport(r, at('102'), Date.now());
+      vi.advanceTimersByTime(2_500);
+      expect(r.state.currentKey).toBe('o101');
+      vi.advanceTimersByTime(700);
+      expect(r.state.currentKey).toBe('o102');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('asks first otherwise, and is ignored when switched off', () => {

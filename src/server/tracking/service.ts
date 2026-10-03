@@ -18,7 +18,14 @@ import type {
 import { logger } from '../logger.ts';
 import type { RoomRegistry } from '../rooms/registry.ts';
 import type { Room } from '../rooms/room.ts';
-import { corroborated, observe, reconcile, type Signal } from './detect.ts';
+import {
+  corroborated,
+  observe,
+  reconcile,
+  TRUSTED_SETTLE_MS,
+  TRUSTED_SOURCES,
+  type Signal,
+} from './detect.ts';
 import { matchStream } from './match.ts';
 import type { ChannelInfo, StreamLookup } from './twitch.ts';
 
@@ -47,7 +54,30 @@ export function signal(room: Room, sig: Signal): void {
   if (observe(structuredClone(room.state), room.schedule.lines, sig)) {
     room.mutate((s) => void observe(s, room.schedule.lines, sig));
   }
-  maybeAutoApply(room);
+  maybeAutoApply(room, sig.at);
+  scheduleSettled(room, sig.at);
+}
+
+const settleTimers = new WeakMap<Room, NodeJS.Timeout>();
+
+/**
+ * A detection the stream PC backs, waiting out `TRUSTED_SETTLE_MS`: check again
+ * the moment that's up, not when its next report (up to 15 s away) happens to come.
+ */
+function scheduleSettled(room: Room, now: number): void {
+  clearTimeout(settleTimers.get(room));
+  settleTimers.delete(room);
+  const d = room.state.detection;
+  if (!d || !room.state.tracking.autoApply) return;
+  if (!d.signals.some((x) => TRUSTED_SOURCES.has(x.source))) return;
+  const wait = d.firstAt + TRUSTED_SETTLE_MS - now;
+  if (wait <= 0) return;
+  const timer = setTimeout(() => {
+    settleTimers.delete(room);
+    maybeAutoApply(room);
+  }, wait + 50);
+  timer.unref();
+  settleTimers.set(room, timer);
 }
 
 /** Applies the room's detection when auto-apply is on and two signals agree. */
