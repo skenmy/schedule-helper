@@ -57,6 +57,20 @@ const vision = (runKey: string, at: number, startedAt: number): Signal => ({
   startedAt,
 });
 
+/** The stream PC's timer on a run: running since `startedAt`, or finished at `endedAt`. */
+const nodecg = (
+  runKey: string,
+  at: number,
+  t: { startedAt?: number; endedAt?: number },
+): Signal => ({
+  runKey,
+  source: 'nodecg',
+  at,
+  detail: 'speedcontrol',
+  startedAt: t.startedAt ?? null,
+  endedAt: t.endedAt ?? null,
+});
+
 describe('matchStream', () => {
   const s = live();
 
@@ -159,6 +173,128 @@ describe('observe', () => {
     expect(observe(s, LINES, twitch('nope'))).toBe(false);
     expect(observe(s, LINES, twitch('far'))).toBe(false);
     expect(s.detection).toBeNull();
+  });
+});
+
+describe('finish', () => {
+  const ctx = (now: number) => ({ lines: LINES, now, actor: 'op' });
+  const end = T0 + 38 * MIN;
+
+  it('raises a finish when the live run’s timer finishes on stream while ours runs', () => {
+    const s = live();
+    expect(observe(s, LINES, nodecg('z', T0 + 39 * MIN, { endedAt: end }))).toBe(true);
+    expect(s.detection).toMatchObject({
+      kind: 'finish',
+      runKey: 'z',
+      currentKey: 'z',
+      endedAt: end,
+    });
+    // The next heartbeat says the same; the finish time stays put.
+    observe(s, LINES, nodecg('z', T0 + 39 * MIN + 15_000, { endedAt: end }));
+    expect(s.detection?.endedAt).toBe(end);
+    expect(corroborated(s.detection!, T0 + 39 * MIN + 15_000)).toBe(true);
+  });
+
+  it('only when ours is running, and only for a finish after ours started', () => {
+    const notStarted = initialState();
+    notStarted.currentKey = 'z';
+    expect(observe(notStarted, LINES, nodecg('z', T0, { endedAt: T0 }))).toBe(false);
+    const stopped = live();
+    stopped.runs.z!.endedAt = T0 + 37 * MIN;
+    expect(observe(stopped, LINES, nodecg('z', T0 + 39 * MIN, { endedAt: end }))).toBe(false);
+    expect(observe(live(), LINES, nodecg('z', T0 + MIN, { endedAt: T0 - MIN }))).toBe(false);
+    // A finished timer on a later run is an advance, with no start or finish attached.
+    const ahead = live();
+    observe(ahead, LINES, nodecg('s1', T0 + 39 * MIN, { endedAt: end }));
+    expect(ahead.detection).toMatchObject({ kind: 'advance', runKey: 's1', startedAt: null });
+    expect(ahead.detection).not.toHaveProperty('endedAt');
+  });
+
+  it('is withdrawn when the stream’s timer runs again, and dropped once ours stops', () => {
+    const s = live();
+    observe(s, LINES, nodecg('z', T0 + 39 * MIN, { endedAt: end }));
+    observe(s, LINES, nodecg('z', T0 + 39 * MIN + 5_000, { startedAt: T0 }));
+    expect(s.detection).toBeNull();
+
+    observe(s, LINES, nodecg('z', T0 + 40 * MIN, { endedAt: end }));
+    expect(reconcile(s, LINES, T0 + 40 * MIN)).toBe(false);
+    s.runs.z!.endedAt = T0 + 40 * MIN;
+    expect(reconcile(s, LINES, T0 + 40 * MIN)).toBe(true);
+    expect(s.detection).toBeNull();
+  });
+
+  it('accepting stops our timer when the stream’s did, and an undo sticks', () => {
+    const s = live();
+    observe(s, LINES, nodecg('z', T0 + 39 * MIN, { endedAt: end }));
+    const res = reduce(s, { action: 'detection:accept', id: s.detection!.id }, ctx(T0 + 40 * MIN));
+    if (!res.ok) throw new Error(res.message);
+    expect(res.state.currentKey).toBe('z');
+    expect(res.state.runs.z).toEqual({ startedAt: T0, endedAt: end });
+    expect(res.state.log[0]?.text).toBe(
+      '■ Finished The Legend of Zelda: Ocarina of Time in 00:38:00, when the stream (nodecg) did',
+    );
+    expect(res.undo).toContain('Finished');
+    // Undo restores the running timer, not `settled`: the same finish isn't raised again.
+    const undone = { ...res.state, runs: s.runs };
+    expect(observe(undone, LINES, nodecg('z', T0 + 41 * MIN, { endedAt: end }))).toBe(false);
+  });
+
+  it('gives way to the stream moving on, which keeps the finish as the live run’s end', () => {
+    const s = live();
+    observe(s, LINES, nodecg('z', T0 + 39 * MIN, { endedAt: end }));
+    // Twitch moves on to Spyro: that's what to suggest now, and it remembers the finish…
+    expect(observe(s, LINES, twitch('s1', T0 + 41 * MIN))).toBe(true);
+    expect(s.detection).toMatchObject({ kind: 'advance', runKey: 's1', endedAt: end });
+    // …and speedcontrol still saying "finished" doesn't flip it back (or ring again).
+    expect(observe(s, LINES, nodecg('z', T0 + 41 * MIN + 15_000, { endedAt: end }))).toBe(false);
+    expect(s.detection?.kind).toBe('advance');
+    // A finish doesn't say what's next, so it doesn't count towards acting alone.
+    expect(s.detection?.signals.map((x) => x.source)).toEqual(['twitch']);
+
+    const res = reduce(s, { action: 'detection:accept', id: s.detection!.id }, ctx(T0 + 42 * MIN));
+    if (!res.ok) throw new Error(res.message);
+    expect(res.state.currentKey).toBe('s1');
+    expect(res.state.runs.z?.endedAt).toBe(end);
+  });
+
+  it('times a pending advance by a finish that comes after it, until the timer runs again', () => {
+    const s = live();
+    observe(s, LINES, twitch('s1', T0 + 37 * MIN));
+    expect(observe(s, LINES, nodecg('z', T0 + 39 * MIN, { endedAt: end }))).toBe(true);
+    expect(s.detection).toMatchObject({ kind: 'advance', runKey: 's1', endedAt: end });
+    expect(s.detection?.signals).toHaveLength(1);
+    // Speedcontrol un-finishes: the finish time goes, the advance stays.
+    observe(s, LINES, nodecg('z', T0 + 39 * MIN + 5_000, { startedAt: T0 }));
+    expect(s.detection).toMatchObject({ kind: 'advance', runKey: 's1', endedAt: null });
+
+    // Switching NodeCG off takes its finish time with it.
+    observe(s, LINES, nodecg('z', T0 + 40 * MIN, { endedAt: end }));
+    const off = reduce(
+      s,
+      {
+        action: 'tracking:configure',
+        twitch: true,
+        vision: false,
+        autoApply: false,
+        nodecg: false,
+      },
+      ctx(T0 + 40 * MIN),
+    );
+    if (!off.ok) throw new Error(off.message);
+    expect(off.state.detection).toMatchObject({ kind: 'advance', endedAt: null });
+  });
+
+  it('never stops our timer in the future or before it started, and refuses once stopped', () => {
+    const s = live();
+    observe(s, LINES, nodecg('z', T0 + 39 * MIN, { endedAt: T0 + 50 * MIN }));
+    const res = reduce(s, { action: 'detection:accept', id: s.detection!.id }, ctx(T0 + 40 * MIN));
+    if (!res.ok) throw new Error(res.message);
+    expect(res.state.runs.z?.endedAt).toBe(T0 + 40 * MIN);
+
+    const stopped = structuredClone(s);
+    stopped.runs.z!.endedAt = T0 + 39 * MIN;
+    const refused = reduce(stopped, { action: 'detection:accept', id: s.detection!.id }, ctx(T0));
+    expect(refused).toMatchObject({ ok: false, code: 'conflict' });
   });
 });
 

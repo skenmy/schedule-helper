@@ -106,6 +106,57 @@ describe('readReport', () => {
   });
 });
 
+describe('readReport: finishes', () => {
+  const celeste = { game: 'Celeste', players: [] };
+  const report = (state: 'running' | 'paused' | 'finished' | 'stopped', elapsedMs: number) => ({
+    via: 'bundle' as const,
+    run: celeste,
+    timer: { state, elapsedMs },
+  });
+  /** Feeds reports in order, keeping the status as the room would. */
+  function feed(steps: [at: number, r: ReturnType<typeof report>][]) {
+    const state = live();
+    let last: ReturnType<typeof readReport> | null = null;
+    for (const [at, r] of steps) {
+      last = readReport(LINES, state, r, at);
+      state.nodecg = last.status;
+    }
+    return last!;
+  }
+
+  it('times the finish from the start it saw while running plus the final time', () => {
+    // Running since T0 + 5 s (as the stream PC measures it), finished at 40:00.
+    const r = feed([
+      [T0 + MIN, report('running', 55_000)],
+      [T0 + 41 * MIN, report('finished', 40 * MIN)],
+    ]);
+    expect(r.status).toMatchObject({ timer: 'finished', startedAt: T0 + 5_000 });
+    expect(r.signal).toMatchObject({
+      runKey: 'o101',
+      startedAt: null,
+      endedAt: T0 + 5_000 + 40 * MIN,
+      detail: 'speedcontrol: Celeste, finished in 00:40:00',
+    });
+  });
+
+  it('keeps the finish where it was as heartbeats come in, and counts pauses', () => {
+    const r = feed([
+      [T0 + MIN, report('running', 60_000)],
+      [T0 + 10 * MIN, report('paused', 9 * MIN)],
+      // A minute's pause: after it, the start it implies is a minute later.
+      [T0 + 12 * MIN, report('running', 10 * MIN)],
+      [T0 + 31 * MIN, report('finished', 29 * MIN)],
+      [T0 + 33 * MIN, report('finished', 29 * MIN)],
+    ]);
+    expect(r.signal?.endedAt).toBe(T0 + 2 * MIN + 29 * MIN);
+  });
+
+  it('offers no finish time when it never saw the timer running', () => {
+    const r = feed([[T0 + 41 * MIN, report('finished', 40 * MIN)]]);
+    expect(r.signal).toMatchObject({ runKey: 'o101', endedAt: null });
+  });
+});
+
 describe('nodecgReport', () => {
   function room(autoApply: boolean) {
     const schedule: Schedule = {
@@ -170,6 +221,28 @@ describe('nodecgReport', () => {
     expect(r.state.currentKey).toBe('o101');
     nodecgReport(r, at('102'), now + 19_000);
     expect(r.state.currentKey).toBe('o102');
+  });
+
+  it('stops our timer when speedcontrol’s finished, once it has held, with auto-apply on', () => {
+    const r = room(true);
+    const ours = r.state.runs.o101!.startedAt!;
+    const celeste = { via: 'bundle' as const, run: { game: 'Celeste', players: [] } };
+    // Speedcontrol started 3 s after us and finished at 30:00; reports are a few minutes old.
+    const base = ours + 30 * MIN;
+    const final = 30 * MIN;
+    nodecgReport(
+      r,
+      { ...celeste, timer: { state: 'running', elapsedMs: 27 * MIN } },
+      base - 3 * MIN + 3_000,
+    );
+    nodecgReport(r, { ...celeste, timer: { state: 'finished', elapsedMs: final } }, base + 10_000);
+    expect(r.state.detection).toMatchObject({ kind: 'finish', runKey: 'o101' });
+    expect(r.state.runs.o101?.endedAt).toBeUndefined();
+    nodecgReport(r, { ...celeste, timer: { state: 'finished', elapsedMs: final } }, base + 25_000);
+    expect(r.state.runs.o101?.endedAt).toBe(ours + 3_000 + final);
+    expect(r.state.currentKey).toBe('o101');
+    expect(r.state.log[0]).toMatchObject({ actor: 'Auto-tracking' });
+    expect(r.state.log[0]?.text).toMatch(/^■ Finished Celeste in 00:30:03, when the stream/);
   });
 
   it('doesn’t commit every heartbeat', () => {

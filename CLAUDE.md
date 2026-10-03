@@ -158,7 +158,12 @@ ordinary undoable action that back-dates the start from a timer reading) or dism
   second Vite entry) POST reports authorised by the room's stream PC token
   (`CheckInTokens.sourceToken`, replaceable per room). It's trusted (`TRUSTED_SOURCES`, but alone
   only once it has held for `TRUSTED_SETTLE_MS`) and `tracking.nodecg` switches it off (undefined
-  counts as on for rooms saved before it existed). **The bridge page is served sandboxed**
+  counts as on for rooms saved before it existed). It's the only source that can say a run
+  finished: `readReport` remembers speedcontrol's start (`state.nodecg.startedAt`, from reports while
+  it runs) and adds the final time, and a signal with `endedAt` on our running live run is a
+  `finish` detection (accepting sets `endedAt`; dropped once our timer stops). Moving on wins: a
+  pending `advance` isn't replaced by a finish, it just takes its `endedAt` as the live run's end
+  (and keeps it when it replaces a `finish`), so the banner doesn't flip between the two. **The bridge page is served sandboxed**
   (`http.ts` static headers) because it loads a script from a URL in its own query string: never
   give it cookies, storage or an origin, and open only `POST …/nodecg` to it (CORS, no
   credentials). The service worker leaves `/bridge.html` alone so that header always applies.

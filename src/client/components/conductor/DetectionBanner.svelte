@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Play, Radar, StepForward, X } from '@lucide/svelte';
+  import { Play, Radar, Square, StepForward, X } from '@lucide/svelte';
   import { haptic } from '../../lib/device.ts';
   import { fmtClock, relTime } from '../../lib/format.ts';
   import { getLive, getOps } from '../../lib/live.svelte.ts';
@@ -23,7 +23,18 @@
     return [...bySource.values()];
   });
   const sources = $derived(new Set(signals.map((s) => s.source)).size);
+  /** The stream PC's own timer: enough on its own once it has held for a few seconds. */
+  const trusted = $derived(signals.some((s) => s.source === 'nodecg' || s.source === 'push'));
   const waitingForSecond = $derived(live.state.tracking.autoApply && sources < 2);
+  const headline = $derived(
+    !d
+      ? ''
+      : d.kind === 'start'
+        ? `${title} has started on stream`
+        : d.kind === 'finish'
+          ? `${title} has finished on stream`
+          : `${title} is on stream`,
+  );
 </script>
 
 {#if d}
@@ -32,15 +43,19 @@
     <div class="text">
       <!-- Only the headline is announced: the "12s ago" text below changes every second. -->
       <strong role="status" aria-live="polite">
-        {d.kind === 'start' ? `${title} has started on stream` : `${title} is on stream`}
-        {#if d.startedAt}<span class="num">· since {fmtClock(d.startedAt, true)}</span>{/if}
+        {headline}
+        {#if d.kind === 'finish' && d.endedAt}<span class="num"
+            >· at {fmtClock(d.endedAt, true)}</span
+          >{:else if d.startedAt}<span class="num">· since {fmtClock(d.startedAt, true)}</span>{/if}
       </strong>
       <span class="why">
         {#each signals as s, i (s.source)}{i ? ' · ' : ''}{s.detail.replace(/^Twitch /, '')}
           <em>({SOURCE[s.source]}, {relTime(s.at, live.now)})</em>{/each}
-        {#if waitingForSecond}· {d.kind === 'start'
-            ? 'applies by itself when a second stream reading agrees'
-            : 'applies by itself if a second source agrees'}{/if}
+        {#if waitingForSecond}· {trusted
+            ? 'applies by itself shortly'
+            : d.kind === 'start'
+              ? 'applies by itself when a second stream reading agrees'
+              : 'applies by itself if a second source agrees'}{/if}
       </span>
     </div>
     <div class="actions">
@@ -52,7 +67,9 @@
           ops.acceptDetection(d.id);
         }}
       >
-        {#if d.kind === 'start'}<Play size={16} /> Start it{:else}<StepForward size={16} />
+        {#if d.kind === 'start'}<Play size={16} /> Start it{:else if d.kind === 'finish'}<Square
+            size={16}
+          /> Stop timer{:else}<StepForward size={16} />
           {d.startedAt ? 'Advance & start' : 'Advance'}{/if}
       </button>
       <button

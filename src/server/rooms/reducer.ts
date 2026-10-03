@@ -447,7 +447,9 @@ function apply(s: RoomState, action: ReducibleAction, ctx: ReduceContext): strin
       const d = s.detection;
       if (d) {
         const left = d.signals.filter((x) => enabled[x.source]);
-        s.detection = left.length ? { ...d, signals: left } : null;
+        // Only NodeCG times a finish: switched off, the time it gave goes too.
+        const end = !nodecg && d.endedAt != null ? { endedAt: null } : {};
+        s.detection = left.length ? { ...d, ...end, signals: left } : null;
       }
       // NodeCG is on unless switched off, but only worth naming once a stream PC reports in.
       const stationed = nodecg && s.nodecg != null;
@@ -490,13 +492,26 @@ function apply(s: RoomState, action: ReducibleAction, ctx: ReduceContext): strin
       s.detection = null;
       settle(s, d, now);
       const via = [...new Set(d.signals.map((x) => x.source))].join(' + ');
+      if (d.kind === 'finish') {
+        const r = rec(line.key);
+        if (runTiming(r, now).phase !== 'running' || d.endedAt == null) {
+          throw conflict('That run’s timer has already stopped.');
+        }
+        // Stopped when the stream's timer did: never before it started, never in the future.
+        r.endedAt = Math.min(now, Math.max(r.startedAt!, d.endedAt));
+        const elapsed = (r.endedAt - r.startedAt!) / 1000;
+        return log(
+          `■ Finished ${lineTitle(line)} in ${fmtHMS(elapsed)}, when the stream (${via}) did`,
+        );
+      }
       if (d.kind === 'advance') {
-        // The previous run ended about when the stream first moved on (or the
-        // new run's timer started, if earlier), not when someone tapped.
+        // The previous run ended when the stream PC's timer finished it, else about
+        // when the stream first moved on (or the new run's timer started, if
+        // earlier), not when someone tapped.
         const prev = s.currentKey ? s.runs[s.currentKey] : undefined;
         moveTo(index);
         if (prev?.startedAt != null && prev.endedAt === now) {
-          const switched = Math.min(d.firstAt, d.startedAt ?? Infinity);
+          const switched = Math.min(d.endedAt ?? d.firstAt, d.startedAt ?? Infinity);
           prev.endedAt = Math.min(now, Math.max(prev.startedAt, switched));
         }
       }

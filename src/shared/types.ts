@@ -152,23 +152,30 @@ export interface DetectionSignal {
   detail: string;
   /** When the run started on stream, if this source can tell (a timer reading). */
   startedAt: number | null;
+  /** When the run's timer finished on stream, if this source can tell (the stream PC's timer). */
+  endedAt?: number | null;
 }
 
 /**
  * The stream appears to have moved on: to a later run, or the current run's
- * timer has started on stream but not here. Accepting it is an ordinary,
+ * timer has started (or finished) on stream but not here. Accepting it is an ordinary,
  * undoable action; it never applies itself unless `tracking.autoApply` is on
  * and two independent signals agree.
  */
 export interface Detection {
   id: string;
   runKey: RunKey;
-  /** `advance`: a later run is on stream. `start`: the current run has started on stream. */
-  kind: 'advance' | 'start';
+  /**
+   * `advance`: a later run is on stream. `start`: the current run has started on stream.
+   * `finish`: the current run's timer has finished on stream while ours still runs.
+   */
+  kind: 'advance' | 'start' | 'finish';
   /** The live run when this was detected; if that changes, the detection is dropped. */
   currentKey: RunKey | null;
   /** Best estimate of the run's start on stream, from a timer reading. */
   startedAt: number | null;
+  /** `finish` only: when the run's timer finished on stream. */
+  endedAt?: number | null;
   firstAt: number;
   signals: DetectionSignal[];
 }
@@ -197,6 +204,10 @@ export interface NodecgStatus {
   timer: 'stopped' | 'running' | 'paused' | 'finished' | null;
   /** The timer as of `at`. */
   elapsedSec: number | null;
+  /** When speedcontrol's timer started (server clock), from its last report while running. */
+  startedAt?: number | null;
+  /** When it finished (server clock): that start plus its final time. */
+  endedAt?: number | null;
 }
 
 /** The last thing a stream-info source (Twitch) reported for the room's channel. */

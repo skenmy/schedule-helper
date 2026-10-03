@@ -227,7 +227,11 @@ export class Ops {
   acceptDetection(id: string): void {
     const d = this.live.state.detection;
     const title = d?.id === id ? this.live.titleOf(d.runKey) : 'the stream';
-    void this.withUndo(`Followed the stream to ${title}`, { action: 'detection:accept', id });
+    const summary =
+      d?.id === id && d.kind === 'finish'
+        ? `Stopped ${title} when the stream did`
+        : `Followed the stream to ${title}`;
+    void this.withUndo(summary, { action: 'detection:accept', id });
   }
 
   dismissDetection(id: string): void {

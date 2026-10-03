@@ -77,7 +77,8 @@ Horaro schedule. Try it offline with the built-in demo marathon (`/demo/demo/mai
   directly, through a small NodeCG bundle (`integrations/nodecg-schedule-helper`, no changes to
   speedcontrol) or, where nothing can be installed, a bridge page opened on the stream PC. It runs
   the real timer, so a run change or a timer start is suggested at once, with the exact start time,
-  and with auto-apply on it's followed straight away. Set it up under Stream capture → Stream PC.
+  and so is a finish: **Stop timer** stops ours when speedcontrol's finished. With auto-apply on
+  it's followed straight away. Set it up under Stream capture → Stream PC.
 - **Broadcast.** An announcement banner for all operators, and a message board for kiosk screens.
 - **Kiosk mode.** Configurable multi-panel displays for venue TVs (delta, now running, up next,
   check-ins, schedule, progress, clock, message board, controls, log, stream). The layout lives in
@@ -214,6 +215,15 @@ against the same runs. Reports become `nodecg` signals (`src/server/tracking/nod
 Speedcontrol is a trusted source: with auto-apply on, it acts on its own word once the same report
 has held for 10 seconds (two reports), so a misclick on the stream PC settles first. Operators can
 switch it off (Stream capture), and the last report is shown there either way.
+
+It's also the one source that can say when a run finished. Reports carry elapsed time, not clock
+times, so the server remembers when speedcontrol's timer started (from the last report while it
+ran: now minus elapsed, which also absorbs pauses), and a finished timer's final time added to that
+is the finish. If our live run is still running, that's a `finish` suggestion; accepting stops our
+timer at that moment (never before it started, never in the future). If the stream has already
+moved on (Twitch, a stream reading or speedcontrol shows the next run), that suggestion stays, and
+accepting it ends the previous run at speedcontrol's finish. A bridge or bundle that only connected
+after the finish has no start to go on, so it offers nothing.
 
 ## Push alerts
 
