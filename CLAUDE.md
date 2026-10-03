@@ -10,6 +10,9 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
   - `protocol.ts` zod schemas for client actions + `ServerMessage` union
   - `derive.ts` ALL schedule maths: run timing, delta, projections (plain, or at the event's own
     `eventPace()`), stats. Never duplicate this logic in a component or on the server — import it.
+    **Interludes (setup blocks) flex**: the run after one starts at its scheduled time (`resumesAt`),
+    so projections and the delta reset there, the gap across one isn't a changeover (`isBreak`),
+    and the catch-up planner never offers to cut one.
   - `report.ts` the event report (`buildReport`, `reportCsv`): served at `/report.{json,csv}` and
     rendered by `views/Report.svelte`, so the page and the exports can't disagree
   - `time.ts` duration parsing/formatting · `sources.ts` URL parsing, room paths, brand detection

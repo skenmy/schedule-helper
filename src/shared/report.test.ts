@@ -122,7 +122,8 @@ describe('buildReport', () => {
 
   it('takes the median changeover against plan, and ranks over- and underruns', () => {
     const r = buildReport(schedule(), FINISHED, T0 + 200 * MIN);
-    expect(r.changeoverDeltaSec).toBe(-90); // median of +2m and −5m
+    // Only a→b's +2m: the gap across the interview isn't a changeover (the interlude flexes).
+    expect(r.changeoverDeltaSec).toBe(2 * 60);
     expect(r.overruns.map((x) => x.key)).toEqual(['c', 'a']);
     expect(r.underruns.map((x) => x.key)).toEqual(['b']);
   });
@@ -142,8 +143,8 @@ describe('buildReport', () => {
     );
     expect(r.complete).toBe(false);
     expect(r.actualEnd).toBeNull();
-    // b ends 11:47; 10m setup + 10m interview + 10m setup; c 20m → 12:37.
-    expect(r.projectedEnd).toBe(T0 + 157 * MIN);
+    // b ends 11:47, then its 10m setup; the interview flexes so c still starts at 12:10 → 12:30.
+    expect(r.projectedEnd).toBe(T0 + 150 * MIN);
     expect(r.likelyEnd).toBeNull(); // too few runs finished to know the pace
     expect(r.rows.map((x) => x.status)).toEqual(['done', 'live', 'interlude', 'upcoming']);
     expect(r.rows[1]).toMatchObject({ actualSec: null, overSec: null, startDeltaSec: -7 * 60 });

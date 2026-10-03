@@ -120,11 +120,26 @@ describe('computeDelta', () => {
     expect(computeDelta(LINES, s, T0 + 45 * MIN)).toBe(-300);
   });
 
-  it('ignores the slot of a skipped next run', () => {
-    // a started on time; b (10:40) is skipped, so the 11:50 interlude is the next deadline.
+  it('ignores the slots of a skipped next run and of an interlude', () => {
+    // a started on time; b (10:40) is skipped and the 11:50 interlude flexes, so c's 12:10
+    // slot is the next deadline.
     const s = state({ currentKey: 'a', runs: { a: { startedAt: T0 }, b: { skipped: true } } });
     expect(computeDelta(LINES, s, T0 + 45 * MIN)).toBe(0);
-    expect(computeDelta(LINES, s, T0 + 115 * MIN)).toBe(-5 * 60);
+    expect(computeDelta(LINES, s, T0 + 115 * MIN)).toBe(0);
+    expect(computeDelta(LINES, s, T0 + 135 * MIN)).toBe(-5 * 60);
+  });
+
+  it('counts a run waiting for its slot after an interlude as on schedule', () => {
+    // b finished early at 11:20; c follows the interview, so it starts at 12:10 regardless.
+    const runs = {
+      a: { startedAt: T0, endedAt: T0 + 30 * MIN },
+      b: { startedAt: T0 + 40 * MIN, endedAt: T0 + 80 * MIN },
+    };
+    const s = state({ currentKey: 'c', runs });
+    expect(computeDelta(LINES, s, T0 + 85 * MIN)).toBe(0);
+    expect(computeDelta(LINES, s, T0 + 140 * MIN)).toBe(-10 * 60);
+    // Without an interlude before it, a run in setup still counts as starting now.
+    expect(computeDelta(LINES, state({ currentKey: 'b' }), T0 + 35 * MIN)).toBe(300);
   });
 
   it('does not drift while a finished run waits to be advanced', () => {
@@ -182,6 +197,39 @@ describe('project', () => {
     expect(p[2]?.start).toBe(T0 + 40 * MIN);
   });
 
+  it('lets an interlude stretch or shrink so the run after it starts on time', () => {
+    // Early: b ends 11:20, so the interview stretches and c still starts at 12:10.
+    const early = state({
+      currentKey: 'b',
+      runs: {
+        a: { startedAt: T0, endedAt: T0 + 30 * MIN },
+        b: { startedAt: T0 + 30 * MIN, endedAt: T0 + 80 * MIN },
+      },
+    });
+    let p = project(LINES, early, T0 + 81 * MIN);
+    expect(p[2]).toEqual({ start: T0 + 90 * MIN, end: T0 + 130 * MIN });
+    expect(p[3]).toEqual({ start: T0 + 130 * MIN, end: T0 + 150 * MIN });
+    // 15 minutes late (less than the interview and its buffer): soaked up.
+    const late = state({ currentKey: 'b', runs: { b: { startedAt: T0 + 55 * MIN } } });
+    p = project(LINES, late, T0 + 60 * MIN);
+    expect(p[2]).toEqual({ start: T0 + 125 * MIN, end: T0 + 130 * MIN });
+    expect(p[3]?.start).toBe(T0 + 130 * MIN);
+    // 30 minutes late: the interview goes entirely, and c is the 10 minutes past it late.
+    const later = state({ currentKey: 'b', runs: { b: { startedAt: T0 + 70 * MIN } } });
+    p = project(LINES, later, T0 + 75 * MIN);
+    expect(p[2]).toEqual({ start: T0 + 140 * MIN, end: T0 + 140 * MIN });
+    expect(p[3]?.start).toBe(T0 + 140 * MIN);
+  });
+
+  it('holds a run waiting after an interlude to its slot', () => {
+    const runs = {
+      a: { startedAt: T0, endedAt: T0 + 30 * MIN },
+      b: { startedAt: T0 + 40 * MIN, endedAt: T0 + 80 * MIN },
+    };
+    const p = project(LINES, state({ currentKey: 'c', runs }), T0 + 85 * MIN);
+    expect(p[3]).toEqual({ start: T0 + 130 * MIN, end: T0 + 150 * MIN });
+  });
+
   it('is empty once the marathon is complete', () => {
     expect(project(LINES, state({ finishedAt: T0 }), T0).every((x) => x === null)).toBe(true);
   });
@@ -235,8 +283,9 @@ describe('changeovers', () => {
     });
     expect(changeovers(LINES, s)).toEqual([
       { from: 'a', to: 'b', actualSec: 12 * 60, plannedSec: 10 * 60, isBreak: false },
-      // b's setup, then the interlude and its own setup.
-      { from: 'b', to: 'c', actualSec: 35 * 60, plannedSec: 30 * 60, isBreak: false },
+      // b's setup, then the interlude and its own setup: but an interlude flexes to start c
+      // on time, so it's not a changeover to learn from.
+      { from: 'b', to: 'c', actualSec: 35 * 60, plannedSec: 30 * 60, isBreak: true },
     ]);
   });
 
@@ -327,31 +376,43 @@ describe('catchUpPlan', () => {
     ).toBeNull();
   });
 
-  it('trims setup buffers first, then interludes, and marks where it is enough', () => {
-    // a started 25 minutes late: the end is projected 25 minutes late.
+  it('trims setup buffers, never the interludes that flex by themselves', () => {
+    // a started 25 minutes late; the interview soaks up 20, so the end is 5 minutes late.
     const s = state({ currentKey: 'a', runs: { a: { startedAt: T0 + 25 * MIN } } });
     const plan = catchUpPlan(LINES, s, T0 + 26 * MIN)!;
-    expect(plan.behindSec).toBe(25 * 60);
+    expect(plan.behindSec).toBe(5 * 60);
     expect(plan.options.map((o) => [o.kind, o.key, o.savesSec / 60])).toEqual([
       ['setup', 'a', 5],
       ['setup', 'b', 5],
-      ['interlude', 's', 20],
     ]);
-    // Trimming both buffers gets 10 of the 25 minutes back; the interview (and its buffer) the rest.
-    expect(plan.options.map((o) => o.cumulativeSec / 60)).toEqual([5, 10, 30]);
-    expect(plan.enoughAt).toBe(2);
-    expect(plan.options.at(-1)!.endAfter).toBe(plan.projectedEnd - 30 * MIN);
+    expect(plan.options.map((o) => o.cumulativeSec / 60)).toEqual([5, 10]);
+    expect(plan.enoughAt).toBe(0);
+    expect(plan.options[0]!.endAfter).toBe(plan.projectedEnd - 5 * MIN);
   });
 
-  it('stops counting what has already happened', () => {
-    // Running late in b: a's buffer and the run itself are behind us.
+  it('has nothing to say when an interlude soaks it all up', () => {
+    // 15 minutes late in b: the interview takes it, and c starts on time.
     const s = state({
       currentKey: 'b',
       runs: { a: { startedAt: T0, endedAt: T0 + 30 * MIN }, b: { startedAt: T0 + 55 * MIN } },
     });
-    const plan = catchUpPlan(LINES, s, T0 + 60 * MIN)!;
-    expect(plan.behindSec).toBe(15 * 60);
-    expect(plan.options.map((o) => o.key)).toEqual(['b', 's']);
-    expect(plan.enoughAt).toBe(1);
+    expect(catchUpPlan(LINES, s, T0 + 60 * MIN)).toBeNull();
+  });
+
+  it('only counts buffers after the last interlude still soaking up the delay', () => {
+    // a 10:00 (30m + 10m), interlude 10:40–10:50, b 10:50 (30m + 10m), c 11:30 (30m).
+    const lines = [
+      line('a', T0, 30),
+      line('s', T0 + 40 * MIN, 10, { setupBlock: true, setupBlockText: 'Interview', setupSec: 0 }),
+      line('b', T0 + 50 * MIN, 30),
+      line('c', T0 + 90 * MIN, 30, { setupSec: 0 }),
+    ];
+    // Runs going 20% long: a's overrun is soaked up by the interlude, b's isn't.
+    const pace = { runRatio: 1.2, setupDeltaSec: 0, runs: 5, setups: 5 };
+    const s = state({ currentKey: 'a', runs: { a: { startedAt: T0 } } });
+    const plan = catchUpPlan(lines, s, T0 + 10 * MIN, pace)!;
+    expect(plan.behindSec).toBe(12 * 60);
+    expect(plan.options.map((o) => o.key)).toEqual(['b']);
+    expect(plan.enoughAt).toBe(-1);
   });
 });

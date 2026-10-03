@@ -13,14 +13,18 @@ Horaro schedule. Try it offline with the built-in demo marathon (`/demo/demo/mai
   connected browser. Anyone signed in as an operator can drive it; everyone else watches live.
 - **Delta and projections.** Ahead / behind is measured against the live run's slot (±15 min
   counts as on schedule). Upcoming start times and the projected finish chain every remaining
-  estimate and setup from where the live run will realistically end. Once a few runs have
+  estimate and setup from where the live run will realistically end. **Interludes flex**: the
+  run after one starts at its scheduled time, the interlude stretching when the event is early and
+  shrinking (to nothing at most) when it's late, so the delta resets there; a run waiting for its
+  slot after an interlude counts as on schedule. Once a few runs have
   finished, a **likely end** sits beside it: the same chain at this event's own pace (the median
   run against its estimate, the median changeover against its setup, eased towards plan while
   there's little data). It's in the status strip, the Progress tab and the overlay feed
   (`likelyEnd`, `pace`).
 - **Catch-up planner.** When the end is projected more than five minutes late, the Progress tab
   lists what could give the time back, least visible first: setup buffers still to come trimmed to
-  five minutes (largest first), then interludes. Each shows when it happens and where the end lands
+  five minutes (largest first), counting only those after the last interlude that's already
+  soaking up the delay (interludes flex by themselves). Each shows when it happens and where the end lands
   with it, and the point where you're back on schedule is marked. Advisory only.
 - **Event report.** Planned against actual, for the debrief or the next event's planning: when it
   started and finished against the schedule, run time against estimates, the median changeover
