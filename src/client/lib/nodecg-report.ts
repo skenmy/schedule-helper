@@ -55,6 +55,27 @@ export function buildReport(
   };
 }
 
+export const NAMESPACE = 'nodecg-speedcontrol';
+/** Speedcontrol's replicants the bridge reads: the run that's up, and its timer. */
+export const REPLICANTS = ['runDataActiveRun', 'timer'] as const;
+
+/**
+ * Whether a NodeCG `replicant:operations` push is worth reporting at once: any
+ * change to speedcontrol's active run, or to its timer's state. The timer's
+ * milliseconds change every 100 ms; those wait for the next poll.
+ */
+export function isNews(data: unknown): boolean {
+  const d = data as {
+    namespace?: unknown;
+    name?: unknown;
+    operations?: { method?: unknown; args?: { prop?: unknown } }[];
+  } | null;
+  if (!d || d.namespace !== NAMESPACE) return false;
+  if (d.name === 'runDataActiveRun') return true;
+  if (d.name !== 'timer' || !Array.isArray(d.operations)) return false;
+  return d.operations.some((op) => op?.method === 'overwrite' || op?.args?.prop === 'state');
+}
+
 /** A `replicant:declare` acknowledgement: NodeCG 1 sends `(data)`, NodeCG 2 `(error, data)`. */
 export function ackValue<T>(args: unknown[]): T | undefined {
   const [error, data] = args.length > 1 ? args : [null, args[0]];

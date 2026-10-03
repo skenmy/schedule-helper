@@ -207,6 +207,9 @@ stream PC's clock doesn't matter.
   sandboxed (`Content-Security-Policy: sandbox allow-scripts`): no origin, no cookies, no storage,
   and only the report endpoint accepts its cross-origin requests. Browsers may refuse an `https`
   page talking to NodeCG over plain `http` on another machine; NodeCG on the same PC usually works.
+  It joins speedcontrol's replicant rooms, so NodeCG pushes each change and a new run or a timer
+  starting or finishing is reported at once, even from a background tab (Chrome runs a hidden
+  tab's timers once a minute, so its one-second poll is only a fallback there).
 
 Runs imported into speedcontrol from Oengus keep their line ID (`externalID`), which names our run
 exactly. If that run isn't the live one or the next three (speedcontrol lagging behind), the report

@@ -47,16 +47,29 @@ test('follows the stream to the next run when Twitch says it moved on', async ({
  */
 const fakeNodecg = (game: string, elapsedMs = 0, state = 'stopped') => `
   window.timerValue = { state: ${JSON.stringify(state)}, milliseconds: ${elapsedMs}, timestamp: Date.now() };
+  window.joined = [];
+  const handlers = {};
+  // A push from NodeCG, as it sends a room's replicant:operations.
+  window.nodecgPush = (event, data) => (handlers[event] || []).forEach((fn) => fn(data));
+  // Microtasks, not timers: they still run with the page's clock stopped.
   window.io = () => {
     const socket = {
       connected: true,
-      on(event, fn) { if (event === 'connect') setTimeout(fn, 0); },
+      on(event, fn) {
+        (handlers[event] ||= []).push(fn);
+        if (event === 'connect') queueMicrotask(fn);
+      },
       emit(event, payload, ack) {
+        if (event === 'joinRoom') {
+          window.joined.push(payload);
+          queueMicrotask(() => ack());
+          return;
+        }
         const values = {
           runDataActiveRun: { game: ${JSON.stringify(game)}, teams: [] },
           timer: window.timerValue,
         };
-        setTimeout(() => ack(null, { value: values[payload.name] }), 0);
+        queueMicrotask(() => ack(null, { value: values[payload.name] }));
       },
     };
     return socket;
@@ -182,6 +195,61 @@ test('a report that never gets an answer doesn’t stop the bridge reporting', a
     timeout: 15_000,
   });
   await expect(bridge.locator('#report')).toHaveText(/Reported at/, { timeout: 10_000 });
+});
+
+test('reports speedcontrol’s changes as NodeCG pushes them, with the page’s timers stalled', async ({
+  page,
+  context,
+}) => {
+  await page.goto(DEMO);
+  await page.getByRole('tab', { name: 'Stream capture' }).click();
+  await page.getByRole('button', { name: 'Set up the stream PC' }).click();
+  const address = await page
+    .getByRole('region', { name: 'Bridge page' })
+    .locator('code.url')
+    .innerText();
+  const bridge = await context.newPage();
+  await bridge.clock.install();
+  await bridge.route('http://localhost:9090/socket.io/socket.io.js', (route) =>
+    route.fulfill({
+      contentType: 'application/javascript',
+      body: fakeNodecg('A game not on this schedule'),
+    }),
+  );
+  await bridge.goto(address);
+  await expect(bridge.locator('#report')).toHaveText(/Reported at/);
+  await expect(bridge.locator('#speedcontrol')).toHaveText(/timer stopped/);
+  type Fake = { joined: string[]; timerValue: object; nodecgPush: (e: string, d: object) => void };
+  expect(await bridge.evaluate(() => (window as unknown as Fake).joined)).toEqual([
+    'replicant:nodecg-speedcontrol:runDataActiveRun',
+    'replicant:nodecg-speedcontrol:timer',
+  ]);
+
+  // A background tab: its timers stop (Chrome runs them once a minute), so no polling.
+  await bridge.clock.pauseAt(Date.now() + 1_000);
+  await bridge.evaluate(() => {
+    const w = window as unknown as Fake;
+    w.timerValue = { state: 'running', milliseconds: 1_000, timestamp: Date.now() };
+    // The timer ticking over isn't news…
+    w.nodecgPush('replicant:operations', {
+      name: 'timer',
+      namespace: 'nodecg-speedcontrol',
+      operations: [
+        { path: '/', method: 'update', args: { prop: 'milliseconds', newValue: 1_000 } },
+      ],
+    });
+  });
+  await bridge.waitForTimeout(500);
+  await expect(bridge.locator('#speedcontrol')).toHaveText(/timer stopped/);
+  // …its state changing is, and goes out at once.
+  await bridge.evaluate(() =>
+    (window as unknown as Fake).nodecgPush('replicant:operations', {
+      name: 'timer',
+      namespace: 'nodecg-speedcontrol',
+      operations: [{ path: '/', method: 'update', args: { prop: 'state', newValue: 'running' } }],
+    }),
+  );
+  await expect(bridge.locator('#speedcontrol')).toHaveText(/timer running/);
 });
 
 test('a bridge address pointing at a hostile "NodeCG" gets nothing of the app’s', async ({
