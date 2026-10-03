@@ -216,7 +216,8 @@ exactly. If that run isn't the live one or the next three (speedcontrol lagging 
 matches nothing rather than guess. Without a known ID, the game, category and runners are matched
 against the same runs. Reports become `nodecg` signals (`src/server/tracking/nodecg.ts`).
 Speedcontrol is a trusted source: with auto-apply on, it acts on its own word once the same report
-has held for 10 seconds (two reports), so a misclick on the stream PC settles first. Operators can
+has stood for 3 seconds with nothing contradicting it, so a misclick on the stream PC (next, next,
+back) settles first. Operators can
 switch it off (Stream capture), and the last report is shown there either way.
 
 It's also the one source that can say when a run finished. Reports carry elapsed time, not clock

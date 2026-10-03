@@ -44,11 +44,14 @@ const READINGS_APART_MS = 20_000;
  */
 export const TRUSTED_SOURCES: ReadonlySet<SignalSource> = new Set(['nodecg', 'push']);
 /**
- * On its own word, a trusted source has to say the same thing for this long
- * (two reports, with its 15 s heartbeat): a misclick on the stream PC (next,
- * next, back) settles before anything moves. The start is back-dated anyway.
+ * On its own word, a trusted source acts once what it said has stood this long
+ * with nothing contradicting it: a misclick on the stream PC (next, next, back)
+ * settles before anything moves. It reports every change at once (the bundle
+ * within 250 ms, the bridge within a second), so a few seconds is enough, and
+ * the service checks again when they're up rather than waiting for the next
+ * report. Starts and finishes are back-dated to the stream PC's timer anyway.
  */
-export const TRUSTED_SETTLE_MS = 10_000;
+export const TRUSTED_SETTLE_MS = 3_000;
 /**
  * A finish is news when it's reported: the stream PC reports on every change.
  * One older than this is one somebody already dealt with (stopped our timer by
@@ -254,7 +257,9 @@ export function reconcile(s: RoomState, lines: readonly ScheduleLine[], now: num
 export function corroborated(d: Detection, now: number): boolean {
   const recent = d.signals.filter((x) => now - x.at <= AGREE_WINDOW_MS);
   const trusted = recent.filter((x) => TRUSTED_SOURCES.has(x.source));
-  if (trusted.some((x) => x.at - d.firstAt >= TRUSTED_SETTLE_MS)) return true;
+  // Any change of mind (another run, back to the live one) replaces or withdraws the
+  // detection, so one still standing has held since `firstAt`.
+  if (trusted.length && now - d.firstAt >= TRUSTED_SETTLE_MS) return true;
   if (new Set(recent.map((x) => x.source)).size >= 2) return true;
   const timed = recent.filter((x) => x.startedAt != null);
   return timed.some((a, i) =>
