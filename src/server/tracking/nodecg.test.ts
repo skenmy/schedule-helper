@@ -4,6 +4,7 @@ import { Room } from '../rooms/room.ts';
 import { initialState } from '../rooms/state.ts';
 import { matchRunData } from './match.ts';
 import { nodecgReport, readReport } from './nodecg.ts';
+import { signal } from './service.ts';
 
 const MIN = 60_000;
 const T0 = Date.UTC(2026, 4, 24, 10, 0, 0);
@@ -151,6 +152,27 @@ describe('readReport: finishes', () => {
     expect(r.signal?.endedAt).toBe(T0 + 2 * MIN + 29 * MIN);
   });
 
+  it('keeps the finish through a reset on the stream PC', () => {
+    const r = feed([
+      [T0 + MIN, report('running', 55_000)],
+      [T0 + 41 * MIN, report('finished', 40 * MIN)],
+      [T0 + 42 * MIN, report('stopped', 0)],
+    ]);
+    expect(r.status).toMatchObject({ timer: 'stopped', endedAt: T0 + 5_000 + 40 * MIN });
+    expect(r.signal).toMatchObject({
+      endedAt: T0 + 5_000 + 40 * MIN,
+      detail: 'speedcontrol: Celeste, finished in 00:40:00',
+    });
+    // Running again after that is a new attempt: the finish goes.
+    const again = feed([
+      [T0 + MIN, report('running', 55_000)],
+      [T0 + 41 * MIN, report('finished', 40 * MIN)],
+      [T0 + 42 * MIN, report('stopped', 0)],
+      [T0 + 43 * MIN, report('running', 5_000)],
+    ]);
+    expect(again.signal).toMatchObject({ endedAt: null, startedAt: T0 + 43 * MIN - 5_000 });
+  });
+
   it('offers no finish time when it never saw the timer running', () => {
     const r = feed([[T0 + 41 * MIN, report('finished', 40 * MIN)]]);
     expect(r.signal).toMatchObject({ runKey: 'o101', endedAt: null });
@@ -243,6 +265,46 @@ describe('nodecgReport', () => {
     expect(r.state.currentKey).toBe('o101');
     expect(r.state.log[0]).toMatchObject({ actor: 'Auto-tracking' });
     expect(r.state.log[0]?.text).toMatch(/^■ Finished Celeste in 00:30:03, when the stream/);
+  });
+
+  it('never moves on by itself because of a finish attached to a Twitch-only advance', () => {
+    const r = room(true);
+    r.state.tracking.twitch = true;
+    const ours = r.state.runs.o101!.startedAt!;
+    const celeste = { via: 'bundle' as const, run: { game: 'Celeste', players: [] } };
+    const base = ours + 30 * MIN;
+    nodecgReport(
+      r,
+      { ...celeste, timer: { state: 'running', elapsedMs: 27 * MIN } },
+      base - 3 * MIN,
+    );
+    nodecgReport(r, { ...celeste, timer: { state: 'finished', elapsedMs: 30 * MIN } }, base);
+    expect(r.state.detection).toMatchObject({ kind: 'finish' });
+    signal(r, {
+      runKey: 'o102',
+      source: 'twitch',
+      at: base + 1_000,
+      detail: 'category',
+      startedAt: null,
+    });
+    expect(r.state.detection).toMatchObject({
+      kind: 'advance',
+      runKey: 'o102',
+      endedAt: ours + 30 * MIN,
+    });
+    // Speedcontrol keeps saying "finished": that backs no advance, so nothing moves.
+    nodecgReport(
+      r,
+      { ...celeste, timer: { state: 'finished', elapsedMs: 30 * MIN } },
+      base + 15_000,
+    );
+    nodecgReport(
+      r,
+      { ...celeste, timer: { state: 'finished', elapsedMs: 30 * MIN } },
+      base + 30_000,
+    );
+    expect(r.state.currentKey).toBe('o101');
+    expect(r.state.runs.o101?.endedAt).toBeUndefined();
   });
 
   it('doesn’t commit every heartbeat', () => {

@@ -161,7 +161,10 @@ ordinary undoable action that back-dates the start from a timer reading) or dism
   counts as on for rooms saved before it existed). It's the only source that can say a run
   finished: `readReport` remembers speedcontrol's start (`state.nodecg.startedAt`, from reports while
   it runs) and adds the final time, and a signal with `endedAt` on our running live run is a
-  `finish` detection (accepting sets `endedAt`; dropped once our timer stops). Moving on wins: a
+  `finish` detection (accepting sets `endedAt`; refused if our start has moved past it). Our timer
+  stopped by hand settles it, as does (re)starting ours while speedcontrol shows it finished, and a
+  finish only counts as news within `FINISH_FRESH_MS`, so a resume isn't stopped again. A reset
+  on the stream PC keeps the finish; running again takes it back. Moving on wins: a
   pending `advance` isn't replaced by a finish, it just takes its `endedAt` as the live run's end
   (and keeps it when it replaces a `finish`), so the banner doesn't flip between the two. **The bridge page is served sandboxed**
   (`http.ts` static headers) because it loads a script from a URL in its own query string: never

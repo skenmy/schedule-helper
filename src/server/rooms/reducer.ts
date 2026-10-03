@@ -183,6 +183,11 @@ function apply(s: RoomState, action: ReducibleAction, ctx: ReduceContext): strin
       const r = rec(line.key);
       const t = runTiming(r, now);
       if (t.phase === 'running') throw new NoChange();
+      // Started (or resumed) here while speedcontrol shows this run finished: that
+      // finish isn't one to stop it at.
+      if (s.nodecg?.runKey === line.key && s.nodecg.endedAt != null) {
+        s.settled = { runKey: line.key, kind: 'finish', currentKey: s.currentKey, at: now };
+      }
       if (t.phase === 'finished') {
         r.startedAt = now - t.elapsedMs;
         delete r.endedAt;
@@ -497,8 +502,12 @@ function apply(s: RoomState, action: ReducibleAction, ctx: ReduceContext): strin
         if (runTiming(r, now).phase !== 'running' || d.endedAt == null) {
           throw conflict('That run’s timer has already stopped.');
         }
-        // Stopped when the stream's timer did: never before it started, never in the future.
-        r.endedAt = Math.min(now, Math.max(r.startedAt!, d.endedAt));
+        // Its start was moved after the finish (set, or resumed): the two don't fit.
+        if (d.endedAt < r.startedAt!) {
+          throw conflict('The stream finished before this run’s start here. Check its times.');
+        }
+        // Stopped when the stream's timer did, never in the future.
+        r.endedAt = Math.min(now, d.endedAt);
         const elapsed = (r.endedAt - r.startedAt!) / 1000;
         return log(
           `■ Finished ${lineTitle(line)} in ${fmtHMS(elapsed)}, when the stream (${via}) did`,
@@ -511,7 +520,8 @@ function apply(s: RoomState, action: ReducibleAction, ctx: ReduceContext): strin
         const prev = s.currentKey ? s.runs[s.currentKey] : undefined;
         moveTo(index);
         if (prev?.startedAt != null && prev.endedAt === now) {
-          const switched = Math.min(d.endedAt ?? d.firstAt, d.startedAt ?? Infinity);
+          const finish = d.endedAt != null && d.endedAt >= prev.startedAt ? d.endedAt : null;
+          const switched = Math.min(finish ?? d.firstAt, d.startedAt ?? Infinity);
           prev.endedAt = Math.min(now, Math.max(prev.startedAt, switched));
         }
       }
