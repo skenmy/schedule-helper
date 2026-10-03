@@ -34,7 +34,8 @@ Horaro schedule. Try it offline with the built-in demo marathon (`/demo/demo/mai
   Progress tab, the command palette, the More sheet, or the status strip once the marathon is
   complete (`?report=1` on any room). Export as CSV (spreadsheet-safe) or JSON, or print it.
 - **Timeline.** A plan lane (scheduled) over a live lane (actual and projected), so drift is
-  visible at a glance. 3h / 6h / 12h / all zoom.
+  visible at a glance. 3h / 6h / 12h / all zoom; drag it (or swipe, or use the arrow keys) to see
+  earlier or later, and **Now** comes back.
 - **Run control.** Start, stop, resume, advance, back, skip / restore, set the timer after a late
   start, and edit actual start/end times (absolute timestamps — multi-day marathons work).
 - **Runner check-ins** per run (ready / missing), summarised for the next five runs.

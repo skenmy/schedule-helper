@@ -19,6 +19,43 @@ test('landing page opens the demo marathon', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('the timeline pans by dragging, and a plain click still opens a run', async ({ page }) => {
+  await openDemo(page);
+  const timeline = page.getByRole('region', { name: 'Timeline' });
+  await timeline.getByRole('radio', { name: '3h' }).click();
+  const firstTick = () => timeline.locator('.tick em').first().innerText();
+  const before = await firstTick();
+  const now = timeline.getByRole('button', { name: 'Now', exact: true });
+  await expect(now).toHaveCount(0);
+
+  // Drag right to left across the lanes (starting on a block): later in the event.
+  const box = (await timeline.locator('.track').boundingBox())!;
+  const y = box.y + box.height - 20;
+  await page.mouse.move(box.x + box.width * 0.7, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.2, y, { steps: 10 });
+  await page.mouse.up();
+  await expect(now).toBeVisible();
+  expect(await firstTick()).not.toBe(before);
+  // A drag isn't a click: no run sheet opened.
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  await now.click();
+  await expect(now).toHaveCount(0);
+  expect(await firstTick()).toBe(before);
+
+  // The arrow keys pan from the run buttons too.
+  const block = timeline.locator('.lane').nth(1).getByRole('button').first();
+  await block.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(now).toBeVisible();
+  await now.click();
+
+  // A press that doesn't move is a click.
+  await timeline.locator('.lane').nth(1).getByRole('button').first().click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+});
+
 test('legacy hash links redirect to room paths', async ({ page }) => {
   await page.goto('/#horaro:esa/stream1');
   await expect(page).toHaveURL('/horaro/esa/stream1');

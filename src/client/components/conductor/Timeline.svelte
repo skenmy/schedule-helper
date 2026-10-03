@@ -16,26 +16,85 @@
     { value: '0', label: 'All' },
   ] as const;
   let zoom = $state(String(prefs.zoomHours) as (typeof ZOOMS)[number]['value']);
+  /** How far the view has been dragged from its place around now (ms; later is positive). */
+  let offset = $state(0);
   $effect(() => {
     prefs.zoomHours = Number(zoom);
+    offset = 0;
   });
+
+  /** The whole event: what "All" shows, and as far as dragging goes. */
+  const event = $derived.by(() => {
+    const now = Math.floor(live.now / SNAP) * SNAP;
+    const s = live.stats;
+    const start = Math.min(s.scheduledStart ?? now, now);
+    const end = Math.max(s.scheduledEnd ?? now + HOUR, live.projectedEnd ?? 0, now);
+    return { start, end };
+  });
+  const pannable = $derived(prefs.zoomHours !== 0 && live.stats.scheduledStart != null);
 
   // Snap the window so blocks don't shimmer every tick; only the now line moves.
   const win = $derived.by(() => {
-    const now = Math.floor(live.now / SNAP) * SNAP;
-    const s = live.stats;
-    if (prefs.zoomHours === 0 || s.scheduledStart == null) {
-      const start = Math.min(s.scheduledStart ?? now, now);
-      const end = Math.max(s.scheduledEnd ?? now + HOUR, live.projectedEnd ?? 0, now);
-      const pad = Math.max((end - start) * 0.015, SNAP);
-      return { start: start - pad, end: end + pad };
+    if (!pannable) {
+      const pad = Math.max((event.end - event.start) * 0.015, SNAP);
+      return { start: event.start - pad, end: event.end + pad };
     }
+    const now = Math.floor(live.now / SNAP) * SNAP;
     const span = prefs.zoomHours * HOUR;
-    const start = now - span * 0.25;
+    const start = now - span * 0.25 + offset;
     return { start, end: start + span };
   });
   const span = $derived(win.end - win.start);
   const pct = (t: number) => ((t - win.start) / span) * 100;
+
+  // Dragging the track pans through the event. A press that doesn't move is a click
+  // (a block opens its run sheet); one that does never opens anything.
+  let track = $state<HTMLElement>();
+  let drag: { id: number; x: number; offset: number; width: number; moved: boolean } | null = null;
+  let dragging = $state(false);
+  let swallowClick = false;
+  /** Keeps some of the event in view: no dragging off into empty hours. */
+  function clampOffset(o: number): number {
+    const now = Math.floor(live.now / SNAP) * SNAP;
+    const base = now - span * 0.25;
+    const min = event.start - span * 0.75 - base;
+    const max = event.end - span * 0.25 - base;
+    return Math.min(Math.max(o, Math.min(min, 0)), Math.max(max, 0));
+  }
+  function onpointerdown(e: PointerEvent) {
+    if (!pannable || !track || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    drag = { id: e.pointerId, x: e.clientX, offset, width: track.clientWidth, moved: false };
+    swallowClick = false;
+  }
+  function onpointermove(e: PointerEvent) {
+    if (!drag || e.pointerId !== drag.id || !track) return;
+    const dx = e.clientX - drag.x;
+    if (!drag.moved) {
+      if (Math.abs(dx) < 5) return;
+      drag.moved = true;
+      dragging = true;
+      track.setPointerCapture(e.pointerId);
+    }
+    offset = clampOffset(drag.offset - (dx / drag.width) * span);
+  }
+  function onpointerend(e: PointerEvent) {
+    if (!drag || e.pointerId !== drag.id) return;
+    swallowClick = drag.moved;
+    drag = null;
+    dragging = false;
+  }
+  /** From the keyboard too: ← and → move a quarter of the view while focus is on the timeline. */
+  function onkeydown(e: KeyboardEvent) {
+    if (!pannable || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+    e.preventDefault();
+    offset = clampOffset(offset + (e.key === 'ArrowLeft' ? -span : span) / 4);
+  }
+  function onclickcapture(e: MouseEvent) {
+    if (!swallowClick) return;
+    swallowClick = false;
+    e.stopPropagation();
+    e.preventDefault();
+  }
 
   interface Block {
     id: string;
@@ -165,6 +224,9 @@
       <span><i class="sw setup"></i>Setup</span>
       <span><i class="sw missing"></i>Runner missing</span>
     </div>
+    {#if pannable && offset !== 0}
+      <button class="btn sm" onclick={() => (offset = 0)}>Now</button>
+    {/if}
     <Segmented label="Zoom" size="sm" options={ZOOMS} bind:value={zoom} />
   </header>
 
@@ -174,7 +236,23 @@
       <span class="label">Plan</span>
       <span class="label">Live</span>
     </div>
-    <div class="track">
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions (dragging is a pointer shortcut; the arrow keys pan from the run buttons inside, and Now goes back) -->
+    <div
+      class="track"
+      class:pannable
+      class:dragging
+      role="group"
+      aria-label={pannable
+        ? 'Timeline: drag, or use the arrow keys, to see earlier or later'
+        : undefined}
+      bind:this={track}
+      {onkeydown}
+      {onpointerdown}
+      {onpointermove}
+      onpointerup={onpointerend}
+      onpointercancel={onpointerend}
+      {onclickcapture}
+    >
       <div class="ticks">
         {#each ticks as tick (tick.t)}
           <span class="tick" class:day={tick.day} style:left="{pct(tick.t)}%"
@@ -291,6 +369,16 @@
     grid-template-rows: 20px 44px 44px;
     gap: 6px;
     overflow: hidden;
+  }
+  .track.pannable {
+    cursor: grab;
+    /* Horizontal swipes pan the timeline; vertical ones still scroll the page. */
+    touch-action: pan-y;
+    user-select: none;
+  }
+  .track.dragging,
+  .track.dragging .blk {
+    cursor: grabbing;
   }
   .ticks {
     position: relative;
