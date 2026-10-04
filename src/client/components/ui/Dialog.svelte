@@ -208,6 +208,11 @@
     display: flex;
     flex-direction: column;
     max-height: inherit;
+  }
+  /* A sheet is as tall as the screen; a modal is as tall as what's in it. Never 100% of
+     a modal: its height is `fit-content`, so that percentage depends on itself, and iPad
+     Safari settled it at 0, opening every modal as a bare line (its two borders). */
+  .sheet .panel {
     height: 100%;
   }
   header {
@@ -250,7 +255,12 @@
   .body {
     padding: 4px 22px 20px;
     overflow: auto;
-    flex: 1;
+    /* As tall as its content, shrinking (and scrolling) only once the dialog reaches
+       its max height. Not `flex: 1`: WebKit has taken that 0% basis literally when the
+       dialog's height comes from its content, and a scrolling body has no minimum to
+       stop it collapsing. */
+    flex: 1 1 auto;
+    min-height: 0;
   }
   footer {
     display: flex;
