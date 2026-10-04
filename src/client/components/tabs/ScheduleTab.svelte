@@ -408,7 +408,7 @@
     }
     .row {
       display: grid;
-      grid-template-columns: 1fr auto;
+      grid-template-columns: minmax(0, 1fr) auto;
       grid-template-areas: 'run status' 'times times';
       gap: 4px 12px;
       padding: 12px 4px;

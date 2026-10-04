@@ -158,7 +158,7 @@
   }
   .entry {
     display: grid;
-    grid-template-columns: 52px 70px 1fr auto;
+    grid-template-columns: 52px 70px minmax(0, 1fr) auto;
     gap: 12px;
     align-items: start;
     padding: 9px 0;
@@ -231,7 +231,7 @@
   }
   @container panel (max-width: 610px) {
     .entry {
-      grid-template-columns: 46px 1fr auto;
+      grid-template-columns: 46px minmax(0, 1fr) auto;
     }
     .kind {
       display: none;

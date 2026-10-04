@@ -97,8 +97,13 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
   old snapshot would break (new optional `RoomState` fields are filled from `EMPTY_STATE`).
 - **Size components by their container, not the viewport.** Tabs and cards render in a phone view,
   an iPad pane and a desktop column, so their breakpoints are `@container panel` / `nowcard` /
-  `timer` queries. Touch sizing hangs off `[data-touch]`; hover-only affordances need a
-  `@media (hover: hover)` guard (hover sticks after a tap on iPad).
+  `timer` queries, and font sizes use `cqi`, not `vw`. Grid columns that hold text are
+  `minmax(0, …)`: a bare `1fr`, or a grid with no columns set, grows to fit its widest
+  one-line label (a long next run, an undo summary) and pushes the controls out of their iPad pane
+  or makes a phone zoom out. `e2e/layout.spec.ts` swaps every title, category and runner for a
+  long one on iPads and iPhones and fails if anything sticks out. Touch sizing hangs off
+  `[data-touch]`; hover-only affordances need a `@media (hover: hover)` guard (hover sticks after
+  a tap on iPad).
 - **Push alerts are for operators and carry what operators see.** Add a kind in `push/alerts.ts`
   (with a test), not in the service; keep its text free of clock times (the server's time zone
   isn't the operator's). Never post to an endpoint outside `PUSH_HOSTS` (`protocol.ts`).

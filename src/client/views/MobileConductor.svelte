@@ -217,7 +217,7 @@
   }
   .actions {
     display: grid;
-    grid-template-columns: 1fr 1.4fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
     gap: 8px;
     padding: 10px 12px 4px;
   }
@@ -237,7 +237,7 @@
   }
   nav {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
   nav button {
     position: relative;
@@ -300,7 +300,7 @@
       left: 0;
       width: calc(var(--rail-w) + env(safe-area-inset-left));
       padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left);
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
       grid-auto-rows: min-content;
       align-content: center;
       gap: 4px;

@@ -291,7 +291,7 @@
   .features {
     width: min(980px, 100%);
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
     gap: 24px;
     margin: 0;
     padding: 0;
@@ -315,7 +315,7 @@
       flex-direction: column;
     }
     .recent-row a {
-      grid-template-columns: 1fr auto;
+      grid-template-columns: minmax(0, 1fr) auto;
     }
     .recent-row .num {
       display: none;

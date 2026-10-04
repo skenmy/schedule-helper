@@ -359,7 +359,7 @@
   }
   dl {
     display: grid;
-    grid-template-columns: auto 1fr;
+    grid-template-columns: auto minmax(0, 1fr);
     gap: 6px 16px;
     margin: 10px 0 0;
   }
@@ -432,7 +432,7 @@
   }
   .minutes {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 88px), 1fr));
     gap: 8px;
   }
   .choice {

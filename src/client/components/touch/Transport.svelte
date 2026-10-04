@@ -178,7 +178,11 @@
 
 <style>
   .transport {
+    container: transport / inline-size;
     display: grid;
+    /* Never wider than its pane: an implicit column would grow to fit the rows'
+       intrinsic width, and a row of fr buttons asks for its full text. */
+    grid-template-columns: minmax(0, 1fr);
     gap: 10px;
     padding: 14px var(--gutter) calc(14px + env(safe-area-inset-bottom));
     border-top: 1px solid var(--border);
@@ -292,24 +296,28 @@
   }
 
   /* ── Floor: everything bigger ───────────────────────────────────────── */
+  /* Pinned under the live run, so it scales with the screen's height as well as the
+     pane's width: big on a tall iPad, compact enough on a short one (an iPad mini in
+     landscape, an announcement showing) to leave the run card room. */
   .floor {
-    gap: 12px;
-    padding-block: 18px calc(18px + env(safe-area-inset-bottom));
+    gap: clamp(8px, 1.4dvh, 12px);
+    padding-block: clamp(12px, 2dvh, 18px)
+      calc(clamp(12px, 2dvh, 18px) + env(safe-area-inset-bottom));
   }
   .floor .elapsed {
-    font-size: clamp(72px, 7.5vw, 104px);
+    font-size: clamp(52px, min(15cqi, 10dvh), 104px);
     letter-spacing: -0.04em;
   }
   .floor .sub {
     font-size: 16px;
   }
   .floor .primary .btn {
-    min-height: 88px;
-    font-size: 22px;
+    min-height: clamp(60px, 8.5dvh, 88px);
+    font-size: clamp(18px, 2.6dvh, 22px);
     border-radius: var(--radius-lg);
   }
   .floor .secondary .btn {
-    min-height: 54px;
+    min-height: clamp(44px, 6dvh, 54px);
     font-size: 15px;
   }
 

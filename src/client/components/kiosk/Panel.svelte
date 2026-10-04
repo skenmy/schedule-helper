@@ -374,7 +374,7 @@
 
   .grid4 {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-rows: 1fr 1fr;
   }
   .grid4 div {
@@ -405,7 +405,7 @@
   }
   .list li {
     display: grid;
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 3cqmin;
     padding: 2cqmin 4cqmin;
@@ -467,7 +467,7 @@
     color: var(--warn);
   }
   .log li {
-    grid-template-columns: auto 1fr;
+    grid-template-columns: auto minmax(0, 1fr);
     font-size: clamp(12px, 3.8cqmin, 26px);
   }
   .log li.warning .what {

@@ -235,6 +235,8 @@
     container: nowcard / inline-size;
     padding: 22px 24px;
     display: grid;
+    /* A long unbroken word (a category, a runner's handle) wraps; it never widens the card. */
+    grid-template-columns: minmax(0, 1fr);
     gap: 14px;
     align-content: start;
     min-width: 0;
@@ -270,17 +272,20 @@
     background: var(--warn-soft);
     color: var(--warn);
   }
+  /* Sized by the card, not the screen: a phone, an iPad pane and a desktop column. */
   h1 {
-    font-size: clamp(28px, 3.4vw, 44px);
+    font-size: clamp(26px, 7cqi, 44px);
     line-height: 1.05;
     font-weight: 800;
     letter-spacing: -0.025em;
     overflow-wrap: anywhere;
+    text-wrap: balance;
   }
   .cat {
     color: var(--text-2);
     font-size: 16px;
     margin-top: -6px;
+    overflow-wrap: anywhere;
   }
   .runners {
     display: flex;
@@ -292,7 +297,9 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
+    min-width: 0;
     font-weight: 600;
+    overflow-wrap: anywhere;
   }
   .avatar {
     display: grid;
@@ -407,7 +414,7 @@
     padding: 26px 28px;
   }
   .stage h1 {
-    font-size: clamp(34px, 4.6vw, 60px);
+    font-size: clamp(30px, 9cqi, 60px);
   }
   .stage .cat {
     font-size: 19px;
@@ -429,7 +436,7 @@
     padding: 0;
     border: 0;
     background: none;
-    font-size: clamp(64px, 9vw, 120px);
+    font-size: clamp(56px, 10cqi, 120px);
     font-weight: 700;
     line-height: 0.95;
     letter-spacing: -0.04em;

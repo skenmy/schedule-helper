@@ -87,6 +87,7 @@
 <style>
   .scroll {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     align-content: start;
     gap: 14px;
     padding: 14px var(--gutter);
