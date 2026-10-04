@@ -67,7 +67,29 @@ test.describe('iPad, landscape', () => {
     await ready.click();
     await expect(ready).toHaveAttribute('aria-pressed', 'false');
   });
+
+  test('sets the timer from the floor view', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('sh.tabletMode', '"floor"'));
+    await open(page);
+    await page
+      .getByRole('region', { name: 'Timer controls' })
+      .getByRole('button', { name: /^Elapsed / })
+      .click();
+    await expectTimerDialog(page);
+  });
 });
+
+/** The Set the timer dialog is open with its field on screen, then closed untouched. */
+async function expectTimerDialog(page: Page) {
+  const dialog = page.getByRole('dialog', { name: 'Set the timer' });
+  const field = dialog.getByRole('textbox', { name: 'Elapsed time' });
+  await expect(field).toBeVisible();
+  await expect(field).toBeInViewport({ ratio: 1 });
+  expect((await field.boundingBox())!.height).toBeGreaterThan(40);
+  await expect(dialog.getByRole('button', { name: 'Set timer' })).toBeInViewport({ ratio: 1 });
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+}
 
 test.describe('iPad, rotating', () => {
   test.use(device('iPad Pro 11 landscape'));
@@ -101,6 +123,14 @@ test.describe('iPad, portrait', () => {
     const height = page.viewportSize()!.height;
     expect(box.y + box.height).toBeGreaterThanOrEqual(height - 1);
     await expect(dock.getByRole('button', { name: 'Undo' })).toBeVisible();
+  });
+
+  test('sets the timer from the dock', async ({ page }) => {
+    await open(page);
+    const dock = page.getByRole('region', { name: 'Timer controls' });
+    await dock.getByRole('button', { name: 'More timer actions' }).click();
+    await dock.getByRole('button', { name: 'Set the timer…' }).click();
+    await expectTimerDialog(page);
   });
 });
 
