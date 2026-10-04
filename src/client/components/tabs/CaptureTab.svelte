@@ -363,7 +363,7 @@
 <style>
   .grid {
     display: grid;
-    grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr);
+    grid-template-columns: minmax(0, 1.6fr) minmax(min(100%, 280px), 1fr);
     gap: 24px;
   }
   .frame {
@@ -545,7 +545,7 @@
   }
   @container panel (max-width: 950px) {
     .grid {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
     }
     .cells {
       grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -18,6 +18,10 @@ body {
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
   text-rendering: optimizeLegibility;
+  /* Titles, categories and handles come from outside schedules, unbroken strings and
+     all: break one where it has to rather than push a phone's page sideways. Labels
+     that must stay on one line (buttons, .truncate) don't wrap at all. */
+  overflow-wrap: anywhere;
 }
 
 html {
@@ -165,6 +169,10 @@ textarea {
     border-color 0.15s var(--ease),
     transform 0.08s var(--ease),
     opacity 0.15s;
+}
+/* A long label truncates; the icon beside it never gets squeezed. */
+.btn > svg {
+  flex: none;
 }
 /* Hover styles only where there is hover: on a touch screen they stick after a tap. */
 @media (hover: hover) {

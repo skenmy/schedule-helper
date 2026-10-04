@@ -367,13 +367,13 @@
   }
   .tile-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
     gap: 12px;
   }
   /* Phones: two across, the end time (the longest) on a row of its own. */
   @container tiles (max-width: 520px) {
     .tile-grid {
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       grid-auto-flow: dense;
     }
     .tile.wide {

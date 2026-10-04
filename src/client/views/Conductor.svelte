@@ -37,7 +37,7 @@
 <style>
   .live {
     display: grid;
-    grid-template-columns: minmax(0, 1.55fr) minmax(360px, 1fr);
+    grid-template-columns: minmax(0, 1.55fr) minmax(min(100%, 360px), 1fr);
     gap: 16px;
     padding: 16px var(--gutter) 24px;
     align-items: start;

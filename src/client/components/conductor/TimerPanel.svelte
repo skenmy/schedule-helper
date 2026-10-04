@@ -132,6 +132,8 @@
     container: timer / inline-size;
     padding: 18px;
     display: grid;
+    /* Never wider than its column, however long the next run's name. */
+    grid-template-columns: minmax(0, 1fr);
     gap: 14px;
   }
   .readout {
@@ -143,7 +145,7 @@
     padding: 0;
     border: 0;
     background: none;
-    font-size: clamp(44px, 5vw, 64px);
+    font-size: clamp(40px, 15cqi, 64px);
     font-weight: 700;
     line-height: 1.05;
     letter-spacing: -0.03em;
@@ -197,7 +199,7 @@
   }
   .secondary {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
   }
   .undo {
@@ -229,10 +231,10 @@
   }
   @container timer (max-width: 480px) {
     .primary-row {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
     }
     .secondary {
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 </style>

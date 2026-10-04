@@ -36,7 +36,7 @@
   }
   .entry {
     display: grid;
-    grid-template-columns: 44px 1fr;
+    grid-template-columns: 44px minmax(0, 1fr);
     gap: 8px;
     padding: 5px 0;
     font-size: 13px;

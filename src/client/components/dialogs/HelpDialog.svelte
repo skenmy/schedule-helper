@@ -82,7 +82,7 @@
   }
   .keys {
     display: grid;
-    grid-template-columns: auto 1fr;
+    grid-template-columns: auto minmax(0, 1fr);
     gap: 8px 16px;
     margin: 0 0 22px;
   }
