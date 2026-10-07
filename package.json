@@ -24,7 +24,7 @@
     "icons": "node scripts/build-icons.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.131.0",
+    "@anthropic-ai/sdk": "^0.132.0",
     "express": "^5.2.1",
     "web-push": "^3.6.7",
     "ws": "^8.21.3",
