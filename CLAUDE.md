@@ -40,11 +40,13 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
   - `lib/live.svelte.ts` derived view model (`Live`) + operator actions (`Ops`); get via
     `getRoom()` / `getLive()` / `getOps()` context helpers
   - `lib/ui.svelte.ts` open dialogs/tabs; `lib/prefs.svelte.ts` localStorage prefs
-  - `lib/layout.ts` (pure, tested) + `layout.svelte.ts`: phone / tablet / desktop from window size,
-    `pointer: coarse` and iPad detection, plus the per-device `prefs.layout` override. Sets
-    `<html data-layout data-touch>` for CSS.
+  - `lib/layout.ts` (pure, tested) + `layout.svelte.ts`: phone / fold / tablet / desktop from window
+    size, screen size, `pointer: coarse` and iPad detection, plus the per-device `prefs.layout`
+    override. Sets `<html data-layout data-touch>` for CSS.
   - `views/` Landing, RoomView (connection owner, picks the view by `layout.kind`), Conductor
-    (desktop), TabletConductor (iPad: console / floor modes), MobileConductor, Kiosk (`?kiosk=1`),
+    (desktop), TabletConductor (iPad: console / floor modes), FoldConductor (iPhone Duo open: two
+    panes that meet on the fold, side by side or stacked; follows the Viewport Segments API when the
+    browser has it; shares the tablet's modes), MobileConductor, Kiosk (`?kiosk=1`),
     Report (`?report=1`, read-only; `components/report/DeltaChart.svelte` is its chart),
     RunnerCheckIn (`?checkin={key}&t={token}`, a runner's own page; `lib/checkin.ts`)
   - `components/touch/` Transport (run controls for touch), OnDeck (floor check-ins), MoreSheet

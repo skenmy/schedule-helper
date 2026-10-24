@@ -1,4 +1,4 @@
-// The live layout for this device: phone, tablet or desktop, from the window
+// The live layout for this device: phone, foldable, tablet or desktop, from the window
 // size, the pointer and the per-device override in prefs. Mirrors itself onto
 // <html data-layout data-touch> so CSS can size touch targets without props.
 

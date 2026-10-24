@@ -1,4 +1,5 @@
 import { devices, expect, test, type Page } from '@playwright/test';
+import { IPHONE_DUO } from './duo.ts';
 
 // Touch layouts and the installed-app (offline) path. Device descriptors are
 // used for their viewport, user agent and touch settings; the browser is
@@ -172,6 +173,129 @@ test.describe('iPhone', () => {
     await page.getByLabel('Layout on this device').selectOption('desktop');
     await expect(page.locator('html')).toHaveAttribute('data-layout', 'desktop');
     await expect(page.getByRole('region', { name: 'Timeline' })).toBeVisible();
+  });
+});
+
+/** Where each half of the foldable layout sits. */
+async function halves(page: Page, side: 'Tools' | 'Runners' = 'Tools') {
+  const live = (await page.getByRole('region', { name: 'Live run' }).boundingBox())!;
+  const other = (await page.getByRole('region', { name: side }).boundingBox())!;
+  return { live, other };
+}
+
+/** Chromium's foldable emulation: a fold the page sees through the Viewport Segments API. */
+async function fold(
+  page: Page,
+  feature: { orientation: 'vertical' | 'horizontal'; offset: number; maskLength: number },
+) {
+  const { width, height } = page.viewportSize()!;
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setDeviceMetricsOverride', {
+    width,
+    height,
+    deviceScaleFactor: 2.8,
+    mobile: true,
+    displayFeature: feature,
+  });
+}
+
+test.describe('iPhone Duo, open like a book', () => {
+  test.use(IPHONE_DUO.book);
+
+  test('puts the live run on one page and the tools on the other', async ({ page }) => {
+    await open(page);
+    await expect(page.locator('html')).toHaveAttribute('data-layout', 'fold');
+    const { live, other } = await halves(page);
+    // Nothing on the crease: the pages meet in the middle of the screen.
+    const middle = page.viewportSize()!.width / 2;
+    expect(live.x + live.width).toBeCloseTo(middle, 0);
+    expect(other.x).toBeCloseTo(middle, 0);
+    const controls = page.getByRole('region', { name: 'Timer controls' });
+    const next = (await controls.getByRole('button', { name: /^Next: / }).boundingBox())!;
+    expect(next.x + next.width).toBeLessThanOrEqual(middle);
+    await expect(page.getByRole('region', { name: 'Marathon status' })).toBeInViewport();
+    await page
+      .getByRole('tablist', { name: 'Workspace' })
+      .getByRole('tab', { name: 'Timeline' })
+      .click();
+    await expect(page.getByRole('region', { name: 'Timeline' })).toBeVisible();
+    // The page itself never scrolls; the panes do.
+    expect(await page.evaluate(() => document.scrollingElement!.scrollHeight)).toBeLessThanOrEqual(
+      await page.evaluate(() => window.innerHeight),
+    );
+  });
+
+  test('meets on the fold the browser reports, either side of a hinge', async ({ page }) => {
+    await fold(page, { orientation: 'vertical', offset: 440, maskLength: 20 });
+    await open(page);
+    const { live, other } = await halves(page);
+    expect(live.x + live.width).toBeCloseTo(440, 0);
+    expect(other.x).toBeCloseTo(460, 0);
+  });
+
+  test('keeps a half-typed note when the phone turns', async ({ page }) => {
+    await open(page);
+    await page.getByRole('tab', { name: /Event log/ }).click();
+    const note = page.getByPlaceholder('Add a note for the team…');
+    await note.fill('Runner mic is muted');
+    await page.setViewportSize(IPHONE_DUO.tabletop.viewport);
+    await expect(page.getByRole('region', { name: 'Timer controls' })).toHaveCSS(
+      'position',
+      'fixed',
+    );
+    await expect(page.locator('html')).toHaveAttribute('data-layout', 'fold');
+    await expect(note).toHaveValue('Runner mic is muted');
+  });
+});
+
+test.describe('iPhone Duo, tabletop', () => {
+  test.use(IPHONE_DUO.tabletop);
+
+  test('stands the live run up top and docks the controls on the flat half', async ({ page }) => {
+    await open(page);
+    await expect(page.locator('html')).toHaveAttribute('data-layout', 'fold');
+    const { live, other } = await halves(page);
+    const { height } = page.viewportSize()!;
+    expect(live.y + live.height).toBeCloseTo(height / 2, 0);
+    expect(other.y).toBeCloseTo(height / 2, 0);
+    const dock = (await page.getByRole('region', { name: 'Timer controls' }).boundingBox())!;
+    expect(dock.y).toBeGreaterThan(height / 2);
+    expect(dock.y + dock.height).toBeGreaterThanOrEqual(height - 1);
+    // The tools scroll above the dock, not under it.
+    const panel = (await page.getByRole('tabpanel').boundingBox())!;
+    expect(panel.y + panel.height).toBeLessThanOrEqual(dock.y + 1);
+  });
+
+  test('meets on the fold the browser reports', async ({ page }) => {
+    await fold(page, { orientation: 'horizontal', offset: 400, maskLength: 0 });
+    await open(page);
+    const { live, other } = await halves(page);
+    expect(live.y + live.height).toBeCloseTo(400, 0);
+    expect(other.y).toBeCloseTo(400, 0);
+  });
+
+  test('checks runners in and sets the timer from the floor view', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('sh.tabletMode', '"floor"'));
+    await open(page);
+    const { other } = await halves(page, 'Runners');
+    const deck = page.getByRole('region', { name: 'On deck' });
+    expect((await deck.boundingBox())!.y).toBeGreaterThanOrEqual(other.y);
+    await expect(deck.getByRole('button', { name: 'Ready' }).first()).toBeEnabled();
+    await page
+      .getByRole('region', { name: 'Timer controls' })
+      .getByRole('button', { name: /^Elapsed / })
+      .click();
+    await expectTimerDialog(page);
+  });
+});
+
+test.describe('iPhone Duo, closed', () => {
+  test.use(IPHONE_DUO.closed);
+
+  test('gets the phone layout on the outer screen', async ({ page }) => {
+    await open(page);
+    await expect(page.locator('html')).toHaveAttribute('data-layout', 'phone');
+    await expect(page.getByRole('navigation', { name: 'Views' })).toBeVisible();
   });
 });
 

@@ -12,7 +12,7 @@
   import { clock } from '../../lib/clock.svelte.ts';
   import { fmtClock } from '../../lib/format.ts';
   import { kioskUrl } from '../../lib/kiosk.ts';
-  import type { TabletMode } from '../../lib/layout.ts';
+  import { TABLET_MODES } from '../../lib/layout.ts';
   import { prefs, THEMES } from '../../lib/prefs.svelte.ts';
   import { getRoom } from '../../lib/room.svelte.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -23,10 +23,6 @@
    * kiosk/help buttons for a mode switch and a More menu. */
   let { variant = 'desktop' }: { variant?: 'desktop' | 'tablet' | 'phone' } = $props();
   const compact = $derived(variant === 'phone');
-  const MODES = [
-    { value: 'console', label: 'Console' },
-    { value: 'floor', label: 'Floor' },
-  ] as const satisfies readonly { value: TabletMode; label: string }[];
 
   const room = getRoom();
   const brand = $derived(detectBrand(room.ref));
@@ -74,7 +70,7 @@
     </button>
   {:else if variant === 'tablet'}
     <div class="mode">
-      <Segmented label="Interface mode" options={MODES} bind:value={prefs.tabletMode} />
+      <Segmented label="Interface mode" options={TABLET_MODES} bind:value={prefs.tabletMode} />
     </div>
   {/if}
 

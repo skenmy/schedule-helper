@@ -67,11 +67,13 @@
       Controls stay off until it reconnects, so nothing is ever sent from a stale view.
     </li>
     <li>
-      <b>Console or Floor</b> (iPad, top bar): the console has every tool; the floor view is the live
-      run, a big timer and one-tap runner check-ins. Each iPad remembers its choice.
+      <b>Console or Floor</b> (iPad, top bar; iPhone Duo, over the tools): the console has every tool;
+      the floor view is the live run, a big timer and one-tap runner check-ins. Each device remembers
+      its choice.
     </li>
     <li>
-      <b>Wrong layout?</b> More → <i>Layout on this device</i> picks phone, tablet or desktop by hand.
+      <b>Wrong layout?</b> More → <i>Layout on this device</i> picks phone, foldable, tablet or desktop
+      by hand.
     </li>
   </ul>
 </Dialog>

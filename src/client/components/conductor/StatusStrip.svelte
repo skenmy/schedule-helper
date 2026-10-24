@@ -153,6 +153,7 @@
 
 <style>
   .strip {
+    container: strip / inline-size;
     display: flex;
     align-items: stretch;
     gap: 20px;
@@ -273,6 +274,13 @@
   }
   .compact .bar {
     display: none;
+  }
+  /* Room beside the headline (a foldable's half screen): the stats side by side. */
+  @container strip (min-width: 600px) {
+    .compact .stats {
+      flex: 1;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    }
   }
   @media (max-width: 1000px) {
     .strip:not(.compact) {

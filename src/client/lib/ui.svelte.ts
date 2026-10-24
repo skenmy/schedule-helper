@@ -44,8 +44,8 @@ class UI {
     this.tab = tab;
     this.mobileView = tab === 'schedule' || tab === 'log' ? tab : 'tool';
     this.moreOpen = false;
-    // Tools live in the tablet console; the floor view has no tabs.
-    if (layout.kind === 'tablet') prefs.tabletMode = 'console';
+    // Tools live in the console; the floor view has no tabs.
+    if (layout.kind === 'tablet' || layout.kind === 'fold') prefs.tabletMode = 'console';
   }
 
   reset(): void {
