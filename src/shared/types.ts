@@ -89,6 +89,24 @@ export interface LogEntry {
   actor: string | null;
 }
 
+export type NoteKind = 'tech' | 'issue';
+
+/**
+ * An operator's private note on one run (a tech note, or an issue to follow up),
+ * for review in the event report. Never part of `RoomState`, which every viewer
+ * gets: the server sends notes to operators only (`{ type: 'notes' }`).
+ */
+export interface RunNote {
+  id: number;
+  runKey: RunKey;
+  kind: NoteKind;
+  text: string;
+  /** Display name of whoever wrote it; null when auth is disabled. */
+  actor: string | null;
+  at: number;
+  editedAt?: number;
+}
+
 export interface Broadcast {
   text: string;
   color: string;

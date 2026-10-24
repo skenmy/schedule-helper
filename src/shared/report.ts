@@ -14,7 +14,7 @@ import {
   scheduledStartOf,
 } from './derive.ts';
 import { fmtHMS } from './time.ts';
-import type { RoomRef, RoomState, Schedule } from './types.ts';
+import type { RoomRef, RoomState, RunNote, Schedule } from './types.ts';
 
 /** `unplayed`: never started, and the marathon has moved past it (or finished). */
 export type ReportStatus = 'done' | 'live' | 'skipped' | 'unplayed' | 'upcoming' | 'interlude';
@@ -43,6 +43,14 @@ export interface ReportRow {
    */
   changeoverSec: number | null;
   plannedChangeoverSec: number | null;
+  /** Operators' private notes on this run, oldest first; absent when the report is public. */
+  notes?: RunNote[];
+}
+
+/** A private note, with the run it's about (null title: that run has left the schedule). */
+export interface ReportNote extends RunNote {
+  number: number | null;
+  title: string | null;
 }
 
 export interface Report {
@@ -69,12 +77,24 @@ export interface Report {
   /** Up to five each, biggest first. */
   overruns: ReportRow[];
   underruns: ReportRow[];
+  /**
+   * Operators' private tech notes and issues, in schedule order (notes on runs
+   * no longer on the schedule last). Null in the public report.
+   */
+  notes: ReportNote[] | null;
 }
 
 const sec = (ms: number) => Math.round(ms / 1000);
 
-export function buildReport(schedule: Schedule, state: RoomState, now: number): Report {
+/** `notes` only for operators: without them, the report carries none. */
+export function buildReport(
+  schedule: Schedule,
+  state: RoomState,
+  now: number,
+  notes?: readonly RunNote[],
+): Report {
   const { lines } = schedule;
+  const notesOf = (key: string) => notes?.filter((n) => n.runKey === key) ?? [];
   const cur = currentIndex(lines, state);
   const complete = state.finishedAt != null;
   const after = new Map(changeovers(lines, state).map((c) => [c.from, c]));
@@ -115,6 +135,7 @@ export function buildReport(schedule: Schedule, state: RoomState, now: number): 
           : null,
       changeoverSec: change ? sec(change.actualSec * 1000) : null,
       plannedChangeoverSec: change?.plannedSec ?? null,
+      ...(notes && { notes: notesOf(line.key) }),
     };
   });
 
@@ -123,6 +144,15 @@ export function buildReport(schedule: Schedule, state: RoomState, now: number): 
   const lastEnd = rows.map((r) => r.endedAt).filter((t): t is number => t != null);
   const byOver = done.filter((r) => r.overSec != null).sort((a, b) => b.overSec! - a.overSec!);
   const pace = complete ? null : eventPace(lines, state);
+  const onSchedule = new Set(lines.map((l) => l.key));
+  const reportNotes: ReportNote[] | null = notes
+    ? [
+        ...rows.flatMap((r) => r.notes!.map((n) => ({ ...n, number: r.number, title: r.title }))),
+        ...notes
+          .filter((n) => !onSchedule.has(n.runKey))
+          .map((n) => ({ ...n, number: null, title: null })),
+      ]
+    : null;
   const deltas = [...after.values()]
     .filter((c) => c.plannedSec != null && !c.isBreak)
     .map((c) => c.actualSec - c.plannedSec!);
@@ -155,6 +185,7 @@ export function buildReport(schedule: Schedule, state: RoomState, now: number): 
       .filter((r) => r.overSec! < 0)
       .reverse()
       .slice(0, 5),
+    notes: reportNotes,
   };
 }
 
@@ -192,7 +223,16 @@ export function reportCsv(report: Report): string {
     'start_vs_schedule_sec',
     'changeover',
     'planned_changeover',
+    // Operators' copy only.
+    ...(report.notes ? ['tech_notes', 'issues'] : []),
   ];
+  const noteText = (r: ReportRow, kind: RunNote['kind']) =>
+    text(
+      (r.notes ?? [])
+        .filter((n) => n.kind === kind)
+        .map((n) => (n.actor ? `${n.text} (${n.actor})` : n.text))
+        .join('\n'),
+    );
   const lines = report.rows.map((r) =>
     [
       r.number == null ? '' : String(r.number),
@@ -209,6 +249,7 @@ export function reportCsv(report: Report): string {
       signed(r.startDeltaSec),
       dur(r.changeoverSec),
       dur(r.plannedChangeoverSec),
+      ...(report.notes ? [noteText(r, 'tech'), noteText(r, 'issue')] : []),
     ]
       .map(field)
       .join(','),

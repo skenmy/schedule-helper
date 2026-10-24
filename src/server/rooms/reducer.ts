@@ -17,10 +17,22 @@ import { describe, isReachable, settle, startFloor } from '../tracking/detect.ts
 import type { LogKind, RoomState, RunKey, RunRecord, ScheduleLine } from '../../shared/types.ts';
 import { LOG_LIMIT } from './state.ts';
 
-/** Actions handled by the reducer; the rest need I/O and live on Room. */
+/**
+ * Actions handled by the reducer; the rest need I/O and live on Room, and private
+ * run notes (which aren't room state) have their own reducer in notes.ts.
+ */
 export type ReducibleAction = Exclude<
   MutatingAction,
-  { action: 'capture:run' | 'schedule:refresh' | 'room:reset' | 'undo' }
+  {
+    action:
+      | 'capture:run'
+      | 'schedule:refresh'
+      | 'room:reset'
+      | 'undo'
+      | 'note:add'
+      | 'note:edit'
+      | 'note:remove';
+  }
 >;
 
 export interface ReduceContext {

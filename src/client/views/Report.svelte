@@ -1,5 +1,13 @@
 <script lang="ts">
-  import { ArrowLeft, Braces, CloudOff, Download, Printer } from '@lucide/svelte';
+  import {
+    ArrowLeft,
+    Braces,
+    CloudOff,
+    Download,
+    Lock,
+    NotebookPen,
+    Printer,
+  } from '@lucide/svelte';
   import { ON_SCHEDULE_WINDOW_SEC, scheduleStatus } from '../../shared/derive.ts';
   import { buildReport, type ReportRow } from '../../shared/report.ts';
   import { roomPath } from '../../shared/sources.ts';
@@ -15,6 +23,8 @@
    * The event report: planned against actual, overall and per run. Read-only,
    * so it works for anyone with the link and from the offline snapshot. The
    * numbers are shared/report.ts — the same ones the CSV and JSON exports carry.
+   * Operators also see the private tech notes and issues logged against runs
+   * (the server only sends those to operators).
    */
   const room = getRoom();
   const live = getLive();
@@ -22,7 +32,10 @@
   // Re-built on every state change, but only every 15 s for the clock: the
   // projections move by the minute and the page shouldn't churn at 4 Hz.
   const at = $derived(Math.floor(live.now / 15_000) * 15_000);
-  const report = $derived(buildReport(room.schedule!, live.state, at));
+  const report = $derived(
+    buildReport(room.schedule!, live.state, at, room.isOperator ? room.notes : undefined),
+  );
+  const issues = $derived(report.notes?.filter((n) => n.kind === 'issue').length ?? 0);
   /** Times here only need to know which day it is, so the 15-second clock will do. */
   const now = $derived(at);
   const runRows = $derived(report.rows.filter((r) => r.number != null));
@@ -214,6 +227,41 @@
       </div>
     {/if}
 
+    {#if report.notes}
+      <section class="card notes" aria-labelledby="notes-title">
+        <header>
+          <h2 id="notes-title">Tech notes & issues</h2>
+          <p class="muted">
+            <Lock size={12} />
+            {report.notes.length
+              ? `${report.notes.length} note${report.notes.length === 1 ? '' : 's'}, ${issues} issue${issues === 1 ? '' : 's'}. `
+              : ''}Private to operators: not in the public report.
+          </p>
+        </header>
+        {#if report.notes.length}
+          <ol>
+            {#each report.notes as n (n.id)}
+              <li>
+                <span class="num n">{n.number ?? ''}</span>
+                <span class="chip {n.kind === 'issue' ? 'bad' : 'info'}"
+                  >{n.kind === 'issue' ? 'Issue' : 'Tech'}</span
+                >
+                <div class="what">
+                  <b class="truncate">{n.title ?? 'A run no longer on the schedule'}</b>
+                  <p>{n.text}</p>
+                  <small class="muted">{n.actor ?? 'An operator'} · {fmtWhen(n.at, now)}</small>
+                </div>
+              </li>
+            {/each}
+          </ol>
+        {:else}
+          <p class="muted">
+            None yet. Add them from a run’s details in the console, as the event goes.
+          </p>
+        {/if}
+      </section>
+    {/if}
+
     <section class="runs" aria-labelledby="runs-title">
       <h2 id="runs-title">Every run</h2>
       <div class="scroll">
@@ -248,7 +296,14 @@
                 <tr class={r.status}>
                   <td class="n num">{r.number}</td>
                   <td class="run">
-                    <b>{r.title}</b>
+                    <b
+                      >{r.title}{#if r.notes?.length}<span
+                          class="has-notes"
+                          class:bad={r.notes.some((n) => n.kind === 'issue')}
+                          title="{r.notes.length} private note{r.notes.length === 1 ? '' : 's'}"
+                          ><NotebookPen size={12} /> {r.notes.length}</span
+                        >{/if}</b
+                    >
                     <small class="muted"
                       >{r.category}{r.category && r.runners.length ? ' · ' : ''}{r.runners.join(
                         ', ',
@@ -471,6 +526,66 @@
     min-width: 64px;
     text-align: right;
   }
+  .notes {
+    display: grid;
+    gap: 10px;
+    padding: 16px 18px;
+    box-shadow: none;
+  }
+  .notes header {
+    display: grid;
+    gap: 2px;
+  }
+  .notes header p {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 13px;
+  }
+  .notes ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .notes li {
+    display: grid;
+    grid-template-columns: 2.5ch auto minmax(0, 1fr);
+    align-items: start;
+    gap: 10px;
+    padding: 10px 0;
+    border-top: 1px solid var(--border);
+  }
+  .notes .n {
+    color: var(--muted);
+    text-align: right;
+    line-height: 22px;
+  }
+  .notes .what {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  .notes .what p {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .notes .what small {
+    font-size: 12px;
+  }
+  .has-notes {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: 6px;
+    color: var(--info);
+    font-size: 11.5px;
+    font-weight: 500;
+    vertical-align: 1px;
+  }
+  .has-notes.bad {
+    color: var(--bad);
+  }
   .runs {
     display: grid;
     gap: 10px;
@@ -615,6 +730,7 @@
     }
     .card,
     .extreme li,
+    .notes li,
     tr {
       break-inside: avoid;
     }

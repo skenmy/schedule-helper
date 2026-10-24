@@ -70,6 +70,7 @@ class Session implements RoomClient {
   }
 
   private async refreshAuth(): Promise<void> {
+    const was = this.operator;
     const next = await resolveIdentity(this.cookie);
     clearTimeout(this.authRetry);
     if (next) {
@@ -80,6 +81,8 @@ class Session implements RoomClient {
       this.authRetry = setTimeout(() => void this.refreshAuth(), AUTH_RETRY_MS);
     }
     this.send({ type: 'auth', auth: this.auth });
+    // Private run notes follow operator access: given on sign-in, taken back on losing it.
+    if (this.operator !== was) this.room?.sendNotes(this);
   }
 
   private async handle(raw: string): Promise<void> {

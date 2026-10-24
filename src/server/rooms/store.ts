@@ -5,6 +5,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import type { RoomRef, RoomState, Schedule } from '../../shared/types.ts';
 import { logger } from '../logger.ts';
+import type { RoomNotes } from './notes.ts';
 import type { UndoEntry } from './state.ts';
 
 const log = logger('store');
@@ -18,6 +19,8 @@ export interface RoomFile {
   schedule: Schedule;
   state: RoomState;
   undo: UndoEntry[];
+  /** Operators' private run notes (absent in files saved before they existed). */
+  notes?: RoomNotes;
 }
 
 export class RoomStore {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Ellipsis, RefreshCw, RotateCcw, Search } from '@lucide/svelte';
+  import { Ellipsis, NotebookPen, RefreshCw, RotateCcw, Search } from '@lucide/svelte';
   import { lineTitle } from '../../../shared/derive.ts';
   import { upstreamUrl } from '../../../shared/sources.ts';
   import { etaText } from '../../lib/checkin.ts';
@@ -153,6 +153,7 @@
       {/if}
       {@const started = r.rec?.startedAt}
       {@const ended = r.rec?.endedAt}
+      {@const notes = live.notesByRun[r.line.key]}
       {@const drift =
         r.projected && r.line.scheduledStart != null
           ? (r.projected.start - r.line.scheduledStart) / 1000
@@ -172,6 +173,15 @@
           {#if r.line.type !== 'SINGLE' && !r.line.setupBlock}<span class="chip info type"
               >{r.line.type.toLowerCase()}</span
             >{/if}
+          {#if notes}
+            {@const issues = notes.filter((n) => n.kind === 'issue').length}
+            <span
+              class="chip notes {issues ? 'bad' : 'info'}"
+              title="{notes.length} private note{notes.length === 1 ? '' : 's'}{issues
+                ? ` (${issues} issue${issues === 1 ? '' : 's'})`
+                : ''}"><NotebookPen size={11} /> {notes.length}</span
+            >
+          {/if}
           {#if r.line.category || r.line.console}
             <small>{[r.line.category, r.line.console].filter(Boolean).join(' · ')}</small>
           {/if}
@@ -340,10 +350,14 @@
     color: var(--muted);
     font-size: 12.5px;
   }
-  .type {
+  .type,
+  .notes {
     height: 20px;
     margin-left: 6px;
     font-size: 11px;
+  }
+  .notes {
+    gap: 3px;
   }
   .runners {
     color: var(--text-2);

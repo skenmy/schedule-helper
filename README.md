@@ -33,6 +33,12 @@ Horaro schedule. Try it offline with the built-in demo marathon (`/demo/demo/mai
   the marathon runs and works offline from the last state the device saw. Open it from the
   Progress tab, the command palette, the More sheet, or the status strip once the marathon is
   complete (`?report=1` on any room). Export as CSV (spreadsheet-safe) or JSON, or print it.
+- **Tech notes and issues.** Operators can write private notes against any run from its sheet
+  (tap a run): a **tech note** (mic levels, a capture card swap) or an **issue** to follow up
+  after the event. Runs with notes are marked in the schedule. They're for operators only: never
+  sent to viewers, kiosks or the overlay feed, kept out of the public log, and shown in the event
+  report (a list by run, and two extra CSV columns) only to operators. Not undoable; deleting
+  asks first. A reset clears them, with the rest of the event, into its backup.
 - **Timeline.** A plan lane (scheduled) over a live lane (actual and projected), so drift is
   visible at a glance. 3h / 6h / 12h / all zoom; drag it (or swipe, or use the arrow keys) to see
   earlier or later, and **Now** comes back.
@@ -148,32 +154,34 @@ a spinner. Until the server sends fresh state over a live connection, controls s
 
 Client → server messages are validated with zod (`src/shared/protocol.ts`):
 
-| action                                                                   | data                                             |
-| ------------------------------------------------------------------------ | ------------------------------------------------ |
-| `join`                                                                   | `{ ref: { source, event, slug } }`               |
-| `ping`                                                                   | `{ t }` (clock sync)                             |
-| `timer:start` / `timer:stop` / `timer:reset`                             | —                                                |
-| `timer:set`                                                              | `{ seconds }`                                    |
-| `run:select` / `run:unskip`                                              | `{ key }`                                        |
-| `run:advance` / `run:back`                                               | —                                                |
-| `run:skip`                                                               | `{ key? }` (defaults to the current run)         |
-| `run:edit`                                                               | `{ key, startedAt, endedAt }` (epoch ms or null) |
-| `runner:checkin`                                                         | `{ key, status: 'ready' \| 'missing' \| null }`  |
-| `log:add` / `log:remove` / `log:clear`                                   | `{ text, kind }` / `{ id }` / —                  |
-| `twitch:set`                                                             | `{ channel }`                                    |
-| `message:set` / `announcement:set`                                       | `{ text, color }`                                |
-| `message:clear` / `announcement:clear` / `capture:run` / `capture:apply` | —                                                |
-| `undo`                                                                   | `{ id? }` (refused if the latest change differs) |
-| `drift:configure`                                                        | `{ enabled, intervalMin, thresholdSec }`         |
-| `tracking:configure`                                                     | `{ twitch, vision, autoApply }`                  |
-| `detection:accept` / `detection:dismiss`                                 | `{ id }` (the detection the operator saw)        |
-| `schedule:refresh`                                                       | —                                                |
-| `room:reset`                                                             | — (clears progress; not undoable)                |
+| action                                                                   | data                                                    |
+| ------------------------------------------------------------------------ | ------------------------------------------------------- |
+| `join`                                                                   | `{ ref: { source, event, slug } }`                      |
+| `ping`                                                                   | `{ t }` (clock sync)                                    |
+| `timer:start` / `timer:stop` / `timer:reset`                             | —                                                       |
+| `timer:set`                                                              | `{ seconds }`                                           |
+| `run:select` / `run:unskip`                                              | `{ key }`                                               |
+| `run:advance` / `run:back`                                               | —                                                       |
+| `run:skip`                                                               | `{ key? }` (defaults to the current run)                |
+| `run:edit`                                                               | `{ key, startedAt, endedAt }` (epoch ms or null)        |
+| `runner:checkin`                                                         | `{ key, status: 'ready' \| 'missing' \| null }`         |
+| `log:add` / `log:remove` / `log:clear`                                   | `{ text, kind }` / `{ id }` / —                         |
+| `note:add` / `note:edit` / `note:remove`                                 | `{ key, kind, text }` / `{ id, kind, text }` / `{ id }` |
+| `twitch:set`                                                             | `{ channel }`                                           |
+| `message:set` / `announcement:set`                                       | `{ text, color }`                                       |
+| `message:clear` / `announcement:clear` / `capture:run` / `capture:apply` | —                                                       |
+| `undo`                                                                   | `{ id? }` (refused if the latest change differs)        |
+| `drift:configure`                                                        | `{ enabled, intervalMin, thresholdSec }`                |
+| `tracking:configure`                                                     | `{ twitch, vision, autoApply }`                         |
+| `detection:accept` / `detection:dismiss`                                 | `{ id }` (the detection the operator saw)               |
+| `schedule:refresh`                                                       | —                                                       |
+| `room:reset`                                                             | — (clears progress; not undoable)                       |
 
 Everything except `join` and `ping` needs operator access. Any action may carry a string `rid`;
 the server then answers that sender with `applied` (`{ rid, undo }`, the undo entry the change
 created) or an `error` carrying the same `rid`. Server → client: `hello` (build id, server time),
 `auth`, `joined`, `schedule` (full schedule), `state` (full room state on every change),
+`notes` (operators only: every private run note, on join, sign-in and every change),
 `presence`, `pong`, `applied`, and `error` (`signin_required`, `forbidden`, `invalid`,
 `not_found`, `upstream`, `conflict`, `not_joined`).
 
@@ -190,7 +198,9 @@ Read-only and CORS-open — the same information any viewer can already see.
 - `GET /api/rooms/{source}/{event}/{slug}/report.json` / `report.csv` — the event report
   (`shared/report.ts`): per run, the scheduled and actual start and end, estimate and time taken,
   start against schedule, and the changeover after it against its plan; plus the overall
-  figures. CSV times are ISO 8601 UTC, durations `HH:MM:SS`, deltas signed seconds.
+  figures. CSV times are ISO 8601 UTC, durations `HH:MM:SS`, deltas signed seconds. Requested
+  by an operator from our own pages, it also carries the private run notes (`notes`, and
+  `tech_notes` / `issues` CSV columns); anyone else gets `notes: null`.
 
 ## NodeCG speedcontrol
 

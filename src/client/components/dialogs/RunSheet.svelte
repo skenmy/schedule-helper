@@ -20,6 +20,7 @@
   import CheckInLink from '../checkin/CheckInLink.svelte';
   import Dialog from '../ui/Dialog.svelte';
   import Segmented from '../ui/Segmented.svelte';
+  import RunNotes from './RunNotes.svelte';
 
   const room = getRoom();
   const live = getLive();
@@ -142,6 +143,12 @@
         {/if}
       </dl>
     </section>
+
+    {#if room.isOperator}
+      {#key line.key}
+        <RunNotes runKey={line.key} />
+      {/key}
+    {/if}
 
     {#snippet footer()}
       {#if !line.setupBlock}

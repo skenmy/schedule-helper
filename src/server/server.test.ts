@@ -291,6 +291,43 @@ describe('reset', () => {
   });
 });
 
+describe('private run notes', () => {
+  const reportUrl = () =>
+    `http://localhost:${server.port}/api/rooms/oengus/testmarathon/main/report.json`;
+
+  it('reach operators and their report, survive a restart, and stay out of state', async () => {
+    const a = await connect();
+    await a.join();
+    const notes = a.next('notes', (m) => m.notes.length === 1);
+    const applied = a.next('applied', (m) => m.rid === 'n');
+    a.send({ action: 'note:add', key: 'd2', kind: 'issue', text: 'Stream audio cut', rid: 'n' });
+    expect((await applied).undo).toBeNull();
+    expect((await notes).notes[0]).toMatchObject({ runKey: 'd2', kind: 'issue' });
+    const states = a.messages.filter((m) => m.type === 'state');
+    expect(JSON.stringify(states)).not.toContain('Stream audio cut');
+
+    const res = await fetch(reportUrl());
+    expect(res.headers.get('cache-control')).toBe('private, no-store');
+    const report = (await res.json()) as Report;
+    expect(report.notes?.map((n) => n.text)).toEqual(['Stream audio cut']);
+
+    // Another site can't read them with an operator's cookie.
+    const other = (await (
+      await fetch(reportUrl(), { headers: { origin: 'https://evil.example' } })
+    ).json()) as Report;
+    expect(other.notes).toBeNull();
+    expect(JSON.stringify(other)).not.toContain('Stream audio cut');
+
+    for (const c of clients.splice(0)) c.ws.close();
+    await server.close();
+    await boot();
+    const b = await connect();
+    const reloaded = b.next('notes');
+    await b.join();
+    expect((await reloaded).notes.map((n) => n.text)).toEqual(['Stream audio cut']);
+  });
+});
+
 describe('overlay feed', () => {
   it('serves JSON with CORS and streams updates', async () => {
     const res = await fetch(
@@ -663,7 +700,7 @@ describe('event report', () => {
     const res = await fetch(url('json'));
     expect(res.status).toBe(200);
     expect(res.headers.get('access-control-allow-origin')).toBe('*');
-    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(res.headers.get('cache-control')).toBe('private, no-store');
     const report = (await res.json()) as Report;
     expect(report).toMatchObject({
       event: { name: 'Test Marathon', ref: REF },

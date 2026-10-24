@@ -141,6 +141,47 @@ test('the event report compares the run with the plan and exports it', async ({ 
   expect(errors).toEqual([]);
 });
 
+test('operators note tech issues on a run and review them in the report', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await openDemo(page);
+  await page.keyboard.press('Control+k');
+  await page.getByRole('combobox', { name: 'Search commands and runs' }).fill('Celeste');
+  await page.keyboard.press('Enter');
+  const sheet = page.getByRole('dialog');
+  const notes = sheet.getByRole('region', { name: /Tech notes & issues/ });
+  await notes.getByRole('textbox', { name: 'New note' }).fill('Game audio\ndesynced at 0:12');
+  await notes.getByRole('radio', { name: 'Issue' }).click();
+  await notes.getByRole('button', { name: 'Add note' }).click();
+  await expect(notes.getByRole('listitem')).toContainText('Game audio');
+  await expect(notes.getByRole('textbox', { name: 'New note' })).toHaveValue('');
+
+  await notes.getByRole('button', { name: 'Edit note' }).click();
+  await notes
+    .getByRole('textbox', { name: 'Edit note' })
+    .fill('Game audio desynced, fixed by 0:20');
+  await notes.getByRole('button', { name: 'Save' }).click();
+  await expect(notes.getByRole('listitem')).toContainText('fixed by 0:20');
+  await page.keyboard.press('Escape');
+
+  // Not in the shared log (or anywhere else on the console), which every viewer sees.
+  await expect(sheet).toHaveCount(0);
+  await expect(page.getByText('fixed by 0:20')).toHaveCount(0);
+  // The schedule marks the run as having one.
+  await page
+    .getByRole('group', { name: 'Filter runs' })
+    .getByRole('button', { name: 'All' })
+    .click();
+  await expect(page.getByTitle('1 private note (1 issue)')).toBeVisible();
+
+  await page.goto(`${DEMO}?report=1`);
+  const section = page.getByRole('region', { name: 'Tech notes & issues' });
+  await expect(section).toContainText('Celeste');
+  await expect(section).toContainText('Game audio desynced, fixed by 0:20');
+  await expect(section).toContainText('Issue');
+  expect(errors).toEqual([]);
+});
+
 test('a runner checks in from their own link', async ({ browser }) => {
   const operator = await browser.newPage();
   await openDemo(operator);

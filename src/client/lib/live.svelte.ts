@@ -18,7 +18,7 @@ import {
   upcomingIndexes,
 } from '../../shared/derive.ts';
 import type { MutatingAction } from '../../shared/protocol.ts';
-import type { CheckIn, LogKind, RoomState, RunKey } from '../../shared/types.ts';
+import type { CheckIn, LogKind, NoteKind, RoomState, RunKey, RunNote } from '../../shared/types.ts';
 import { clock } from './clock.svelte.ts';
 import type { RoomConnection } from './room.svelte.ts';
 import { toasts } from './toasts.svelte.ts';
@@ -84,6 +84,13 @@ function createLive(room: RoomConnection) {
     upcoming = $derived(upcomingIndexes(this.lines, this.state, 5));
     next = $derived(this.lines[this.upcoming[0] ?? -1] ?? null);
     checkIns = $derived(checkInSummary(this.lines, this.state.runs, this.upcoming));
+    /** Operators' private run notes, by run (empty for anyone else). */
+    notesByRun = $derived(
+      room.notes.reduce<Record<RunKey, RunNote[]>>((by, n) => {
+        (by[n.runKey] ??= []).push(n);
+        return by;
+      }, {}),
+    );
 
     titleOf(key: RunKey | null | undefined): string {
       const line = this.lines.find((l) => l.key === key);
@@ -189,7 +196,7 @@ export class Ops {
     const ok = await ui.ask({
       title: 'Reset the whole marathon?',
       body:
-        `${live}Clears the live run, every run’s times, skips and check-ins, the event log, the announcement, the message board, the last stream capture and the undo history — for everyone.\n\n` +
+        `${live}Clears the live run, every run’s times, skips and check-ins, the event log, private tech notes and issues, the announcement, the message board, the last stream capture and the undo history — for everyone.\n\n` +
         'The schedule, Twitch channel, auto drift and auto-tracking settings stay. This can’t be undone here, but a backup of the current state is kept on the server.',
       confirmLabel: 'Reset marathon',
       danger: true,
@@ -260,6 +267,25 @@ export class Ops {
 
   clearMessage(): void {
     this.send({ action: 'message:clear' });
+  }
+
+  addNote(key: RunKey, kind: NoteKind, text: string): boolean {
+    return this.send({ action: 'note:add', key, kind, text });
+  }
+
+  editNote(id: number, kind: NoteKind, text: string): boolean {
+    return this.send({ action: 'note:edit', id, kind, text });
+  }
+
+  /** Deletes a private note, after asking: notes aren't undoable. */
+  async removeNote(note: RunNote): Promise<void> {
+    const ok = await ui.ask({
+      title: note.kind === 'issue' ? 'Delete this issue?' : 'Delete this tech note?',
+      body: `“${note.text.length > 140 ? `${note.text.slice(0, 140)}…` : note.text}”\n\nIt goes from the event report too. This can’t be undone.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (ok) this.send({ action: 'note:remove', id: note.id });
   }
 
   setAnnouncement(text: string, color: string): boolean {

@@ -64,6 +64,12 @@ async function requireOperator(
   return auth;
 }
 
+/** Whether the caller is an operator, from one of our own pages; never answers for them. */
+async function isOperator(req: Request): Promise<boolean> {
+  if (!isOwnOrigin(req.headers)) return false;
+  return (await resolveIdentity(req.headers.cookie))?.canWrite ?? false;
+}
+
 function sendError(res: Response, err: unknown): void {
   if (err instanceof UpstreamError) {
     res.status(err.notFound ? 404 : 502).json({ error: err.message });
@@ -158,7 +164,8 @@ export function createApp(
     });
   });
 
-  // Event report: planned against actual. Read-only, like the feed.
+  // Event report: planned against actual. Read-only, like the feed; operators'
+  // copy also carries the private run notes.
   app.get('/api/rooms/:source/:event/:slug/report.:format', cors, async (req, res) => {
     const ref = refFrom(req);
     const format = String(req.params.format);
@@ -168,8 +175,10 @@ export function createApp(
     }
     try {
       const room = await registry.open(ref);
-      const report = buildReport(room.schedule, room.state, Date.now());
-      res.setHeader('cache-control', 'no-store');
+      const notes = (await isOperator(req)) ? room.notes.list : undefined;
+      const report = buildReport(room.schedule, room.state, Date.now(), notes);
+      res.setHeader('cache-control', 'private, no-store');
+      res.setHeader('vary', 'cookie');
       if (format === 'json') {
         res.json(report);
         return;

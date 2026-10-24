@@ -8,7 +8,14 @@ import type {
   MutatingAction,
   ServerMessage,
 } from '../../shared/protocol.ts';
-import type { AuthInfo, RoomRef, RoomState, Schedule, UndoInfo } from '../../shared/types.ts';
+import type {
+  AuthInfo,
+  RoomRef,
+  RoomState,
+  RunNote,
+  Schedule,
+  UndoInfo,
+} from '../../shared/types.ts';
 import { clock } from './clock.svelte.ts';
 import { EMPTY_STATE } from './live.svelte.ts';
 import { dropSnapshot, loadSnapshot, saveSnapshot } from './offline.ts';
@@ -44,6 +51,11 @@ export class RoomConnection {
   schedule = $state.raw<Schedule | null>(null);
   state = $state.raw<RoomState | null>(null);
   auth = $state.raw<AuthInfo | null>(null);
+  /**
+   * Operators' private run notes. The server sends them to operators only, and
+   * they're never in the offline snapshot, so they stay off shared devices.
+   */
+  notes = $state.raw<RunNote[]>([]);
   presence = $state(0);
   /** A join failure (schedule not found, upstream down) with nothing to show. */
   fatal = $state<{ code: string; message: string } | null>(null);
@@ -405,6 +417,9 @@ export class RoomConnection {
         this.syncedAt = Date.now();
         this.#dirty = true;
         this.#scheduleSave();
+        break;
+      case 'notes':
+        this.notes = msg.notes;
         break;
       case 'presence':
         this.presence = msg.count;

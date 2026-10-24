@@ -6,6 +6,7 @@ import { roomKey } from '../../shared/sources.ts';
 import type { RoomRef, RoomState, Schedule, UndoInfo } from '../../shared/types.ts';
 import { logger } from '../logger.ts';
 import { reconcile } from '../tracking/detect.ts';
+import { emptyNotes, reduceNotes, type NoteAction, type RoomNotes } from './notes.ts';
 import { appendLog, reduce } from './reducer.ts';
 import { UNDO_LIMIT, initialState, takeSnapshot, type UndoEntry } from './state.ts';
 import { ROOM_FILE_FORMAT, type RoomFile, type RoomStore } from './store.ts';
@@ -39,6 +40,8 @@ export class Room {
   readonly key: string;
   schedule: Schedule;
   state: RoomState;
+  /** Operators' private run notes: sent to operator sockets only, never in `state`. */
+  notes: RoomNotes;
   readonly clients = new Set<RoomClient>();
   readonly frames = new Map<string, CaptureFrame>();
   lastActive = Date.now();
@@ -61,6 +64,7 @@ export class Room {
     schedule: Schedule;
     state: RoomState;
     undo?: UndoEntry[];
+    notes?: RoomNotes;
     store: RoomStore | null;
     services: RoomServices;
   }) {
@@ -77,6 +81,7 @@ export class Room {
       captureBusy: false,
     };
     this.undoStack = opts.undo ?? [];
+    this.notes = opts.notes ?? emptyNotes();
     this.store = opts.store;
     this.services = opts.services;
   }
@@ -93,7 +98,13 @@ export class Room {
     client.send({ type: 'joined', ref: this.ref });
     client.send({ type: 'schedule', schedule: this.schedule, by: null });
     client.send({ type: 'state', state: this.state });
+    if (client.operator) this.sendNotes(client);
     this.broadcastPresence();
+  }
+
+  /** The private run notes, for an operator; anyone else gets none (say, after losing access). */
+  sendNotes(client: RoomClient): void {
+    client.send({ type: 'notes', notes: client.operator ? this.notes.list : [] });
   }
 
   leave(client: RoomClient): void {
@@ -113,6 +124,10 @@ export class Room {
 
   broadcast(msg: ServerMessage): void {
     for (const c of this.clients) c.send(msg);
+  }
+
+  private broadcastNotes(): void {
+    for (const c of this.clients) if (c.operator) this.sendNotes(c);
   }
 
   private broadcastPresence(): void {
@@ -151,6 +166,10 @@ export class Room {
         return { ok: true, undo: null };
       case 'room:reset':
         return this.reset(actor);
+      case 'note:add':
+      case 'note:edit':
+      case 'note:remove':
+        return this.editNotes(action, actor);
       case 'capture:run':
         if (this.state.captureBusy) {
           return { ok: false, code: 'conflict', message: 'A capture is already running.' };
@@ -173,6 +192,22 @@ export class Room {
     }
     this.commit(res.state);
     return { ok: true, undo };
+  }
+
+  /** Private notes aren't room state: not logged, not undoable, only ever sent to operators. */
+  private editNotes(action: NoteAction, actor: string | null): DispatchResult {
+    const res = reduceNotes(this.notes, action, {
+      lines: this.schedule.lines,
+      now: Date.now(),
+      actor,
+    });
+    if (!res.ok) return res;
+    if (res.changed) {
+      this.notes = res.notes;
+      this.broadcastNotes();
+      this.schedulePersist();
+    }
+    return { ok: true, undo: null };
   }
 
   /** Reverts the newest undoable change — only if it's the one the operator saw (`id`). */
@@ -214,7 +249,8 @@ export class Room {
 
   /**
    * Back to a fresh start for the same schedule: no live run, no timings, skips
-   * or check-ins, an empty log, no broadcasts, capture reading or undo history.
+   * or check-ins, an empty log, no private notes, broadcasts, capture reading or
+   * undo history.
    * The Twitch channel, drift and tracking settings stay. Not undoable, so the previous
    * state is written aside first — and the reset is refused if that fails.
    */
@@ -241,13 +277,15 @@ export class Room {
     next.logSeq = Math.max(prev.logSeq ?? 0, prev.log[0]?.id ?? 0);
     appendLog(next, {
       kind: 'system',
-      text: '⟲ Reset the marathon: timings, check-ins, log and broadcasts cleared',
+      text: '⟲ Reset the marathon: timings, check-ins, log, notes and broadcasts cleared',
       runKey: null,
       actor,
       at: Date.now(),
     });
     this.epoch++;
     this.undoStack = [];
+    this.notes = emptyNotes(this.notes.seq);
+    this.broadcastNotes();
     this.frames.clear();
     this.commit(next);
     return { ok: true, undo: null };
@@ -345,6 +383,7 @@ export class Room {
       schedule: this.schedule,
       state: this.state,
       undo: this.undoStack,
+      notes: this.notes,
     };
   }
 

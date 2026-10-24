@@ -4,7 +4,7 @@
 
 import { z } from 'zod';
 import { ID_PATTERN, SOURCES } from './sources.ts';
-import type { AuthInfo, RoomRef, RoomState, Schedule, UndoInfo } from './types.ts';
+import type { AuthInfo, RoomRef, RoomState, RunNote, Schedule, UndoInfo } from './types.ts';
 
 export const RoomRefSchema = z.object({
   source: z.enum(SOURCES),
@@ -25,6 +25,21 @@ const lateFields = {
     .max(400)
     .transform((s) => s.replace(/[\p{Cc}\p{Cf}]/gu, '').trim())
     .pipe(z.string().max(140)),
+};
+
+/** A private run note: line breaks are fine, other control or invisible formatting characters aren't. */
+const noteFields = {
+  kind: z.enum(['tech', 'issue']),
+  text: z
+    .string()
+    .max(4000)
+    .transform((s) =>
+      s
+        .replace(/\r\n?/g, '\n')
+        .replace(/[^\P{Cc}\n]|\p{Cf}/gu, '')
+        .trim(),
+    )
+    .pipe(z.string().min(1).max(2000)),
 };
 
 export const ClientActionSchema = z.discriminatedUnion('action', [
@@ -69,6 +84,11 @@ export const ClientActionSchema = z.discriminatedUnion('action', [
   }),
   z.object({ action: z.literal('log:remove'), id: z.number().int() }),
   z.object({ action: z.literal('log:clear') }),
+
+  /** Private notes on a run, for operators and the event report (never broadcast to viewers). */
+  z.object({ action: z.literal('note:add'), key: runKey, ...noteFields }),
+  z.object({ action: z.literal('note:edit'), id: z.number().int(), ...noteFields }),
+  z.object({ action: z.literal('note:remove'), id: z.number().int() }),
 
   z.object({ action: z.literal('twitch:set'), channel: z.string().trim().max(200) }),
   z.object({ action: z.literal('message:set'), text: text(280), color }),
@@ -226,6 +246,8 @@ export type ServerMessage =
   | { type: 'joined'; ref: RoomRef }
   | { type: 'schedule'; schedule: Schedule; by: string | null }
   | { type: 'state'; state: RoomState }
+  /** Operators only: every private run note in the room (empty for anyone else). */
+  | { type: 'notes'; notes: RunNote[] }
   | { type: 'presence'; count: number }
   | { type: 'pong'; t: number; serverTime: number }
   /** Reply to a mutating action sent with a request id (`rid`). */

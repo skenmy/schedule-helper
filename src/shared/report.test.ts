@@ -278,3 +278,47 @@ describe('reportCsv', () => {
     expect(row).toContain(`"'=HYPERLINK(""http://evil""), -dash, plain"`);
   });
 });
+
+describe('private run notes', () => {
+  const note = (id: number, runKey: string, kind: 'tech' | 'issue', text: string) => ({
+    id,
+    runKey,
+    kind,
+    text,
+    actor: 'Paul',
+    at: T0 + id * MIN,
+  });
+  const NOTES = [
+    note(1, 'c', 'issue', 'Capture card dropped'),
+    note(2, 'a', 'tech', 'Mic gain low'),
+    note(3, 'gone', 'tech', 'On a run since removed'),
+    note(4, 'a', 'issue', '=cmd|calc'),
+  ];
+
+  it('stays out of the public report and its CSV', () => {
+    const report = buildReport(schedule(), FINISHED, T0 + 200 * MIN);
+    expect(report.notes).toBeNull();
+    expect(report.rows.every((r) => !('notes' in r))).toBe(true);
+    expect(reportCsv(report).split('\r\n')[0]).not.toContain('notes');
+  });
+
+  it('lists operators’ notes by run, in schedule order, with removed runs last', () => {
+    const report = buildReport(schedule(), FINISHED, T0 + 200 * MIN, NOTES);
+    expect(report.notes!.map((n) => [n.id, n.number, n.title])).toEqual([
+      [2, 1, 'Game a'],
+      [4, 1, 'Game a'],
+      [1, 3, 'Game c'],
+      [3, null, null],
+    ]);
+    expect(report.rows.find((r) => r.key === 'a')!.notes!.map((n) => n.id)).toEqual([2, 4]);
+    expect(report.rows.find((r) => r.key === 'b')!.notes).toEqual([]);
+  });
+
+  it('adds tech notes and issues columns to the operators’ CSV, formula-safe', () => {
+    const csv = reportCsv(buildReport(schedule(), FINISHED, T0 + 200 * MIN, NOTES));
+    const rows = csv.trimEnd().split('\r\n');
+    expect(rows[0]).toMatch(/,planned_changeover,tech_notes,issues$/);
+    expect(rows[1]).toMatch(/,Mic gain low \(Paul\),'=cmd\|calc \(Paul\)$/);
+    expect(rows[2]).toMatch(/,,$/);
+  });
+});

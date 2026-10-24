@@ -14,11 +14,14 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
     so projections and the delta reset there, the gap across one isn't a changeover (`isBreak`),
     and the catch-up planner never offers to cut one.
   - `report.ts` the event report (`buildReport`, `reportCsv`): served at `/report.{json,csv}` and
-    rendered by `views/Report.svelte`, so the page and the exports can't disagree
+    rendered by `views/Report.svelte`, so the page and the exports can't disagree. Private run
+    notes go in only when passed (operators)
   - `time.ts` duration parsing/formatting · `sources.ts` URL parsing, room paths, brand detection
 - `src/server/` — run directly by Node (type stripping, no build):
   - `rooms/reducer.ts` pure `reduce(state, action, ctx)`; every user-visible state rule lives here
   - `rooms/room.ts` dispatch → reduce → undo snapshot → commit (rev++, broadcast, notify, persist)
+  - `rooms/notes.ts` private run notes (tech notes / issues): pure `reduceNotes`, kept on
+    `Room.notes`, not in `RoomState`
   - `rooms/registry.ts` load from disk or upstream, background schedule refresh, idle eviction
   - `sources/` Oengus / Horaro / demo adapters (zod-parsed, cached 60s, 10s timeouts)
   - `capture/` frame grab (streamlink → ffmpeg → JPEG in memory), `vision.ts` (Anthropic SDK,
@@ -83,6 +86,13 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
   (`Room.undo` carries forward runs whose `selfAt` is newer). **A runner's late note is free
   text from outside**: render it as text, never as HTML, keep it out of anything that runs
   (formulas, URLs) and out of the public overlay feed.
+- **Private run notes never go in `RoomState`.** State goes to every viewer, the feed and the
+  offline snapshot, so notes live on `Room.notes` (persisted in the room file) and travel as a
+  `notes` message to operator sockets only (`Room.sendNotes`; `ws.ts` resends when access
+  changes, `[]` when lost). The report includes them only for `isOperator(req)` (own origin
+  and operator cookie), `private, no-store`. Notes aren't logged (the log is public), aren't
+  undoable, and a reset clears them. The client keeps them in `room.notes`, never in the
+  offline snapshot.
 - **The operator cookie only counts from our own pages.** `isOwnOrigin` (`auth.ts`) refuses a `/ws`
   upgrade and every `requireOperator` HTTP route with 403 when `Origin` is present but is neither
   `PUBLIC_URL` nor the request's own `Host`, so another site can't use an operator's cookie to act
