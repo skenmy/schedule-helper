@@ -248,6 +248,19 @@ test.describe('iPhone Duo, open like a book', () => {
   });
 });
 
+test.describe('iPhone Duo, installed, open like a book', () => {
+  test.use(IPHONE_DUO.bookInstalled);
+
+  test('keeps the pages on the crease, with the status bar off the window', async ({ page }) => {
+    await open(page);
+    const { live, other } = await halves(page);
+    // The middle of the screen (951 wide), not of the window.
+    expect(live.x + live.width).toBeCloseTo(951 / 2, 0);
+    expect(other.x).toBeCloseTo(951 / 2, 0);
+    expect(live.y + live.height).toBe(669);
+  });
+});
+
 test.describe('iPhone Duo, tabletop', () => {
   test.use(IPHONE_DUO.tabletop);
 

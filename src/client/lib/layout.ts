@@ -61,6 +61,19 @@ export function pickLayout(env: LayoutEnv, pref: LayoutPref = 'auto'): LayoutKin
 }
 
 /**
+ * Where a foldable open like a book folds, from the window's left edge. It folds
+ * down the middle of the screen, but installed on the iPhone Duo the status bar
+ * is a column down the right of the screen, whichever way round the phone is,
+ * and the window stops at it: half the window is left of the crease.
+ * `screen` is trusted only while it plausibly describes this screen, with the
+ * crease at or right of the window's middle and not far past it.
+ */
+export function foldX(windowWidth: number, screenWidth: number, screenHeight: number): number {
+  const middle = Math.max(screenWidth, screenHeight) / 2;
+  return middle >= windowWidth / 2 && middle <= windowWidth * 0.6 ? middle : windowWidth / 2;
+}
+
+/**
  * iPadOS Safari asks for desktop sites by default, so its user agent says
  * "Macintosh" — the touch points give it away. With a trackpad attached it can
  * also report a fine pointer, which is why this doesn't rely on `pointer: coarse`.

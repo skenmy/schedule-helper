@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isIPad, parseLayoutPref, pickLayout } from './layout.ts';
+import { foldX, isIPad, parseLayoutPref, pickLayout } from './layout.ts';
 
 /** A full-screen window unless the screen is given. */
 const touch = (width: number, height: number, screenShort = Math.min(width, height)) => ({
@@ -76,6 +76,20 @@ describe('pickLayout', () => {
     expect(pickLayout(touch(1028, 876), 'fold')).toBe('fold'); // Galaxy Z Fold, open
     expect(pickLayout(touch(484, 1112), 'fold')).toBe('phone'); // and closed
     expect(pickLayout(mouse(1440, 900), 'fold')).toBe('fold');
+  });
+});
+
+describe('foldX', () => {
+  it('finds the crease in the middle of the screen, not the window', () => {
+    // Installed on the iPhone Duo: the status bar takes a column off the right.
+    expect(foldX(867, 669, 951)).toBe(475.5);
+    // Safari has the whole width: the middle of either.
+    expect(foldX(951, 669, 951)).toBe(475.5);
+  });
+
+  it('falls back to half the window when `screen` is some other screen', () => {
+    expect(foldX(867, 382, 660)).toBe(433.5); // the outer display
+    expect(foldX(1400, 1920, 1080)).toBe(700); // a desktop window with the layout forced
   });
 });
 

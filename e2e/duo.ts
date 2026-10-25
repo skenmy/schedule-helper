@@ -16,6 +16,8 @@ const base = {
 export const IPHONE_DUO = {
   /** Open in landscape: the fold runs down the middle. */
   book: { ...base, viewport: { width: 951, height: 585 } },
+  /** The same, installed to the Home Screen: the status bar is a column down the right. */
+  bookInstalled: { ...base, viewport: { width: 867, height: 669 } },
   /** Open in portrait: the fold runs across. */
   tabletop: { ...base, viewport: { width: 669, height: 867 } },
   /** The outer screen. */
