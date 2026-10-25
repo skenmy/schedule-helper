@@ -36,6 +36,20 @@ function isAppleTouch(): boolean {
 /** The build this page's code came from (`BUILD_SHA`, or `dev`). */
 export const BUILD = __BUILD__;
 
+/**
+ * The large viewport's height (100lvh), as an element made just now sees it.
+ * iOS can change it without saying so, and styles already worked out keep the
+ * old value until something makes them look again.
+ */
+export function largeViewportHeight(): number {
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;top:0;height:100lvh;visibility:hidden;pointer-events:none';
+  document.body.append(probe);
+  const height = probe.getBoundingClientRect().height;
+  probe.remove();
+  return height;
+}
+
 /** Launched from the Home Screen (iOS, iPadOS, Android) rather than a browser tab. */
 export function isStandalone(): boolean {
   return (
