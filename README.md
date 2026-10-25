@@ -100,12 +100,15 @@ Horaro schedule. Try it offline with the built-in demo marathon (`/demo/demo/mai
   its own. In portrait the page scrolls, with the controls docked along the bottom. A **Floor**
   mode (switch in the top bar, remembered per iPad) shows the live run, a big timer and one-tap
   Ready / Missing check-ins for the next runs. Hardware-keyboard shortcuts still work.
-- **iPhone Duo interface.** Open, the Duo gets two panes that meet on the fold, so nothing sits on
-  the crease. Like a book (landscape): the live run and its controls on the left page, the marathon
-  status and the console tabs (or, in **Floor** mode, the runners) on the right. Portrait, or half
-  folded in tabletop: the live run on the top half and the tools on the flat half, with Start / Next
-  docked along the bottom. Where Safari reports the fold (Viewport Segments API, a Safari 27.1
-  feature flag) the panes follow it exactly. Closed, the outer screen gets the phone interface.
+- **iPhone Duo interface.** Open, the Duo gets a page of information and a page of controls that
+  meet on the fold, so nothing sits on the crease. Like a book (landscape): the marathon status and
+  tabs on the left page (Live first: the current run, up next and the latest log; then whichever of
+  the timeline, schedule, log and tools each device picks in More → _Tabs on this device_), and the
+  run controls, runner check-ins and tracking prompts on the right, under your thumb. Portrait, or
+  half folded in tabletop: the information on the top half and the controls on the flat half, with
+  Start / Next docked along the bottom. No console and floor modes: it's both at once. Where Safari
+  reports the fold (Viewport Segments API, a Safari 27.1 feature flag) the pages follow it exactly.
+  Closed, the outer screen gets the phone interface.
 - **Phone interface.** Bottom tab bar (Now / Up next / Schedule / Log / More), Start / Next under
   your thumb, one-tap runner check-ins in Up next, swipe between views, swipe-down-to-close sheets
   and haptics. Landscape switches to a side rail with Start / Next on the right. Phones and iPads

@@ -15,41 +15,42 @@
   import MoreSheet from '../components/touch/MoreSheet.svelte';
   import OnDeck from '../components/touch/OnDeck.svelte';
   import Transport from '../components/touch/Transport.svelte';
-  import Segmented from '../components/ui/Segmented.svelte';
   import { clock } from '../lib/clock.svelte.ts';
   import { isStandalone, keepAwake } from '../lib/device.ts';
   import { fmtClock } from '../lib/format.ts';
-  import { foldX, screenSize, TABLET_MODES } from '../lib/layout.ts';
+  import { foldX, screenSize } from '../lib/layout.ts';
   import { prefs } from '../lib/prefs.svelte.ts';
   import { ui } from '../lib/ui.svelte.ts';
 
   /**
-   * A foldable's inner screen: the iPhone Duo, open. Two panes, one either
-   * side of the fold, each with its own header, so nothing sits on the crease:
-   * - book (landscape, folding down the middle): the live run and its
-   *   controls on the left page; the marathon's status and the tools or the
-   *   runners on the right;
-   * - tabletop (portrait, folding across): the status and the live run on the
-   *   top half, which stands up with the phone half folded on a desk, and the
-   *   tools or runners on the flat half, with the controls docked along its
-   *   bottom edge.
+   * The iPhone Duo, open: a page of information and a page of controls, one
+   * either side of the fold, each with its own header, so nothing sits on the
+   * crease.
+   * - Information: the marathon's status over tabs, Live (the current run, up
+   *   next, the latest log) first, then whichever tools this device chose
+   *   (More → Tabs on this device).
+   * - Controls: the run controls, the runners on deck to check in, and the
+   *   tracking banner to accept.
+   * Open like a book (landscape) the information is the left page and the
+   * controls the right, under the thumb; installed, the status bar narrows the
+   * right page, so the controls get the smaller one. In portrait or tabletop the
+   * information is the top half, which stands up with the phone half folded on
+   * a desk, and the controls the flat half, docked along its bottom edge. No
+   * console and floor modes: the two pages are both at once.
    *
    * Where the browser reports the fold (the Viewport Segments API: Chrome, and
    * Safari 27.1 behind a feature flag) its direction picks the arrangement and
-   * the panes meet exactly on it. Otherwise the screen splits down the middle,
-   * which is where the Duo folds; across, Safari's toolbar on top puts the split
-   * a little below the fold, so the controls never ride up onto the standing half.
+   * the panes meet exactly on it. Otherwise the screen splits where the Duo
+   * folds; across, Safari's toolbar on top puts the split a little below the
+   * fold, so the controls never ride up onto the standing half.
    *
-   * Console and floor modes as on the iPad (`prefs.tabletMode`). Both
-   * arrangements are the same component tree (bar the status strip, which
-   * has nothing to type in), so turning the phone keeps whatever the operator
-   * was typing.
+   * Both arrangements are the same component tree, so turning the phone keeps
+   * whatever the operator was typing.
    */
   const across = new MediaQuery('(vertical-viewport-segments: 2)');
   const down = new MediaQuery('(horizontal-viewport-segments: 2)');
   const portrait = new MediaQuery('(orientation: portrait)');
   const stacked = $derived(across.current || (portrait.current && !down.current));
-  const floor = $derived(prefs.tabletMode === 'floor');
   /** Side by side, where the pages meet: on the crease, not half the window. */
   const split = $derived(
     foldX(
@@ -59,6 +60,12 @@
   );
   /** Launched from the Home Screen: no browser toolbars to make room for. */
   const installed = isStandalone();
+  /** The tabs this device chose, and a tool opened from More or search while it's open. */
+  const tabs = $derived(
+    prefs.foldTabs.includes(ui.tab) || ui.tab === 'live'
+      ? prefs.foldTabs
+      : [...prefs.foldTabs, ui.tab],
+  );
 
   // An operator's phone shouldn't lock mid-show, setup gaps included.
   $effect(() => keepAwake(() => true));
@@ -76,21 +83,25 @@
   });
 </script>
 
-<div class="fold" class:stacked class:floor class:installed style:--fold-x="{split}px">
-  <section class="pane live" aria-label="Live run">
+<div class="fold" class:stacked class:installed style:--fold-x="{split}px">
+  <section class="pane info" aria-label="Information">
     <TopBar variant="phone" />
     <AnnouncementBanner />
-    <DetectionBanner />
-    {#if stacked}<StatusStrip compact />{/if}
-    <div class="scroll">
-      <NowCard stage={floor} />
-      {#if !floor}<UpNext />{/if}
+    <StatusStrip compact />
+    <div class="tabs">
+      <Workspace pane {tabs}>
+        {#snippet current()}
+          <div class="now">
+            <NowCard />
+            <UpNext />
+            <MiniLog />
+          </div>
+        {/snippet}
+      </Workspace>
     </div>
-    <Transport variant={stacked ? 'dock' : floor ? 'floor' : 'pane'} />
   </section>
-  <section class="pane side" aria-label={floor ? 'Runners' : 'Tools'}>
+  <section class="pane controls" aria-label="Controls">
     <header class="bar">
-      <Segmented label="Interface mode" options={TABLET_MODES} bind:value={prefs.tabletMode} />
       <span class="clock num">{fmtClock(clock.now)}</span>
       <button
         class="btn ghost icon"
@@ -103,16 +114,11 @@
         <Ellipsis size={20} />
       </button>
     </header>
-    <!-- Half a book is short: the status sits over the tools, the run gets the other page. -->
-    {#if !stacked}<StatusStrip compact />{/if}
-    {#if floor}
-      <div class="scroll">
-        <OnDeck />
-        <MiniLog />
-      </div>
-    {:else}
-      <div class="tools"><Workspace pane timeline /></div>
-    {/if}
+    <DetectionBanner />
+    <div class="scroll">
+      <OnDeck />
+    </div>
+    <Transport variant={stacked ? 'dock' : 'floor'} />
   </section>
 </div>
 
@@ -158,12 +164,17 @@
     flex: none;
   }
   .pane > .scroll,
-  .pane > .tools {
+  .pane > .tabs {
     flex: 1;
     min-height: 0;
   }
-  .live {
+  .info {
     border-right: 1px solid var(--border);
+  }
+  .now {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
   }
   .scroll {
     display: grid;
@@ -173,9 +184,6 @@
     padding: 14px var(--gutter) 20px;
     overflow-y: auto;
     overscroll-behavior: contain;
-  }
-  .side .scroll {
-    padding-bottom: calc(20px + env(safe-area-inset-bottom));
   }
   /* Level with the top bar across the fold. */
   .bar {
@@ -188,17 +196,17 @@
     background: color-mix(in oklab, var(--bg) 88%, transparent);
   }
   .clock {
-    margin: 0 6px 0 auto;
-    font-size: 14px;
+    margin-right: auto;
+    font-size: 15px;
     color: var(--text-2);
   }
 
-  /* ── Tabletop: the live run up top, everything to touch below ───────── */
+  /* ── Tabletop: the information up top, everything to touch below ────── */
   .stacked {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
   }
-  .stacked .live {
+  .stacked .info {
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }
@@ -206,8 +214,8 @@
     height: 56px;
     padding-top: 0;
   }
-  /* The controls are docked over the bottom of this half. */
-  .stacked .side {
+  /* The run controls are docked over the bottom of this half. */
+  .stacked .controls {
     padding-bottom: calc(var(--dock-space, 84px) + env(safe-area-inset-bottom));
   }
 

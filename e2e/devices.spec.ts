@@ -176,11 +176,13 @@ test.describe('iPhone', () => {
   });
 });
 
-/** Where each half of the foldable layout sits. */
-async function halves(page: Page, side: 'Tools' | 'Runners' = 'Tools') {
-  const live = (await page.getByRole('region', { name: 'Live run' }).boundingBox())!;
-  const other = (await page.getByRole('region', { name: side }).boundingBox())!;
-  return { live, other };
+/** Where each page of the foldable layout sits: information, then controls. */
+async function halves(page: Page) {
+  const info = (await page.getByRole('region', { name: 'Information' }).boundingBox())!;
+  const controls = (await page
+    .getByRole('region', { name: 'Controls', exact: true })
+    .boundingBox())!;
+  return { info, controls };
 }
 
 /** Chromium's foldable emulation: a fold the page sees through the Viewport Segments API. */
@@ -193,7 +195,7 @@ async function fold(
   await cdp.send('Emulation.setDeviceMetricsOverride', {
     width,
     height,
-    deviceScaleFactor: 2.8,
+    deviceScaleFactor: 3,
     mobile: true,
     displayFeature: feature,
   });
@@ -203,24 +205,31 @@ test.describe('iPhone Duo, open like a book', () => {
   test.use(IPHONE_DUO.book);
   test.beforeEach(({ page }) => onDuo(page, 'book'));
 
-  test('puts the live run on one page and the tools on the other', async ({ page }) => {
+  test('reads on the left page and runs the show from the right', async ({ page }) => {
     await open(page);
     await expect(page.locator('html')).toHaveAttribute('data-layout', 'fold');
-    const { live, other } = await halves(page);
+    const { info, controls } = await halves(page);
     // Nothing on the crease: the pages meet in the middle of the screen.
     const middle = page.viewportSize()!.width / 2;
-    expect(live.x + live.width).toBeCloseTo(middle, 0);
+    expect(info.x + info.width).toBeCloseTo(middle, 0);
+    expect(controls.x).toBeCloseTo(middle, 0);
     // In Safari the large viewport is taller than what shows: never sized by it.
     await expect(page.locator('.fold')).not.toHaveClass(/\binstalled\b/);
-    expect(other.x).toBeCloseTo(middle, 0);
-    const controls = page.getByRole('region', { name: 'Timer controls' });
-    const next = (await controls.getByRole('button', { name: /^Next: / }).boundingBox())!;
-    expect(next.x + next.width).toBeLessThanOrEqual(middle);
-    await expect(page.getByRole('region', { name: 'Marathon status' })).toBeInViewport();
-    await page
-      .getByRole('tablist', { name: 'Workspace' })
-      .getByRole('tab', { name: 'Timeline' })
-      .click();
+    // The run controls and the check-ins under the right thumb.
+    const transport = page.getByRole('region', { name: 'Timer controls' });
+    const next = (await transport.getByRole('button', { name: /^Next: / }).boundingBox())!;
+    expect(next.x).toBeGreaterThanOrEqual(middle);
+    const deck = (await page.getByRole('region', { name: 'On deck' }).boundingBox())!;
+    expect(deck.x).toBeGreaterThanOrEqual(middle);
+    // The status and the tabs on the left, Live first. No console and floor modes.
+    const status = (await page.getByRole('region', { name: 'Marathon status' }).boundingBox())!;
+    expect(status.x + status.width).toBeLessThanOrEqual(middle + 1);
+    const tabs = page.getByRole('tablist', { name: 'Workspace' });
+    await expect(tabs.getByRole('tab').first()).toHaveText('Live');
+    await expect(tabs.getByRole('tab', { name: 'Live' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tabpanel').locator('article.now')).toBeVisible();
+    await expect(page.getByRole('radiogroup', { name: 'Interface mode' })).toHaveCount(0);
+    await tabs.getByRole('tab', { name: 'Timeline' }).click();
     await expect(page.getByRole('region', { name: 'Timeline' })).toBeVisible();
     // The page itself never scrolls; the panes do.
     expect(await page.evaluate(() => document.scrollingElement!.scrollHeight)).toBeLessThanOrEqual(
@@ -228,12 +237,37 @@ test.describe('iPhone Duo, open like a book', () => {
     );
   });
 
+  test('shows the tabs chosen on this device, and a tool opened from More', async ({ page }) => {
+    await open(page);
+    const tabs = page.getByRole('tablist', { name: 'Workspace' }).getByRole('tab');
+    await page.getByRole('button', { name: 'More' }).click();
+    const chosen = page.getByRole('group', { name: 'Tabs on this device' });
+    await chosen.getByRole('button', { name: 'Progress' }).click();
+    await chosen.getByRole('button', { name: 'Timeline' }).click();
+    await expect(chosen.getByRole('button', { name: 'Progress' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await page.keyboard.press('Escape');
+    await expect(tabs).toHaveText(['Live', /^Schedule/, /^Event log/, 'Progress']);
+    await page.reload();
+    await expect(tabs).toHaveText(['Live', /^Schedule/, /^Event log/, 'Progress']);
+
+    // A tool that isn't one of them still opens from More, for as long as it's open.
+    await page.getByRole('button', { name: 'More' }).click();
+    await page.getByRole('button', { name: /^Broadcast Announcement/ }).click();
+    await expect(tabs.last()).toHaveText('Broadcast');
+    await expect(tabs.last()).toHaveAttribute('aria-selected', 'true');
+    await tabs.first().click();
+    await expect(tabs).toHaveCount(4);
+  });
+
   test('meets on the fold the browser reports, either side of a hinge', async ({ page }) => {
     await fold(page, { orientation: 'vertical', offset: 440, maskLength: 20 });
     await open(page);
-    const { live, other } = await halves(page);
-    expect(live.x + live.width).toBeCloseTo(440, 0);
-    expect(other.x).toBeCloseTo(460, 0);
+    const { info, controls } = await halves(page);
+    expect(info.x + info.width).toBeCloseTo(440, 0);
+    expect(controls.x).toBeCloseTo(460, 0);
   });
 
   test('keeps a half-typed note when the phone turns', async ({ page }) => {
@@ -257,11 +291,13 @@ test.describe('iPhone Duo, installed, open like a book', () => {
 
   test('keeps the pages on the crease, with the status bar off the window', async ({ page }) => {
     await open(page);
-    const { live, other } = await halves(page);
-    // The middle of the screen (951 wide), not of the window.
-    expect(live.x + live.width).toBeCloseTo(951 / 2, 0);
-    expect(other.x).toBeCloseTo(951 / 2, 0);
-    expect(live.y + live.height).toBe(669);
+    const { info, controls } = await halves(page);
+    // The middle of the screen (951 wide), not of the window: the controls get
+    // the narrower page.
+    expect(info.x + info.width).toBeCloseTo(951 / 2, 0);
+    expect(controls.x).toBeCloseTo(951 / 2, 0);
+    expect(controls.width).toBeLessThan(info.width);
+    expect(info.y + info.height).toBe(669);
     // `screen` says it's the outer display: picked as a foldable all the same.
     await expect(page.locator('html')).toHaveAttribute('data-layout', 'fold');
   });
@@ -276,9 +312,9 @@ test.describe('iPhone Duo, installed, unfolded with the app open', () => {
     // On the Duo, 100lvh is 669 while the window is left at 587. Chromium's large
     // viewport is the window, so this checks the rule applies, and only installed.
     await expect(page.locator('.fold')).toHaveClass(/\binstalled\b/);
-    const { live } = await halves(page);
-    expect(live.y + live.height).toBe(587);
-    expect(live.x + live.width).toBeCloseTo(951 / 2, 0);
+    const { info } = await halves(page);
+    expect(info.y + info.height).toBe(587);
+    expect(info.x + info.width).toBeCloseTo(951 / 2, 0);
   });
 });
 
@@ -286,35 +322,33 @@ test.describe('iPhone Duo, tabletop', () => {
   test.use(IPHONE_DUO.tabletop);
   test.beforeEach(({ page }) => onDuo(page, 'tabletop'));
 
-  test('stands the live run up top and docks the controls on the flat half', async ({ page }) => {
+  test('stands the information up top and the controls on the flat half', async ({ page }) => {
     await open(page);
     await expect(page.locator('html')).toHaveAttribute('data-layout', 'fold');
-    const { live, other } = await halves(page);
+    const { info, controls } = await halves(page);
     const { height } = page.viewportSize()!;
-    expect(live.y + live.height).toBeCloseTo(height / 2, 0);
-    expect(other.y).toBeCloseTo(height / 2, 0);
+    expect(info.y + info.height).toBeCloseTo(height / 2, 0);
+    expect(controls.y).toBeCloseTo(height / 2, 0);
     const dock = (await page.getByRole('region', { name: 'Timer controls' }).boundingBox())!;
     expect(dock.y).toBeGreaterThan(height / 2);
     expect(dock.y + dock.height).toBeGreaterThanOrEqual(height - 1);
-    // The tools scroll above the dock, not under it.
-    const panel = (await page.getByRole('tabpanel').boundingBox())!;
-    expect(panel.y + panel.height).toBeLessThanOrEqual(dock.y + 1);
+    // The runners on deck scroll above the dock, not under it.
+    const deck = (await page.locator('section.controls .scroll').boundingBox())!;
+    expect(deck.y).toBeGreaterThanOrEqual(height / 2);
+    expect(deck.y + deck.height).toBeLessThanOrEqual(dock.y + 1);
   });
 
   test('meets on the fold the browser reports', async ({ page }) => {
     await fold(page, { orientation: 'horizontal', offset: 400, maskLength: 0 });
     await open(page);
-    const { live, other } = await halves(page);
-    expect(live.y + live.height).toBeCloseTo(400, 0);
-    expect(other.y).toBeCloseTo(400, 0);
+    const { info, controls } = await halves(page);
+    expect(info.y + info.height).toBeCloseTo(400, 0);
+    expect(controls.y).toBeCloseTo(400, 0);
   });
 
-  test('checks runners in and sets the timer from the floor view', async ({ page }) => {
-    await page.addInitScript(() => localStorage.setItem('sh.tabletMode', '"floor"'));
+  test('checks runners in and sets the timer from the flat half', async ({ page }) => {
     await open(page);
-    const { other } = await halves(page, 'Runners');
     const deck = page.getByRole('region', { name: 'On deck' });
-    expect((await deck.boundingBox())!.y).toBeGreaterThanOrEqual(other.y);
     await expect(deck.getByRole('button', { name: 'Ready' }).first()).toBeEnabled();
     await page
       .getByRole('region', { name: 'Timer controls' })

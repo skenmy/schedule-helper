@@ -1,6 +1,7 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import { getLive } from '../../lib/live.svelte.ts';
-  import { ui, type TabId } from '../../lib/ui.svelte.ts';
+  import { TAB_LABELS, ui, type TabId } from '../../lib/ui.svelte.ts';
   import BroadcastTab from '../tabs/BroadcastTab.svelte';
   import CaptureTab from '../tabs/CaptureTab.svelte';
   import KioskTab from '../tabs/KioskTab.svelte';
@@ -14,23 +15,32 @@
    * panel scrolls on its own. Otherwise the page scrolls and the tab bar
    * sticks under the top bar.
    * `timeline`: the timeline is a tab (tablets), not a strip above (desktop).
+   * `tabs`: exactly these tabs, in this order (the iPhone Duo's, chosen per device).
+   * `current`: what the Live tab shows, where there is one.
    */
-  let { pane = false, timeline = false }: { pane?: boolean; timeline?: boolean } = $props();
+  let {
+    pane = false,
+    timeline = false,
+    tabs: only,
+    current,
+  }: { pane?: boolean; timeline?: boolean; tabs?: readonly TabId[]; current?: Snippet } = $props();
 
   const live = getLive();
-  const TABS: { id: TabId; label: string }[] = [
-    { id: 'schedule', label: 'Schedule' },
-    { id: 'log', label: 'Event log' },
-    { id: 'capture', label: 'Stream capture' },
-    { id: 'broadcast', label: 'Broadcast' },
-    { id: 'kiosk', label: 'Kiosk' },
-    { id: 'progress', label: 'Progress' },
-  ];
+  const TOOLS: TabId[] = ['schedule', 'log', 'capture', 'broadcast', 'kiosk', 'progress'];
   const tabs = $derived(
-    timeline ? [{ id: 'timeline' as const, label: 'Timeline' }, ...TABS] : TABS,
+    (only ?? (timeline ? ['timeline', ...TOOLS] : TOOLS)).map((id) => ({
+      id,
+      label: TAB_LABELS[id],
+    })),
   );
-  /** The desktop shows the timeline above, not as a tab. */
-  const active = $derived<TabId>(!timeline && ui.tab === 'timeline' ? 'schedule' : ui.tab);
+  /** A tab this layout doesn't have (the timeline above the desktop's, Live) shows Schedule. */
+  const active = $derived<TabId>(
+    tabs.some((t) => t.id === ui.tab)
+      ? ui.tab
+      : tabs.some((t) => t.id === 'schedule')
+        ? 'schedule'
+        : (tabs[0]?.id ?? 'schedule'),
+  );
   const counts = $derived<Partial<Record<TabId, number>>>({
     schedule: live.stats.runsTotal,
     log: live.state.log.length,
@@ -82,7 +92,8 @@
     aria-labelledby="tab-{active}"
     bind:this={panel}
   >
-    {#if active === 'schedule'}<ScheduleTab />
+    {#if active === 'live'}{@render current?.()}
+    {:else if active === 'schedule'}<ScheduleTab />
     {:else if active === 'log'}<LogTab />
     {:else if active === 'capture'}<CaptureTab />
     {:else if active === 'broadcast'}<BroadcastTab />

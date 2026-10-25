@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { foldX, isIPad, parseLayoutPref, pickLayout, screenSize } from './layout.ts';
+import {
+  DEFAULT_FOLD_TABS,
+  foldX,
+  isIPad,
+  parseFoldTabs,
+  parseLayoutPref,
+  pickLayout,
+  screenSize,
+  toggleFoldTab,
+} from './layout.ts';
 
 /** A full-screen window unless the screen is given. */
 const touch = (width: number, height: number, screenShort = Math.min(width, height)) => ({
@@ -104,6 +113,20 @@ describe('foldX', () => {
   it('falls back to half the window when the screen size is implausible', () => {
     expect(foldX(867, 678)).toBe(433.5); // the outer display
     expect(foldX(1400, 1920)).toBe(700); // a desktop window with the layout forced
+  });
+});
+
+describe('fold tabs', () => {
+  it('keeps the tabs a device chose, known ones only, in order', () => {
+    expect(parseFoldTabs(['progress', 'live', 'nope'])).toEqual(['live', 'progress']);
+    expect(parseFoldTabs(null)).toEqual(DEFAULT_FOLD_TABS);
+    expect(parseFoldTabs([])).toEqual(DEFAULT_FOLD_TABS);
+  });
+
+  it('switches one on or off, in its place, never leaving none', () => {
+    expect(toggleFoldTab(['live', 'log'], 'schedule')).toEqual(['live', 'schedule', 'log']);
+    expect(toggleFoldTab(['live', 'log'], 'live')).toEqual(['log']);
+    expect(toggleFoldTab(['log'], 'log')).toEqual(['log']);
   });
 });
 

@@ -16,11 +16,12 @@
   import { isStandalone } from '../../lib/device.ts';
   import { kioskUrl } from '../../lib/kiosk.ts';
   import { reportPath } from '../../lib/report.ts';
-  import { LAYOUT_PREFS } from '../../lib/layout.ts';
+  import { FOLD_TABS, LAYOUT_PREFS, toggleFoldTab } from '../../lib/layout.ts';
+  import { layout } from '../../lib/layout.svelte.ts';
   import { prefs, THEMES } from '../../lib/prefs.svelte.ts';
   import { getRoom } from '../../lib/room.svelte.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import { ui, type TabId } from '../../lib/ui.svelte.ts';
+  import { TAB_LABELS, ui, type TabId } from '../../lib/ui.svelte.ts';
   import AlertsSetting from '../AlertsSetting.svelte';
   import Dialog from '../ui/Dialog.svelte';
 
@@ -54,6 +55,12 @@
       icon: ChartNoAxesColumn,
     },
   ];
+
+  /** The iPhone Duo's information page: the tab on show, switched off, gives way to the first left. */
+  function toggleTab(tab: TabId) {
+    prefs.foldTabs = toggleFoldTab(prefs.foldTabs, tab);
+    if (tab === ui.tab && !prefs.foldTabs.includes(tab)) ui.tab = prefs.foldTabs[0]!;
+  }
 
   function openKiosk() {
     ui.moreOpen = false;
@@ -131,6 +138,23 @@
         {#each LAYOUT_PREFS as l (l.id)}<option value={l.id}>{l.name}</option>{/each}
       </select>
     </label>
+    {#if layout.kind === 'fold'}
+      <div class="field tabs">
+        <span class="label" id="fold-tabs">Tabs on this device</span>
+        <div class="chips" role="group" aria-labelledby="fold-tabs">
+          {#each FOLD_TABS as tab (tab)}
+            {@const on = prefs.foldTabs.includes(tab)}
+            <button
+              class="chip"
+              class:accent={on}
+              aria-pressed={on}
+              disabled={on && prefs.foldTabs.length === 1}
+              onclick={() => toggleTab(tab)}>{TAB_LABELS[tab]}</button
+            >
+          {/each}
+        </div>
+      </div>
+    {/if}
   </div>
 </Dialog>
 
@@ -184,5 +208,19 @@
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
     gap: 12px;
     padding: 0 8px;
+  }
+  .tabs {
+    grid-column: 1 / -1;
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .chips .chip {
+    height: 32px;
+    padding: 0 12px;
+    font-size: 13px;
+    cursor: pointer;
   }
 </style>
