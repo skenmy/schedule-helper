@@ -301,6 +301,18 @@ test.describe('iPhone Duo, installed, open like a book', () => {
     // `screen` says it's the outer display: picked as a foldable all the same.
     await expect(page.locator('html')).toHaveAttribute('data-layout', 'fold');
   });
+
+  test('measures its height again when the phone turns', async ({ page }) => {
+    // iOS changes the window without a word after a turn or an app switch, so the
+    // installed layout measures the large viewport itself, and must keep doing so.
+    await open(page);
+    const shell = page.locator('[data-shell]');
+    await expect(shell).toHaveCSS('height', '669px');
+    await page.setViewportSize({ width: 669, height: 867 });
+    await expect(shell).toHaveCSS('height', '867px');
+    await page.setViewportSize({ width: 867, height: 669 });
+    await expect(shell).toHaveCSS('height', '669px');
+  });
 });
 
 test.describe('iPhone Duo, installed, unfolded with the app open', () => {

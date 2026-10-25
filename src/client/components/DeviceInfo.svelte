@@ -14,6 +14,8 @@
   const units: HTMLElement[] = [];
   let insets = $state('');
   let heights = $state('');
+  /** How tall the layout itself is (the iPhone Duo's sizes its own shell). */
+  let shell = $state('');
 
   const width = $derived(innerWidth.current ?? window.innerWidth);
   const height = $derived(innerHeight.current ?? window.innerHeight);
@@ -32,6 +34,7 @@
         : '?',
     ],
     ['Viewport units', heights],
+    ['Layout height', shell],
     ['Pixel ratio', String(Math.round(devicePixelRatio * 1000) / 1000)],
     ['Safe area', insets],
     ['Installed', isStandalone() ? 'yes' : 'no'],
@@ -57,6 +60,8 @@
         .map((v) => parseFloat(v))
         .join(' ');
       heights = UNITS.map((u, i) => `${u} ${Math.round(units[i]!.offsetHeight)}`).join(' · ');
+      const layoutShell = document.querySelector('[data-shell]');
+      shell = layoutShell ? String(Math.round(layoutShell.getBoundingClientRect().height)) : '—';
     };
     const observer = new ResizeObserver(read);
     for (const el of [probe, ...units]) observer.observe(el);
