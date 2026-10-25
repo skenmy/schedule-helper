@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { foldX, isIPad, parseLayoutPref, pickLayout, screenSize } from './layout.ts';
+import {
+  foldX,
+  isIPad,
+  parseLayoutPref,
+  pickLayout,
+  screenSize,
+  staleWindowHeight,
+} from './layout.ts';
 
 /** A full-screen window unless the screen is given. */
 const touch = (width: number, height: number, screenShort = Math.min(width, height)) => ({
@@ -104,6 +111,19 @@ describe('foldX', () => {
   it('falls back to half the window when the screen size is implausible', () => {
     expect(foldX(867, 678)).toBe(433.5); // the outer display
     expect(foldX(1400, 1920)).toBe(700); // a desktop window with the layout forced
+  });
+});
+
+describe('staleWindowHeight', () => {
+  it('stretches an unfolded Duo whose window kept the status bar off its height too', () => {
+    expect(staleWindowHeight(867, 587, 951, 669)).toBe(669);
+  });
+
+  it('leaves every other window alone', () => {
+    expect(staleWindowHeight(867, 669, 951, 669)).toBeNull(); // the Duo, launched open
+    expect(staleWindowHeight(951, 585, 951, 669)).toBeNull(); // Safari's toolbars
+    expect(staleWindowHeight(867, 330, 951, 669)).toBeNull(); // the keyboard
+    expect(staleWindowHeight(393, 852, 393, 852)).toBeNull(); // any other phone
   });
 });
 

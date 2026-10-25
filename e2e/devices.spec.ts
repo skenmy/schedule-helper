@@ -259,9 +259,22 @@ test.describe('iPhone Duo, installed, open like a book', () => {
     // The middle of the screen (951 wide), not of the window.
     expect(live.x + live.width).toBeCloseTo(951 / 2, 0);
     expect(other.x).toBeCloseTo(951 / 2, 0);
-    expect(live.y + live.height).toBe(587);
+    expect(live.y + live.height).toBe(669);
     // `screen` says it's the outer display: picked as a foldable all the same.
     await expect(page.locator('html')).toHaveAttribute('data-layout', 'fold');
+  });
+});
+
+test.describe('iPhone Duo, installed, unfolded with the app open', () => {
+  test.use(IPHONE_DUO.bookUnfolded);
+  test.beforeEach(({ page }) => onDuo(page, 'bookUnfolded'));
+
+  test('reaches the bottom of the screen though iOS left the window short', async ({ page }) => {
+    await open(page);
+    const { live, other } = await halves(page);
+    expect(live.y + live.height).toBe(669);
+    expect(other.y + other.height).toBe(669);
+    expect(live.x + live.width).toBeCloseTo(951 / 2, 0);
   });
 });
 
