@@ -1,5 +1,5 @@
 import { devices, expect, test, type Page } from '@playwright/test';
-import { IPHONE_DUO } from './duo.ts';
+import { IPHONE_DUO, onDuo } from './duo.ts';
 
 // Touch layouts and the installed-app (offline) path. Device descriptors are
 // used for their viewport, user agent and touch settings; the browser is
@@ -201,6 +201,7 @@ async function fold(
 
 test.describe('iPhone Duo, open like a book', () => {
   test.use(IPHONE_DUO.book);
+  test.beforeEach(({ page }) => onDuo(page, 'book'));
 
   test('puts the live run on one page and the tools on the other', async ({ page }) => {
     await open(page);
@@ -250,6 +251,7 @@ test.describe('iPhone Duo, open like a book', () => {
 
 test.describe('iPhone Duo, installed, open like a book', () => {
   test.use(IPHONE_DUO.bookInstalled);
+  test.beforeEach(({ page }) => onDuo(page, 'bookInstalled'));
 
   test('keeps the pages on the crease, with the status bar off the window', async ({ page }) => {
     await open(page);
@@ -257,12 +259,15 @@ test.describe('iPhone Duo, installed, open like a book', () => {
     // The middle of the screen (951 wide), not of the window.
     expect(live.x + live.width).toBeCloseTo(951 / 2, 0);
     expect(other.x).toBeCloseTo(951 / 2, 0);
-    expect(live.y + live.height).toBe(669);
+    expect(live.y + live.height).toBe(587);
+    // `screen` says it's the outer display: picked as a foldable all the same.
+    await expect(page.locator('html')).toHaveAttribute('data-layout', 'fold');
   });
 });
 
 test.describe('iPhone Duo, tabletop', () => {
   test.use(IPHONE_DUO.tabletop);
+  test.beforeEach(({ page }) => onDuo(page, 'tabletop'));
 
   test('stands the live run up top and docks the controls on the flat half', async ({ page }) => {
     await open(page);
@@ -304,6 +309,7 @@ test.describe('iPhone Duo, tabletop', () => {
 
 test.describe('iPhone Duo, closed', () => {
   test.use(IPHONE_DUO.closed);
+  test.beforeEach(({ page }) => onDuo(page, 'closed'));
 
   test('gets the phone layout on the outer screen', async ({ page }) => {
     await open(page);

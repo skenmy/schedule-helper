@@ -19,7 +19,7 @@
   import { clock } from '../lib/clock.svelte.ts';
   import { keepAwake } from '../lib/device.ts';
   import { fmtClock } from '../lib/format.ts';
-  import { foldX, TABLET_MODES } from '../lib/layout.ts';
+  import { foldX, screenSize, TABLET_MODES } from '../lib/layout.ts';
   import { prefs } from '../lib/prefs.svelte.ts';
   import { ui } from '../lib/ui.svelte.ts';
 
@@ -52,7 +52,10 @@
   const floor = $derived(prefs.tabletMode === 'floor');
   /** Side by side, where the pages meet: on the crease, not half the window. */
   const split = $derived(
-    foldX(innerWidth.current ?? window.innerWidth, screen.width, screen.height),
+    foldX(
+      innerWidth.current ?? window.innerWidth,
+      screenSize(screen.width, screen.height, outerWidth, outerHeight).long,
+    ),
   );
 
   // An operator's phone shouldn't lock mid-show, setup gaps included.

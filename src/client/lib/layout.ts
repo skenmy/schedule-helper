@@ -61,15 +61,33 @@ export function pickLayout(env: LayoutEnv, pref: LayoutPref = 'auto'): LayoutKin
 }
 
 /**
+ * The screen the window is on, short side first. `screen` usually says, but an
+ * open iPhone Duo reports its outer display (466 × 678) while the app fills the
+ * inner screen, which the window's outer size (951 × 669) gives away. The larger
+ * of the two; an outer size the browser doesn't report (0) changes nothing.
+ */
+export function screenSize(
+  screenWidth: number,
+  screenHeight: number,
+  outerWidth: number,
+  outerHeight: number,
+): { short: number; long: number } {
+  return {
+    short: Math.max(Math.min(screenWidth, screenHeight), Math.min(outerWidth, outerHeight)),
+    long: Math.max(screenWidth, screenHeight, outerWidth, outerHeight),
+  };
+}
+
+/**
  * Where a foldable open like a book folds, from the window's left edge. It folds
  * down the middle of the screen, but installed on the iPhone Duo the status bar
  * is a column down the right of the screen, whichever way round the phone is,
  * and the window stops at it: half the window is left of the crease.
- * `screen` is trusted only while it plausibly describes this screen, with the
- * crease at or right of the window's middle and not far past it.
+ * The screen's size is trusted only while it's plausible, with the crease at or
+ * right of the window's middle and not far past it.
  */
-export function foldX(windowWidth: number, screenWidth: number, screenHeight: number): number {
-  const middle = Math.max(screenWidth, screenHeight) / 2;
+export function foldX(windowWidth: number, screenLong: number): number {
+  const middle = screenLong / 2;
   return middle >= windowWidth / 2 && middle <= windowWidth * 0.6 ? middle : windowWidth / 2;
 }
 
