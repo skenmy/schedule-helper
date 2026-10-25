@@ -3,7 +3,8 @@
 
 import type { RoomRef } from '../../shared/types.ts';
 import { DEFAULT_KIOSK, type KioskConfig } from './kiosk.ts';
-import { parseLayoutPref, type LayoutPref, type TabletMode } from './layout.ts';
+import { parseFoldTabs, parseLayoutPref, type LayoutPref, type TabletMode } from './layout.ts';
+import type { TabId } from './ui.svelte.ts';
 
 export const THEMES = [
   { id: 'green', name: 'Green' },
@@ -72,6 +73,8 @@ class Prefs {
   tabletMode = $state<TabletMode>(
     read<string>('sh.tabletMode', 'console') === 'floor' ? 'floor' : 'console',
   );
+  /** The iPhone Duo's information page: which tabs it shows on this device. */
+  foldTabs = $state<TabId[]>(parseFoldTabs(read('sh.foldTabs', null)));
 
   constructor() {
     $effect.root(() => {
@@ -82,6 +85,7 @@ class Prefs {
       $effect(() => write('sh.logFilter', this.logFilter));
       $effect(() => write('sh.layout', this.layout));
       $effect(() => write('sh.tabletMode', this.tabletMode));
+      $effect(() => write('sh.foldTabs', this.foldTabs));
     });
   }
 

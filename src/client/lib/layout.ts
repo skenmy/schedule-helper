@@ -1,9 +1,11 @@
 // Which interface a device gets. Pure so the rules can be unit-tested; the
 // reactive wrapper that feeds it live window sizes is layout.svelte.ts.
 
+import type { TabId } from './ui.svelte.ts';
+
 export type LayoutKind = 'phone' | 'fold' | 'tablet' | 'desktop';
 export type LayoutPref = 'auto' | LayoutKind;
-/** Tablet and foldable: the full console, or a focused view for a floor/stage manager. */
+/** Tablet: the full console, or a focused view for a floor/stage manager. */
 export type TabletMode = 'console' | 'floor';
 export const TABLET_MODES: readonly { value: TabletMode; label: string }[] = [
   { value: 'console', label: 'Console' },
@@ -89,6 +91,35 @@ export function screenSize(
 export function foldX(windowWidth: number, screenLong: number): number {
   const middle = screenLong / 2;
   return middle >= windowWidth / 2 && middle <= windowWidth * 0.6 ? middle : windowWidth / 2;
+}
+
+/**
+ * The iPhone Duo's information page: every tab it can show, in the order it
+ * shows them. Which ones it does is up to each device (`prefs.foldTabs`).
+ */
+export const FOLD_TABS = [
+  'live',
+  'timeline',
+  'schedule',
+  'log',
+  'capture',
+  'broadcast',
+  'kiosk',
+  'progress',
+] as const satisfies readonly TabId[];
+export const DEFAULT_FOLD_TABS: readonly TabId[] = ['live', 'timeline', 'schedule', 'log'];
+
+/** The tabs a device chose, from storage: known ones only, in order, never none. */
+export function parseFoldTabs(value: unknown): TabId[] {
+  const chosen = Array.isArray(value) ? value : [];
+  const tabs = FOLD_TABS.filter((t) => chosen.includes(t));
+  return tabs.length ? tabs : [...DEFAULT_FOLD_TABS];
+}
+
+/** Shows or hides one tab, keeping the order and at least one tab. */
+export function toggleFoldTab(tabs: readonly TabId[], tab: TabId): TabId[] {
+  const next = tabs.includes(tab) ? tabs.filter((t) => t !== tab) : [...tabs, tab];
+  return next.length ? FOLD_TABS.filter((t) => next.includes(t)) : [...tabs];
 }
 
 /**

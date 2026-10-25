@@ -4,8 +4,19 @@ import type { RunKey } from '../../shared/types.ts';
 import { layout } from './layout.svelte.ts';
 import { prefs } from './prefs.svelte.ts';
 
+/** `live` is the current run, a tab only on the iPhone Duo's information page. */
 export type TabId =
-  'schedule' | 'log' | 'capture' | 'broadcast' | 'kiosk' | 'progress' | 'timeline';
+  'live' | 'schedule' | 'log' | 'capture' | 'broadcast' | 'kiosk' | 'progress' | 'timeline';
+export const TAB_LABELS: Record<TabId, string> = {
+  live: 'Live',
+  timeline: 'Timeline',
+  schedule: 'Schedule',
+  log: 'Event log',
+  capture: 'Stream capture',
+  broadcast: 'Broadcast',
+  kiosk: 'Kiosk',
+  progress: 'Progress',
+};
 /** `tool` shows the active workspace tab (capture, broadcast, kiosk, progress, timeline). */
 export type MobileView = 'now' | 'upnext' | 'schedule' | 'log' | 'tool';
 
@@ -20,7 +31,8 @@ export interface ConfirmRequest {
 }
 
 class UI {
-  tab = $state<TabId>('schedule');
+  /** Layouts without a Live tab show Schedule in its place. */
+  tab = $state<TabId>('live');
   mobileView = $state<MobileView>('now');
   moreOpen = $state(false);
   /** Run whose detail sheet is open. */
@@ -42,10 +54,10 @@ class UI {
   /** Opens a workspace tab, switching phones and tablets to where tabs live. */
   openTab(tab: TabId): void {
     this.tab = tab;
-    this.mobileView = tab === 'schedule' || tab === 'log' ? tab : 'tool';
+    this.mobileView = tab === 'live' ? 'now' : tab === 'schedule' || tab === 'log' ? tab : 'tool';
     this.moreOpen = false;
-    // Tools live in the console; the floor view has no tabs.
-    if (layout.kind === 'tablet' || layout.kind === 'fold') prefs.tabletMode = 'console';
+    // Tools live in the tablet's console; its floor view has no tabs.
+    if (layout.kind === 'tablet') prefs.tabletMode = 'console';
   }
 
   reset(): void {

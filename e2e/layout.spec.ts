@@ -144,7 +144,18 @@ for (const [name, use, wide, duo] of [
 ] as const) {
   test.describe(name, () => {
     test.use(use);
-    if (duo) test.beforeEach(({ page }) => onDuo(page, duo));
+    if (duo) {
+      test.beforeEach(async ({ page }) => {
+        await onDuo(page, duo);
+        // Every tab on, so the sweep below finds them on the Duo's information page.
+        await page.addInitScript(() =>
+          localStorage.setItem(
+            'sh.foldTabs',
+            JSON.stringify(['live', 'schedule', 'log', 'progress']),
+          ),
+        );
+      });
+    }
 
     test('the floor view fits long titles', async ({ page }) => {
       await open(page, 'floor');

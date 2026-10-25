@@ -46,9 +46,11 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
     an open iPhone Duo's `screen` is its outer display, and only the window's outer size gives the
     inner one away. Help → _This device_ shows every number the layout is picked from.
   - `views/` Landing, RoomView (connection owner, picks the view by `layout.kind`), Conductor
-    (desktop), TabletConductor (iPad: console / floor modes), FoldConductor (iPhone Duo open: two
-    panes that meet on the fold, side by side or stacked; follows the Viewport Segments API when the
-    browser has it; shares the tablet's modes), MobileConductor, Kiosk (`?kiosk=1`),
+    (desktop), TabletConductor (iPad: console / floor modes), FoldConductor (iPhone Duo open: an
+    information page, the status over `Workspace` tabs with Live first and the rest chosen per device
+    in `prefs.foldTabs`, and a controls page, on deck and the run controls; side by side or stacked,
+    meeting on the fold, following the Viewport Segments API when the browser has it; no modes),
+    MobileConductor, Kiosk (`?kiosk=1`),
     Report (`?report=1`, read-only; `components/report/DeltaChart.svelte` is its chart),
     RunnerCheckIn (`?checkin={key}&t={token}`, a runner's own page; `lib/checkin.ts`)
   - `components/touch/` Transport (run controls for touch), OnDeck (floor check-ins), MoreSheet
