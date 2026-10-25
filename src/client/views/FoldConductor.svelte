@@ -16,7 +16,7 @@
   import OnDeck from '../components/touch/OnDeck.svelte';
   import Transport from '../components/touch/Transport.svelte';
   import { clock } from '../lib/clock.svelte.ts';
-  import { isStandalone, keepAwake, largeViewportHeight } from '../lib/device.ts';
+  import { keepAwake } from '../lib/device.ts';
   import { fmtClock } from '../lib/format.ts';
   import { foldX, screenSize } from '../lib/layout.ts';
   import { prefs } from '../lib/prefs.svelte.ts';
@@ -58,42 +58,6 @@
       screenSize(screen.width, screen.height, outerWidth, outerHeight).long,
     ),
   );
-  /** Launched from the Home Screen: no browser toolbars to make room for. */
-  const installed = isStandalone();
-  /**
-   * Installed, the large viewport's height, measured afresh. After an app
-   * switch or a turn, iOS leaves the window a status bar short on the Duo and
-   * fires nothing, and even a shell already sized by 100lvh keeps the short
-   * height (a dialog opened then measured the whole screen behind a gap). So
-   * it's measured whenever the app comes to the front, turns or resizes, and
-   * again a moment later, once iOS has settled.
-   */
-  let height = $state<number | null>(null);
-  $effect(() => {
-    if (!installed) return;
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    const measure = () => (height = largeViewportHeight());
-    const remeasure = () => {
-      if (document.visibilityState !== 'visible') return;
-      timers.forEach(clearTimeout);
-      measure();
-      timers.splice(0, Infinity, setTimeout(measure, 300), setTimeout(measure, 1000));
-    };
-    remeasure();
-    const targets: [EventTarget | null, string][] = [
-      [document, 'visibilitychange'],
-      [window, 'pageshow'],
-      [window, 'focus'],
-      [window, 'orientationchange'],
-      [window, 'resize'],
-      [window.visualViewport, 'resize'],
-    ];
-    for (const [target, type] of targets) target?.addEventListener(type, remeasure);
-    return () => {
-      for (const [target, type] of targets) target?.removeEventListener(type, remeasure);
-      timers.forEach(clearTimeout);
-    };
-  });
   /** The tabs this device chose, and a tool opened from More or search while it's open. */
   const tabs = $derived(
     prefs.foldTabs.includes(ui.tab) || ui.tab === 'live'
@@ -117,14 +81,7 @@
   });
 </script>
 
-<div
-  class="fold"
-  class:stacked
-  class:installed
-  style:--fold-x="{split}px"
-  style:height={height ? `${height}px` : undefined}
-  data-shell
->
+<div class="fold" class:stacked style:--fold-x="{split}px" data-shell>
   <section class="pane info" aria-label="Information">
     <TopBar variant="phone" />
     <AnnouncementBanner />
@@ -170,11 +127,15 @@
 <style>
   /* ── Book: two pages, split where the screen folds ──────────────────── */
   .fold {
-    /* Pinned to the window rather than 100dvh, which iOS shortens on an installed
-       Duo by the status bar's width (a column down the side). */
+    /* Pinned to the window, and never past it. Installed on the Duo, iOS takes the
+       status bar's width (a column down the side) off 100dvh; and after an app
+       switch or a turn it leaves the window a status bar short at the bottom
+       (867 × 587 on a 951 × 669 screen) until the app is reopened, showing only
+       that much: a layout stretched to the screen (100lvh still says 669) has its
+       controls cut off, measured on one. An empty band beats hidden controls. */
     position: fixed;
     inset: 0;
-    /* The docked controls sit on its bottom edge, stretched or not. */
+    /* The docked controls sit on its bottom edge. */
     contain: layout;
     padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
     display: grid;
@@ -184,15 +145,6 @@
         1fr
       );
     grid-template-rows: minmax(0, 1fr);
-  }
-  /* Installed on the Duo, iOS leaves the window a status bar short at the bottom
-     (867 × 587 on a 951 × 669 screen) after unfolding, switching back to the
-     app or turning it, until it's reopened, and says nothing when it does. The
-     large viewport stays the whole screen, and with no browser toolbars to come
-     and go it's the right height whenever the app is in front; the script keeps
-     it measured. Not in Safari, where it's taller than what shows. */
-  .installed {
-    height: 100lvh;
   }
   .pane {
     display: flex;

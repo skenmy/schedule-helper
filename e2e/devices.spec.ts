@@ -213,8 +213,6 @@ test.describe('iPhone Duo, open like a book', () => {
     const middle = page.viewportSize()!.width / 2;
     expect(info.x + info.width).toBeCloseTo(middle, 0);
     expect(controls.x).toBeCloseTo(middle, 0);
-    // In Safari the large viewport is taller than what shows: never sized by it.
-    await expect(page.locator('.fold')).not.toHaveClass(/\binstalled\b/);
     // The run controls and the check-ins under the right thumb.
     const transport = page.getByRole('region', { name: 'Timer controls' });
     const next = (await transport.getByRole('button', { name: /^Next: / }).boundingBox())!;
@@ -302,9 +300,7 @@ test.describe('iPhone Duo, installed, open like a book', () => {
     await expect(page.locator('html')).toHaveAttribute('data-layout', 'fold');
   });
 
-  test('measures its height again when the phone turns', async ({ page }) => {
-    // iOS changes the window without a word after a turn or an app switch, so the
-    // installed layout measures the large viewport itself, and must keep doing so.
+  test('follows the window when the phone turns', async ({ page }) => {
     await open(page);
     const shell = page.locator('[data-shell]');
     await expect(shell).toHaveCSS('height', '669px');
@@ -319,13 +315,15 @@ test.describe('iPhone Duo, installed, unfolded with the app open', () => {
   test.use(IPHONE_DUO.bookUnfolded);
   test.beforeEach(({ page }) => onDuo(page, 'bookUnfolded'));
 
-  test('is sized by the large viewport, which iOS keeps the whole screen', async ({ page }) => {
+  test('fits the window iOS leaves it, so no control is cut off', async ({ page }) => {
+    // On the Duo, after an app switch or a turn, iOS shows only the window (587 of
+    // the screen's 669, though 100lvh says 669): the layout must stay inside it.
     await open(page);
-    // On the Duo, 100lvh is 669 while the window is left at 587. Chromium's large
-    // viewport is the window, so this checks the rule applies, and only installed.
-    await expect(page.locator('.fold')).toHaveClass(/\binstalled\b/);
-    const { info } = await halves(page);
+    const { info, controls } = await halves(page);
     expect(info.y + info.height).toBe(587);
+    expect(controls.y + controls.height).toBe(587);
+    const transport = (await page.getByRole('region', { name: 'Timer controls' }).boundingBox())!;
+    expect(transport.y + transport.height).toBeLessThanOrEqual(587);
     expect(info.x + info.width).toBeCloseTo(951 / 2, 0);
   });
 });
