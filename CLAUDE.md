@@ -44,7 +44,9 @@ TypeScript server, shared pure logic. See README.md for features, the protocol a
     size, screen size, `pointer: coarse` and iPad detection, plus the per-device `prefs.layout`
     override. Sets `<html data-layout data-touch>` for CSS. Read the screen through `screenSize()`:
     an open iPhone Duo's `screen` is its outer display, and only the window's outer size gives the
-    inner one away. Help → _This device_ shows every number the layout is picked from.
+    inner one away. Installed on the Duo, iOS can leave the window short of the screen after an app
+    switch or a turn and shows only the window (`lvh` still says the whole screen): size layouts to
+    the window, never past it. Help → _This device_ shows every number the layout is picked from.
   - `views/` Landing, RoomView (connection owner, picks the view by `layout.kind`), Conductor
     (desktop), TabletConductor (iPad: console / floor modes), FoldConductor (iPhone Duo open: an
     information page, the status over `Workspace` tabs with Live first and the rest chosen per device

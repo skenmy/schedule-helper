@@ -4,8 +4,8 @@ import type { Page } from '@playwright/test';
 // Safari's own (WebKit's Safari 27.1 notes: 669 × 867 open in portrait,
 // 951 × 585 in landscape, 382 × 580 on the outer screen) and the installed
 // app's, measured on one: the status bar is a column down the right, and
-// unfolded with the app open, iOS leaves the window short of the bottom too
-// (867 × 587) until it's reopened. `screen` describes the outer display
+// after unfolding, an app switch or a turn, iOS leaves the window short of
+// the bottom too (867 × 587), showing only that, until it's reopened. `screen` describes the outer display
 // (466 × 678) open or closed; only the window's outer size gives the inner
 // screen away. Playwright can't set that, or say the app is installed, so
 // `onDuo` does.
@@ -24,7 +24,7 @@ export const IPHONE_DUO = {
   book: { ...base, viewport: { width: 951, height: 585 } },
   /** The same, installed to the Home Screen: the status bar is a column down the right. */
   bookInstalled: { ...base, viewport: { width: 867, height: 669 } },
-  /** Installed and unfolded with the app open: iOS leaves the window short at the bottom. */
+  /** Installed, after unfolding, an app switch or a turn: iOS leaves the window short at the bottom. */
   bookUnfolded: { ...base, viewport: { width: 867, height: 587 } },
   /** Open in portrait: the fold runs across. */
   tabletop: { ...base, viewport: { width: 669, height: 867 } },
