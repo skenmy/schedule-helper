@@ -10,6 +10,7 @@
   import { router } from '../lib/router.svelte.ts';
   import { ui } from '../lib/ui.svelte.ts';
   import Conductor from './Conductor.svelte';
+  import FoldConductor from './FoldConductor.svelte';
   import Kiosk from './Kiosk.svelte';
   import MobileConductor from './MobileConductor.svelte';
   import Report from './Report.svelte';
@@ -101,6 +102,8 @@
   <Report />
 {:else if layout.kind === 'phone'}
   <MobileConductor />
+{:else if layout.kind === 'fold'}
+  <FoldConductor />
 {:else if layout.kind === 'tablet'}
   <TabletConductor />
 {:else}

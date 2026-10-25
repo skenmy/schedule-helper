@@ -41,6 +41,24 @@ describe('pickLayout', () => {
     expect(pickLayout(touch(1180, 420, 820))).toBe('tablet');
   });
 
+  it('gives an open iPhone Duo the foldable layout in both orientations', () => {
+    // Safari's viewports on the inner screen (WebKit, Safari 27.1).
+    expect(pickLayout(touch(669, 867, 669))).toBe('fold');
+    expect(pickLayout(touch(951, 585, 669))).toBe('fold');
+    // The keyboard squashes the window, not its width.
+    expect(pickLayout(touch(951, 280, 669))).toBe('fold');
+  });
+
+  it('gives a closed or split iPhone Duo the phone layout', () => {
+    // The outer screen, whichever screen `screen` describes.
+    expect(pickLayout(touch(382, 580))).toBe('phone');
+    expect(pickLayout(touch(594, 368))).toBe('phone');
+    expect(pickLayout(touch(382, 580, 669))).toBe('phone');
+    expect(pickLayout(touch(594, 368, 669))).toBe('phone');
+    // Two windows side by side on the inner screen.
+    expect(pickLayout(touch(385, 571, 669))).toBe('phone');
+  });
+
   it('keeps desktop browsers on the old breakpoint', () => {
     expect(pickLayout(mouse(1440, 900))).toBe('desktop');
     expect(pickLayout(mouse(1000, 700))).toBe('desktop');
@@ -52,6 +70,12 @@ describe('pickLayout', () => {
     expect(pickLayout(mouse(1440, 900), 'tablet')).toBe('tablet');
     expect(pickLayout(touch(1180, 820), 'desktop')).toBe('desktop');
     expect(pickLayout(touch(390, 844), 'auto')).toBe('phone');
+  });
+
+  it('keeps a foldable chosen by hand on the phone layout while it is closed', () => {
+    expect(pickLayout(touch(1028, 876), 'fold')).toBe('fold'); // Galaxy Z Fold, open
+    expect(pickLayout(touch(484, 1112), 'fold')).toBe('phone'); // and closed
+    expect(pickLayout(mouse(1440, 900), 'fold')).toBe('fold');
   });
 });
 
@@ -68,6 +92,7 @@ describe('isIPad', () => {
 describe('parseLayoutPref', () => {
   it('rejects unknown values', () => {
     expect(parseLayoutPref('tablet')).toBe('tablet');
+    expect(parseLayoutPref('fold')).toBe('fold');
     expect(parseLayoutPref('watch')).toBe('auto');
     expect(parseLayoutPref(null)).toBe('auto');
   });

@@ -1,4 +1,5 @@
 import { devices, expect, test, type Page } from '@playwright/test';
+import { IPHONE_DUO } from './duo.ts';
 
 // Touch layouts must fit whatever a marathon's schedule says. Every run title,
 // category and runner on screen is swapped for something long (and some of it
@@ -133,13 +134,15 @@ async function open(page: Page, mode?: 'floor' | 'console') {
   await expect(page.locator('article.now')).toBeVisible();
 }
 
-for (const [name, wide] of [
-  ['iPad Mini landscape', true],
-  ['iPad Pro 11 landscape', true],
-  ['iPad Pro 11', false],
+for (const [name, use, wide] of [
+  ['iPad Mini landscape', device('iPad Mini landscape'), true],
+  ['iPad Pro 11 landscape', device('iPad Pro 11 landscape'), true],
+  ['iPad Pro 11', device('iPad Pro 11'), false],
+  ['iPhone Duo, book', IPHONE_DUO.book, true],
+  ['iPhone Duo, tabletop', IPHONE_DUO.tabletop, true],
 ] as const) {
   test.describe(name, () => {
-    test.use(device(name));
+    test.use(use);
 
     test('the floor view fits long titles', async ({ page }) => {
       await open(page, 'floor');

@@ -1,14 +1,19 @@
 // Which interface a device gets. Pure so the rules can be unit-tested; the
 // reactive wrapper that feeds it live window sizes is layout.svelte.ts.
 
-export type LayoutKind = 'phone' | 'tablet' | 'desktop';
+export type LayoutKind = 'phone' | 'fold' | 'tablet' | 'desktop';
 export type LayoutPref = 'auto' | LayoutKind;
-/** Tablet only: the full console, or a focused view for a floor/stage manager. */
+/** Tablet and foldable: the full console, or a focused view for a floor/stage manager. */
 export type TabletMode = 'console' | 'floor';
+export const TABLET_MODES: readonly { value: TabletMode; label: string }[] = [
+  { value: 'console', label: 'Console' },
+  { value: 'floor', label: 'Floor' },
+];
 
 export const LAYOUT_PREFS: readonly { id: LayoutPref; name: string }[] = [
   { id: 'auto', name: 'Automatic' },
   { id: 'phone', name: 'Phone' },
+  { id: 'fold', name: 'Foldable (iPhone Duo)' },
   { id: 'tablet', name: 'Tablet' },
   { id: 'desktop', name: 'Desktop' },
 ];
@@ -31,13 +36,27 @@ export interface LayoutEnv {
 const DESKTOP_PHONE_MAX = 820;
 /** A touch screen shorter than this on its short side is a phone, in either orientation. */
 const PHONE_SHORT_SIDE = 500;
+/**
+ * Between a phone and the smallest iPad (the mini, 744): a foldable's inner
+ * screen. The iPhone Duo's is 669 × 951.
+ */
+const TABLET_SHORT_SIDE = 744;
+/**
+ * A foldable window narrower than this is the outer screen (the iPhone Duo's
+ * is 382 wide, 594 turned) or half of a Split View (385), so it's a phone.
+ * Open, the Duo is 669 wide or more. Width alone, so the keyboard can't flip it.
+ */
+const FOLD_MIN_WIDTH = 620;
 /** iPad Split View / Slide Over narrower than this gets the phone layout. */
 const TABLET_MIN_WIDTH = 700;
 
 export function pickLayout(env: LayoutEnv, pref: LayoutPref = 'auto'): LayoutKind {
+  // Chosen by hand, a foldable still gets the phone layout while it's closed.
+  if (pref === 'fold') return env.width < FOLD_MIN_WIDTH ? 'phone' : 'fold';
   if (pref !== 'auto') return pref;
   if (!env.touch) return env.width <= DESKTOP_PHONE_MAX ? 'phone' : 'desktop';
   if (env.screenShort < PHONE_SHORT_SIDE) return 'phone';
+  if (env.screenShort < TABLET_SHORT_SIDE) return env.width < FOLD_MIN_WIDTH ? 'phone' : 'fold';
   return env.width < TABLET_MIN_WIDTH ? 'phone' : 'tablet';
 }
 

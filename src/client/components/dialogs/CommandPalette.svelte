@@ -197,7 +197,7 @@
       })),
     ];
     if (layout.kind !== 'desktop') items.push(tab('timeline', 'Timeline'));
-    if (layout.kind === 'tablet') {
+    if (layout.kind === 'tablet' || layout.kind === 'fold') {
       const floor = prefs.tabletMode === 'floor';
       items.push({
         id: 'mode',
