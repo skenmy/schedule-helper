@@ -390,4 +390,11 @@
     text-align: right;
     white-space: nowrap;
   }
+  /* A narrow panel (a phone, a page of an iPhone Duo): closer columns, so the times fit. */
+  @container panel (max-width: 420px) {
+    th,
+    td {
+      padding-inline: 6px;
+    }
+  }
 </style>

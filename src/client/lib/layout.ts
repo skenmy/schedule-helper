@@ -61,16 +61,54 @@ export function pickLayout(env: LayoutEnv, pref: LayoutPref = 'auto'): LayoutKin
 }
 
 /**
+ * The screen the window is on, short side first. `screen` usually says, but an
+ * open iPhone Duo reports its outer display (466 × 678) while the app fills the
+ * inner screen, which the window's outer size (951 × 669) gives away. The larger
+ * of the two; an outer size the browser doesn't report (0) changes nothing.
+ */
+export function screenSize(
+  screenWidth: number,
+  screenHeight: number,
+  outerWidth: number,
+  outerHeight: number,
+): { short: number; long: number } {
+  return {
+    short: Math.max(Math.min(screenWidth, screenHeight), Math.min(outerWidth, outerHeight)),
+    long: Math.max(screenWidth, screenHeight, outerWidth, outerHeight),
+  };
+}
+
+/**
  * Where a foldable open like a book folds, from the window's left edge. It folds
  * down the middle of the screen, but installed on the iPhone Duo the status bar
  * is a column down the right of the screen, whichever way round the phone is,
  * and the window stops at it: half the window is left of the crease.
- * `screen` is trusted only while it plausibly describes this screen, with the
- * crease at or right of the window's middle and not far past it.
+ * The screen's size is trusted only while it's plausible, with the crease at or
+ * right of the window's middle and not far past it.
  */
-export function foldX(windowWidth: number, screenWidth: number, screenHeight: number): number {
-  const middle = Math.max(screenWidth, screenHeight) / 2;
+export function foldX(windowWidth: number, screenLong: number): number {
+  const middle = screenLong / 2;
   return middle >= windowWidth / 2 && middle <= windowWidth * 0.6 ? middle : windowWidth / 2;
+}
+
+/**
+ * The height an installed app's window should have, when the browser has it
+ * wrong. Unfolding an iPhone Duo with the app open leaves its window a status
+ * bar short in height as well as width (867 × 587 on a 951 × 669 screen) until
+ * the app is reopened, though the page still reaches the bottom edge (the home
+ * indicator's inset says so). That signature, short by about the same in both
+ * directions, gets the screen's height; anything else (a fresh launch, the
+ * keyboard) gets `null`, and the window's own height stands.
+ */
+export function staleWindowHeight(
+  innerWidth: number,
+  innerHeight: number,
+  outerWidth: number,
+  outerHeight: number,
+): number | null {
+  const short = outerHeight - innerHeight;
+  const narrow = outerWidth - innerWidth;
+  return short > 0 && narrow > 0 && Math.abs(short - narrow) <= 8 ? outerHeight : null;
 }
 
 /**

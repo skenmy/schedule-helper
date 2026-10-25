@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Ellipsis, Search } from '@lucide/svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { innerWidth } from 'svelte/reactivity/window';
+  import { innerHeight, innerWidth } from 'svelte/reactivity/window';
   import AnnouncementBanner from '../components/conductor/AnnouncementBanner.svelte';
   import DetectionBanner from '../components/conductor/DetectionBanner.svelte';
   import MiniLog from '../components/conductor/MiniLog.svelte';
@@ -17,9 +17,9 @@
   import Transport from '../components/touch/Transport.svelte';
   import Segmented from '../components/ui/Segmented.svelte';
   import { clock } from '../lib/clock.svelte.ts';
-  import { keepAwake } from '../lib/device.ts';
+  import { isStandalone, keepAwake } from '../lib/device.ts';
   import { fmtClock } from '../lib/format.ts';
-  import { foldX, TABLET_MODES } from '../lib/layout.ts';
+  import { foldX, screenSize, staleWindowHeight, TABLET_MODES } from '../lib/layout.ts';
   import { prefs } from '../lib/prefs.svelte.ts';
   import { ui } from '../lib/ui.svelte.ts';
 
@@ -52,7 +52,21 @@
   const floor = $derived(prefs.tabletMode === 'floor');
   /** Side by side, where the pages meet: on the crease, not half the window. */
   const split = $derived(
-    foldX(innerWidth.current ?? window.innerWidth, screen.width, screen.height),
+    foldX(
+      innerWidth.current ?? window.innerWidth,
+      screenSize(screen.width, screen.height, outerWidth, outerHeight).long,
+    ),
+  );
+  /** Installed, a window iOS left short after unfolding is stretched to the screen. */
+  const height = $derived(
+    isStandalone()
+      ? staleWindowHeight(
+          innerWidth.current ?? window.innerWidth,
+          innerHeight.current ?? window.innerHeight,
+          outerWidth,
+          outerHeight,
+        )
+      : null,
   );
 
   // An operator's phone shouldn't lock mid-show, setup gaps included.
@@ -71,7 +85,13 @@
   });
 </script>
 
-<div class="fold" class:stacked class:floor style:--fold-x="{split}px">
+<div
+  class="fold"
+  class:stacked
+  class:floor
+  style:--fold-x="{split}px"
+  style:height={height ? `${height}px` : undefined}
+>
   <section class="pane live" aria-label="Live run">
     <TopBar variant="phone" />
     <AnnouncementBanner />
@@ -123,6 +143,8 @@
        which left a band of nothing along the bottom. */
     position: fixed;
     inset: 0;
+    /* The docked controls sit on its bottom edge, stretched or not. */
+    contain: layout;
     padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
     display: grid;
     /* Measured from the window's edge, not the safe area's. */

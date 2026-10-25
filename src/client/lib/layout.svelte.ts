@@ -4,7 +4,7 @@
 
 import { MediaQuery } from 'svelte/reactivity';
 import { innerHeight, innerWidth } from 'svelte/reactivity/window';
-import { isIPad, pickLayout, type LayoutKind } from './layout.ts';
+import { isIPad, pickLayout, screenSize, type LayoutKind } from './layout.ts';
 import { prefs } from './prefs.svelte.ts';
 
 const ipad = isIPad(navigator.userAgent, navigator.maxTouchPoints ?? 0);
@@ -18,7 +18,7 @@ class Layout {
       {
         width: innerWidth.current ?? window.innerWidth,
         height: innerHeight.current ?? window.innerHeight,
-        screenShort: Math.min(screen.width, screen.height),
+        screenShort: screenSize(screen.width, screen.height, outerWidth, outerHeight).short,
         touch: this.touch,
       },
       prefs.layout,
