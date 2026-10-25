@@ -1,5 +1,6 @@
 <script lang="ts">
   import { ui } from '../../lib/ui.svelte.ts';
+  import DeviceInfo from '../DeviceInfo.svelte';
   import Dialog from '../ui/Dialog.svelte';
 
   const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl';
@@ -76,6 +77,9 @@
       by hand.
     </li>
   </ul>
+
+  <h3 class="label">This device</h3>
+  <DeviceInfo />
 </Dialog>
 
 <style>

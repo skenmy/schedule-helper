@@ -33,6 +33,9 @@ function isAppleTouch(): boolean {
   return /iPhone|iPad|Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1;
 }
 
+/** The build this page's code came from (`BUILD_SHA`, or `dev`). */
+export const BUILD = __BUILD__;
+
 /** Launched from the Home Screen (iOS, iPadOS, Android) rather than a browser tab. */
 export function isStandalone(): boolean {
   return (
