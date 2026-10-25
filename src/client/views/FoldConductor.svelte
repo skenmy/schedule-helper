@@ -113,8 +113,13 @@
 <style>
   /* ── Book: two pages, split where the screen folds ──────────────────── */
   .fold {
+    /* Pinned to the window, not sized in viewport units: installed on the Duo, iOS
+       takes the status bar's width (a column down the side) off 100dvh as well,
+       which left a band of nothing along the bottom. */
+    position: fixed;
+    inset: 0;
+    padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
     display: grid;
-    height: 100dvh;
     /* Half the screen, not half the safe area: the Duo's insets aren't symmetric. */
     grid-template-columns: calc(50vw - env(safe-area-inset-left, 0px)) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr);
@@ -168,7 +173,7 @@
   /* ── Tabletop: the live run up top, everything to touch below ───────── */
   .stacked {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 50dvh minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
   }
   .stacked .live {
     border-right: 0;
