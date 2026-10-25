@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Ellipsis, Search } from '@lucide/svelte';
   import { MediaQuery } from 'svelte/reactivity';
+  import { innerWidth } from 'svelte/reactivity/window';
   import AnnouncementBanner from '../components/conductor/AnnouncementBanner.svelte';
   import DetectionBanner from '../components/conductor/DetectionBanner.svelte';
   import MiniLog from '../components/conductor/MiniLog.svelte';
@@ -18,7 +19,7 @@
   import { clock } from '../lib/clock.svelte.ts';
   import { keepAwake } from '../lib/device.ts';
   import { fmtClock } from '../lib/format.ts';
-  import { TABLET_MODES } from '../lib/layout.ts';
+  import { foldX, TABLET_MODES } from '../lib/layout.ts';
   import { prefs } from '../lib/prefs.svelte.ts';
   import { ui } from '../lib/ui.svelte.ts';
 
@@ -49,6 +50,10 @@
   const portrait = new MediaQuery('(orientation: portrait)');
   const stacked = $derived(across.current || (portrait.current && !down.current));
   const floor = $derived(prefs.tabletMode === 'floor');
+  /** Side by side, where the pages meet: on the crease, not half the window. */
+  const split = $derived(
+    foldX(innerWidth.current ?? window.innerWidth, screen.width, screen.height),
+  );
 
   // An operator's phone shouldn't lock mid-show, setup gaps included.
   $effect(() => keepAwake(() => true));
@@ -66,7 +71,7 @@
   });
 </script>
 
-<div class="fold" class:stacked class:floor>
+<div class="fold" class:stacked class:floor style:--fold-x="{split}px">
   <section class="pane live" aria-label="Live run">
     <TopBar variant="phone" />
     <AnnouncementBanner />
@@ -120,8 +125,11 @@
     inset: 0;
     padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
     display: grid;
-    /* Half the screen, not half the safe area: the Duo's insets aren't symmetric. */
-    grid-template-columns: calc(50vw - env(safe-area-inset-left, 0px)) minmax(0, 1fr);
+    /* Measured from the window's edge, not the safe area's. */
+    grid-template-columns: calc(var(--fold-x, 50vw) - env(safe-area-inset-left, 0px)) minmax(
+        0,
+        1fr
+      );
     grid-template-rows: minmax(0, 1fr);
   }
   .pane {
