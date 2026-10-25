@@ -92,26 +92,6 @@ export function foldX(windowWidth: number, screenLong: number): number {
 }
 
 /**
- * The height an installed app's window should have, when the browser has it
- * wrong. Unfolding an iPhone Duo with the app open leaves its window a status
- * bar short in height as well as width (867 × 587 on a 951 × 669 screen) until
- * the app is reopened, though the page still reaches the bottom edge (the home
- * indicator's inset says so). That signature, short by about the same in both
- * directions, gets the screen's height; anything else (a fresh launch, the
- * keyboard) gets `null`, and the window's own height stands.
- */
-export function staleWindowHeight(
-  innerWidth: number,
-  innerHeight: number,
-  outerWidth: number,
-  outerHeight: number,
-): number | null {
-  const short = outerHeight - innerHeight;
-  const narrow = outerWidth - innerWidth;
-  return short > 0 && narrow > 0 && Math.abs(short - narrow) <= 8 ? outerHeight : null;
-}
-
-/**
  * iPadOS Safari asks for desktop sites by default, so its user agent says
  * "Macintosh" — the touch points give it away. With a trackpad attached it can
  * also report a fine pointer, which is why this doesn't rely on `pointer: coarse`.

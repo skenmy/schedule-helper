@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Ellipsis, Search } from '@lucide/svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { innerHeight, innerWidth } from 'svelte/reactivity/window';
+  import { innerWidth } from 'svelte/reactivity/window';
   import AnnouncementBanner from '../components/conductor/AnnouncementBanner.svelte';
   import DetectionBanner from '../components/conductor/DetectionBanner.svelte';
   import MiniLog from '../components/conductor/MiniLog.svelte';
@@ -19,7 +19,7 @@
   import { clock } from '../lib/clock.svelte.ts';
   import { isStandalone, keepAwake } from '../lib/device.ts';
   import { fmtClock } from '../lib/format.ts';
-  import { foldX, screenSize, staleWindowHeight, TABLET_MODES } from '../lib/layout.ts';
+  import { foldX, screenSize, TABLET_MODES } from '../lib/layout.ts';
   import { prefs } from '../lib/prefs.svelte.ts';
   import { ui } from '../lib/ui.svelte.ts';
 
@@ -57,17 +57,8 @@
       screenSize(screen.width, screen.height, outerWidth, outerHeight).long,
     ),
   );
-  /** Installed, a window iOS left short after unfolding is stretched to the screen. */
-  const height = $derived(
-    isStandalone()
-      ? staleWindowHeight(
-          innerWidth.current ?? window.innerWidth,
-          innerHeight.current ?? window.innerHeight,
-          outerWidth,
-          outerHeight,
-        )
-      : null,
-  );
+  /** Launched from the Home Screen: no browser toolbars to make room for. */
+  const installed = isStandalone();
 
   // An operator's phone shouldn't lock mid-show, setup gaps included.
   $effect(() => keepAwake(() => true));
@@ -85,13 +76,7 @@
   });
 </script>
 
-<div
-  class="fold"
-  class:stacked
-  class:floor
-  style:--fold-x="{split}px"
-  style:height={height ? `${height}px` : undefined}
->
+<div class="fold" class:stacked class:floor class:installed style:--fold-x="{split}px">
   <section class="pane live" aria-label="Live run">
     <TopBar variant="phone" />
     <AnnouncementBanner />
@@ -138,9 +123,8 @@
 <style>
   /* ── Book: two pages, split where the screen folds ──────────────────── */
   .fold {
-    /* Pinned to the window, not sized in viewport units: installed on the Duo, iOS
-       takes the status bar's width (a column down the side) off 100dvh as well,
-       which left a band of nothing along the bottom. */
+    /* Pinned to the window rather than 100dvh, which iOS shortens on an installed
+       Duo by the status bar's width (a column down the side). */
     position: fixed;
     inset: 0;
     /* The docked controls sit on its bottom edge, stretched or not. */
@@ -153,6 +137,15 @@
         1fr
       );
     grid-template-rows: minmax(0, 1fr);
+  }
+  /* Installed on the Duo, iOS leaves the window a status bar short at the bottom
+     (867 × 587 on a 951 × 669 screen) after unfolding or switching back to the
+     app, until it's reopened, and says nothing when it does. The large viewport
+     stays the whole screen, and with no browser toolbars to come and go it's
+     the right height whenever the app is in front. Not in Safari, where it's
+     taller than what shows. */
+  .installed {
+    height: 100lvh;
   }
   .pane {
     display: flex;

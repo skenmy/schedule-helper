@@ -210,6 +210,8 @@ test.describe('iPhone Duo, open like a book', () => {
     // Nothing on the crease: the pages meet in the middle of the screen.
     const middle = page.viewportSize()!.width / 2;
     expect(live.x + live.width).toBeCloseTo(middle, 0);
+    // In Safari the large viewport is taller than what shows: never sized by it.
+    await expect(page.locator('.fold')).not.toHaveClass(/\binstalled\b/);
     expect(other.x).toBeCloseTo(middle, 0);
     const controls = page.getByRole('region', { name: 'Timer controls' });
     const next = (await controls.getByRole('button', { name: /^Next: / }).boundingBox())!;
@@ -269,11 +271,13 @@ test.describe('iPhone Duo, installed, unfolded with the app open', () => {
   test.use(IPHONE_DUO.bookUnfolded);
   test.beforeEach(({ page }) => onDuo(page, 'bookUnfolded'));
 
-  test('reaches the bottom of the screen though iOS left the window short', async ({ page }) => {
+  test('is sized by the large viewport, which iOS keeps the whole screen', async ({ page }) => {
     await open(page);
-    const { live, other } = await halves(page);
-    expect(live.y + live.height).toBe(669);
-    expect(other.y + other.height).toBe(669);
+    // On the Duo, 100lvh is 669 while the window is left at 587. Chromium's large
+    // viewport is the window, so this checks the rule applies, and only installed.
+    await expect(page.locator('.fold')).toHaveClass(/\binstalled\b/);
+    const { live } = await halves(page);
+    expect(live.y + live.height).toBe(587);
     expect(live.x + live.width).toBeCloseTo(951 / 2, 0);
   });
 });
